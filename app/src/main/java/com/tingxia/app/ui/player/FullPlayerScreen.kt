@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,9 +33,11 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,6 +77,8 @@ fun FullPlayerScreen(
     var scrubValue by remember { mutableFloatStateOf(0f) }
     var speedMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
+    var customSleepDialog by remember { mutableStateOf(false) }
+    var customSleepMinutes by remember { mutableStateOf("10") }
 
     val duration = state.durationMs.coerceAtLeast(0L).toFloat()
     val position = if (scrubbing) scrubValue else state.positionMs.toFloat().coerceAtMost(duration)
@@ -270,10 +277,51 @@ fun FullPlayerScreen(
                                 sleepMenu = false
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text("自定义…") },
+                            onClick = {
+                                sleepMenu = false
+                                customSleepDialog = true
+                            },
+                        )
                     }
                 }
             }
             Spacer(Modifier.height(32.dp))
         }
+    }
+
+    if (customSleepDialog) {
+        val minutes = customSleepMinutes.toIntOrNull()
+        val valid = minutes != null && minutes in 1..1_440
+        AlertDialog(
+            onDismissRequest = { customSleepDialog = false },
+            title = { Text("自定义睡眠定时") },
+            text = {
+                OutlinedTextField(
+                    value = customSleepMinutes,
+                    onValueChange = { value ->
+                        if (value.length <= 4 && value.all(Char::isDigit)) customSleepMinutes = value
+                    },
+                    label = { Text("分钟") },
+                    supportingText = { Text("可设置 1–1440 分钟") },
+                    isError = customSleepMinutes.isNotEmpty() && !valid,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = valid,
+                    onClick = {
+                        onSleep(minutes!!)
+                        customSleepDialog = false
+                    },
+                ) { Text("开始") }
+            },
+            dismissButton = {
+                TextButton(onClick = { customSleepDialog = false }) { Text("取消") }
+            },
+        )
     }
 }

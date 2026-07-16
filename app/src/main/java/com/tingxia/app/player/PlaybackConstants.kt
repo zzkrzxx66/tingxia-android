@@ -19,7 +19,7 @@ sealed interface SleepTimerMode {
 }
 
 object SleepOptions {
-    val MINUTES = listOf(0, 15, 30, 45, 60)
+    val MINUTES = listOf(0, 10, 15, 30, 45, 60)
 
     fun label(minutes: Int): String = when (minutes) {
         0 -> "关闭"
