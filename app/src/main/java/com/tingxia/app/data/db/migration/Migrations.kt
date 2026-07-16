@@ -4,15 +4,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
- * Historical v1 → v2 (shipped):
+ * Historical v1 → v2:
  * - add books.listenedDurationMs
  * - backfill cumulative progress from chapters
- *
- * Note: unique rootUri index was incorrectly folded into this migration in a later
- * commit while still advertising version=2. New installs/upgrades use:
- * - 1→2 via this migration (no unique index)
- * - 2→3 via [MIGRATION_2_3] (dedupe + unique index)
- * For brand-new paths Room may also apply 1→2→3.
+ * No unique rootUri index here (that is v3).
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -24,21 +19,21 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 }
 
 /**
- * Historical v2 (listenedDurationMs only) → v3 (unique rootUri index).
- * Safe for users who already upgraded to the intermediate "v2 without index".
+ * Historical v2 → v3:
+ * - dedupe books that share rootUri (prefer most recently / furthest listened)
+ * - create unique index on rootUri
+ *
+ * Also safe if a buggy intermediate build already created the unique index on v2:
+ * CREATE UNIQUE INDEX IF NOT EXISTS is a no-op after dedupe.
  */
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // If a buggy intermediate build already created the unique index on v2,
-        // CREATE UNIQUE INDEX IF NOT EXISTS is a no-op after dedupe.
         dedupeBooksByRootUri(db)
         db.execSQL(
             "CREATE UNIQUE INDEX IF NOT EXISTS `index_books_rootUri` ON `books` (`rootUri`)",
         )
     }
 }
-
-/** Optional combined path documentation — Room uses stepwise migrations. */
 
 private fun backfillListenedDuration(db: SupportSQLiteDatabase) {
     db.query(
@@ -97,20 +92,47 @@ private fun backfillListenedDuration(db: SupportSQLiteDatabase) {
     }
 }
 
+/**
+ * Keep one book per rootUri using the same ranking as [BookDedupePolicy]:
+ * lastPlayedAt DESC, listenedDurationMs DESC, currentPositionMs DESC, id DESC.
+ */
 private fun dedupeBooksByRootUri(db: SupportSQLiteDatabase) {
-    // Keep lowest id per rootUri; chapters cascade-deleted via FK if present.
-    // Chapters table has ON DELETE CASCADE in Room schema for bookId.
+    // SQLite: correlated subquery picks the winner per rootUri.
+    // Delete chapters of losing books first (FK cascade may not apply during raw migration).
     db.execSQL(
         """
-        DELETE FROM chapters WHERE bookId NOT IN (
-            SELECT MIN(id) FROM books GROUP BY rootUri
+        DELETE FROM chapters WHERE bookId IN (
+            SELECT b.id FROM books b
+            WHERE b.id NOT IN (
+                SELECT b2.id FROM books b2
+                WHERE b2.rootUri = b.rootUri
+                ORDER BY
+                    b2.lastPlayedAt DESC,
+                    b2.listenedDurationMs DESC,
+                    b2.currentPositionMs DESC,
+                    b2.id DESC
+                LIMIT 1
+            )
         )
         """.trimIndent(),
     )
     db.execSQL(
         """
         DELETE FROM books WHERE id NOT IN (
-            SELECT MIN(id) FROM books GROUP BY rootUri
+            SELECT id FROM (
+                SELECT b.id AS id
+                FROM books b
+                WHERE b.id = (
+                    SELECT b2.id FROM books b2
+                    WHERE b2.rootUri = b.rootUri
+                    ORDER BY
+                        b2.lastPlayedAt DESC,
+                        b2.listenedDurationMs DESC,
+                        b2.currentPositionMs DESC,
+                        b2.id DESC
+                    LIMIT 1
+                )
+            )
         )
         """.trimIndent(),
     )

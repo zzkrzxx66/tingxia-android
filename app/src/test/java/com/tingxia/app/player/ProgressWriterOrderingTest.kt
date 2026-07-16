@@ -3,15 +3,16 @@ package com.tingxia.app.player
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -20,12 +21,11 @@ class ProgressWriterOrderingTest {
     data class Save(val bookId: Long, val chapterId: Long, val positionMs: Long)
 
     @Test
-    fun fifo_processesInEnqueueOrder_despiteSlowSaves() = runTest {
+    fun fifo_andFinalLast_despiteSlowSaves() = runTest {
         val saved = CopyOnWriteArrayList<Save>()
         val writer = ProgressWriter(
             scope = this,
             save = { b, c, p ->
-                // Simulate variable IO latency; later items must not overtake earlier ones.
                 delay(if (c == 1L) 50 else 5)
                 saved += Save(b, c, p)
             },
@@ -34,46 +34,89 @@ class ProgressWriterOrderingTest {
 
         writer.enqueue(1, 1, 100)
         writer.enqueue(1, 1, 200)
-        writer.enqueue(1, 2, 0) // chapter transition
+        writer.enqueue(1, 2, 0)
 
         assertTrue(writer.closeWithFinal(1, 2, 10, timeoutMs = 5_000))
-
         assertEquals(
             listOf(
                 Save(1, 1, 100),
                 Save(1, 1, 200),
                 Save(1, 2, 0),
-                Save(1, 2, 10), // final
+                Save(1, 2, 10),
             ),
             saved.toList(),
         )
     }
 
     @Test
-    fun closeWithFinal_waitsForPendingStaleThenFinal() = runTest {
-        val saved = CopyOnWriteArrayList<Save>()
-        val gate = AtomicInteger(0)
+    fun closeWithFinal_returnsFalseWhenSaveAlwaysFails() = runTest {
+        val attempts = AtomicInteger(0)
         val writer = ProgressWriter(
             scope = this,
-            save = { b, c, p ->
-                // First (stale) write is slow.
-                if (gate.getAndIncrement() == 0) delay(80)
-                saved += Save(b, c, p)
+            save = { _, _, _ ->
+                attempts.incrementAndGet()
+                error("db down")
             },
             writerDispatcher = UnconfinedTestDispatcher(testScheduler),
+            finalMaxAttempts = 3,
+            retryDelayMs = 1,
         )
-
-        writer.enqueue(1, 1, 999) // stale old chapter already in queue
-        // Final current chapter must be last after queue drain
+        writer.enqueue(1, 1, 1)
         val ok = writer.closeWithFinal(1, 2, 0, timeoutMs = 5_000)
-        assertTrue(ok)
-        assertEquals(listOf(Save(1, 1, 999), Save(1, 2, 0)), saved.toList())
+        assertFalse(ok)
+        assertTrue("expected retries, got ${attempts.get()}", attempts.get() >= 3)
     }
 
     @Test
-    fun transitionEnterPolicy_pointsAtNewChapter() {
-        val enter = ProgressLeavePolicy.progressOnEnter(1, 11, 0)
-        assertEquals(11L, enter!!.chapterId)
-        assertEquals(0L, enter.positionMs)
+    fun closeWithFinal_retriesUntilSuccess() = runTest {
+        val saved = CopyOnWriteArrayList<Save>()
+        val attempts = AtomicInteger(0)
+        val writer = ProgressWriter(
+            scope = this,
+            save = { b, c, p ->
+                val n = attempts.incrementAndGet()
+                if (c == 99L && n <= 2) error("transient")
+                saved += Save(b, c, p)
+            },
+            writerDispatcher = UnconfinedTestDispatcher(testScheduler),
+            finalMaxAttempts = 3,
+            retryDelayMs = 1,
+        )
+        assertTrue(writer.closeWithFinal(1, 99, 7, timeoutMs = 5_000))
+        assertEquals(listOf(Save(1, 99, 7)), saved.toList())
+        assertEquals(3, attempts.get())
+    }
+
+    @Test
+    fun timeout_cancelsStaleAndDoesDirectFinalSave() = runTest {
+        val saved = CopyOnWriteArrayList<Save>()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val writer = ProgressWriter(
+            scope = this,
+            save = { b, c, p ->
+                if (c == 1L) {
+                    delay(10_000) // stale item blocks queue
+                }
+                saved += Save(b, c, p)
+            },
+            writerDispatcher = dispatcher,
+            finalMaxAttempts = 1,
+            retryDelayMs = 1,
+        )
+
+        writer.enqueue(1, 1, 111)
+        runCurrent() // writer starts processing stale item
+
+        val deferred = async {
+            writer.closeWithFinal(1, 2, 0, timeoutMs = 100)
+        }
+        // exceed close timeout so fallback path runs
+        advanceTimeBy(150)
+        runCurrent()
+        val ok = deferred.await()
+
+        assertTrue(ok)
+        // Stale chapter must not win; only final chapter 2 from direct save.
+        assertEquals(listOf(Save(1, 2, 0)), saved.toList())
     }
 }

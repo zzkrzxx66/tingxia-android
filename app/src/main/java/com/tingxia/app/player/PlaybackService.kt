@@ -52,7 +52,6 @@ class PlaybackService : MediaSessionService() {
     private var lastBookId: Long? = null
     private var lastChapterId: Long? = null
     private var lastPositionMs: Long = 0L
-    private var lastDurationMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -205,15 +204,10 @@ class PlaybackService : MediaSessionService() {
                 lastBookId = newIds.first
                 lastChapterId = newIds.second
                 lastPositionMs = newPos
-                lastDurationMs = newDur
             }
-            ProgressLeavePolicy.progressOnEnter(
-                bookId = newIds?.first,
-                chapterId = newIds?.second,
-                positionMs = newPos,
-            )
+            if (newIds != null) Triple(newIds.first, newIds.second, newPos) else null
         }
-        enter?.let { progressWriter?.enqueue(it.bookId, it.chapterId, it.positionMs) }
+        enter?.let { progressWriter?.enqueue(it.first, it.second, it.third) }
     }
 
     private suspend fun captureAndEnqueueCurrent(player: Player) {
@@ -225,7 +219,6 @@ class PlaybackService : MediaSessionService() {
                 lastBookId = ids.first
                 lastChapterId = ids.second
                 lastPositionMs = pos
-                lastDurationMs = dur
             }
             ids?.let { Triple(it.first, it.second, pos) }
         } ?: return

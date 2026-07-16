@@ -56,7 +56,6 @@ class MigrationTest {
                 assertTrue(c.moveToFirst())
                 assertEquals(1500L, c.getLong(0))
             }
-            // v2 historical schema must NOT require unique rootUri index yet
             query("PRAGMA index_list('books')").use { c ->
                 var foundRoot = false
                 while (c.moveToNext()) {
@@ -70,25 +69,24 @@ class MigrationTest {
     }
 
     @Test
-    fun migrate2To3_addsUniqueRootUriIndex_andDedupes() {
+    fun migrate2To3_keepsMostRecentlyPlayedDuplicate() {
         helper.createDatabase(testDb, 2).apply {
-            // two books same rootUri (legacy)
             execSQL(
                 """
                 INSERT INTO books (
                     id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
                     currentChapterId, currentPositionMs, listenedDurationMs, createdAt, needsReauth
                 ) VALUES
-                    (1, 'a', NULL, NULL, 'content://tree/dup', 0, 0, NULL, 0, 0, 0, 0),
-                    (2, 'b', NULL, NULL, 'content://tree/dup', 0, 0, NULL, 0, 0, 0, 0)
+                    (1, 'old', NULL, NULL, 'content://tree/dup', 0, 10, 10, 1, 10, 0, 0),
+                    (2, 'current', NULL, NULL, 'content://tree/dup', 0, 999, 11, 500, 1500, 0, 0)
                 """.trimIndent(),
             )
             execSQL(
                 """
                 INSERT INTO chapters (id, bookId, title, uri, `index`, durationMs, fileName)
                 VALUES
-                    (10, 1, 'c', 'u', 0, 1, 'a.mp3'),
-                    (11, 2, 'c', 'u', 0, 1, 'b.mp3')
+                    (10, 1, 'c', 'u', 0, 1000, 'a.mp3'),
+                    (11, 2, 'c', 'u', 0, 1000, 'b.mp3')
                 """.trimIndent(),
             )
             close()
@@ -99,17 +97,40 @@ class MigrationTest {
                 assertTrue(c.moveToFirst())
                 assertEquals(1, c.getInt(0))
             }
-            query("SELECT id FROM books").use { c ->
+            query("SELECT id, title, listenedDurationMs FROM books").use { c ->
                 assertTrue(c.moveToFirst())
-                assertEquals(1L, c.getLong(0)) // keep min id
+                assertEquals(2L, c.getLong(0))
+                assertEquals("current", c.getString(1))
+                assertEquals(1500L, c.getLong(2))
             }
-            query("PRAGMA index_list('books')").use { c ->
-                var foundRoot = false
-                while (c.moveToNext()) {
-                    val name = c.getString(c.getColumnIndex("name"))
-                    if (name != null && name.contains("rootUri")) foundRoot = true
-                }
-                assertTrue("v3 must have rootUri unique index", foundRoot)
+            query("SELECT COUNT(*) FROM chapters").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(1, c.getInt(0))
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate2To3_whenUniqueIndexAlreadyPresent_isIdempotent() {
+        helper.createDatabase(testDb, 2).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt, needsReauth
+                ) VALUES (1, 'only', NULL, NULL, 'content://tree/z', 0, 1, NULL, 0, 0, 0, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_books_rootUri` ON `books` (`rootUri`)",
+            )
+            close()
+        }
+        helper.runMigrationsAndValidate(testDb, 3, true, MIGRATION_2_3).apply {
+            query("SELECT COUNT(*) FROM books").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(1, c.getInt(0))
             }
             close()
         }
