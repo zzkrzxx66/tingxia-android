@@ -1,24 +1,18 @@
 package com.tingxia.app.data.repo
 
+import com.tingxia.app.data.policy.SafPermissionPolicy
+import com.tingxia.app.data.policy.SafPermissionPolicy.BookRef
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Pure policy tests documenting SAF permission release rules
- * (implementation lives in BookRepository).
- */
+/** Exercises real [SafPermissionPolicy] production code. */
 class SafPermissionPolicyTest {
-
-    data class BookRef(val id: Long, val rootUri: String)
-
-    private fun shouldRelease(rootUri: String, remaining: List<BookRef>): Boolean =
-        remaining.none { it.rootUri == rootUri }
 
     @Test
     fun releaseWhenLastBookRemoved() {
         val remaining = listOf(BookRef(2, "content://tree/b"))
-        assertTrue(shouldRelease("content://tree/a", remaining))
+        assertTrue(SafPermissionPolicy.shouldReleaseRoot("content://tree/a", remaining))
     }
 
     @Test
@@ -27,13 +21,67 @@ class SafPermissionPolicyTest {
             BookRef(2, "content://tree/a"),
             BookRef(3, "content://tree/b"),
         )
-        assertFalse(shouldRelease("content://tree/a", remaining))
+        assertFalse(SafPermissionPolicy.shouldReleaseRoot("content://tree/a", remaining))
     }
 
     @Test
     fun importFailure_releaseOnlyIfNotShared() {
-        val alreadyUsedByOther = listOf(BookRef(9, "content://tree/x"))
-        assertFalse(shouldRelease("content://tree/x", alreadyUsedByOther))
-        assertTrue(shouldRelease("content://tree/x", emptyList()))
+        assertFalse(
+            SafPermissionPolicy.shouldReleaseAfterFailedTake(
+                rootUri = "content://tree/x",
+                permissionWasNewlyTaken = true,
+                booksUsingRoot = 1,
+            ),
+        )
+        assertTrue(
+            SafPermissionPolicy.shouldReleaseAfterFailedTake(
+                rootUri = "content://tree/x",
+                permissionWasNewlyTaken = true,
+                booksUsingRoot = 0,
+            ),
+        )
+        assertFalse(
+            SafPermissionPolicy.shouldReleaseAfterFailedTake(
+                rootUri = "content://tree/x",
+                permissionWasNewlyTaken = false,
+                booksUsingRoot = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun reauth_sameRootAlwaysOk() {
+        assertTrue(
+            SafPermissionPolicy.isAcceptableReauthTree(
+                oldRootUri = "content://tree/a",
+                newRootUri = "content://tree/a",
+                oldFileNames = listOf("01.mp3", "02.mp3"),
+                newFileNames = emptyList(),
+            ),
+        )
+    }
+
+    @Test
+    fun reauth_rejectsUnrelatedTree() {
+        assertFalse(
+            SafPermissionPolicy.isAcceptableReauthTree(
+                oldRootUri = "content://tree/a",
+                newRootUri = "content://tree/b",
+                oldFileNames = listOf("01.mp3", "02.mp3", "03.mp3"),
+                newFileNames = listOf("other.mp3"),
+            ),
+        )
+    }
+
+    @Test
+    fun reauth_acceptsEnoughOverlap() {
+        assertTrue(
+            SafPermissionPolicy.isAcceptableReauthTree(
+                oldRootUri = "content://tree/a",
+                newRootUri = "content://tree/b",
+                oldFileNames = listOf("01.mp3", "02.mp3", "03.mp3"),
+                newFileNames = listOf("01.mp3", "02.mp3", "x.mp3"),
+            ),
+        )
     }
 }

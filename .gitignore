@@ -17,8 +17,6 @@ bin/
 gen/
 out/
 .navigation/
-*.jks
-*.keystore
 *.log
 .mindfs/
 # never commit audiobook media
@@ -29,3 +27,9 @@ out/
 *.ogg
 *.wav
 *.aac
+
+# Keystores: ignore private keys; commit only the public debug/CI keystore
+*.keystore
+keystore/*
+!keystore/tingxia-debug.jks
+!keystore/README.md

@@ -67,6 +67,9 @@ interface BookDao {
 
     @Query("SELECT COUNT(*) FROM books WHERE rootUri = :rootUri AND id != :excludeId")
     suspend fun countByRootUriExcluding(rootUri: String, excludeId: Long): Int
+
+    @Query("SELECT id FROM books WHERE rootUri = :rootUri LIMIT 1")
+    suspend fun findIdByRootUri(rootUri: String): Long?
 }
 
 @Dao

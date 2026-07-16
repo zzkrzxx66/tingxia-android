@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.tingxia.app.data.db.BookDao
 import com.tingxia.app.data.db.ChapterDao
 import com.tingxia.app.data.db.TingXiaDatabase
+import com.tingxia.app.data.db.migration.MIGRATION_1_2
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -20,7 +21,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TingXiaDatabase =
         Room.databaseBuilder(context, TingXiaDatabase::class.java, "tingxia.db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(MIGRATION_1_2)
             .build()
 
     @Provides

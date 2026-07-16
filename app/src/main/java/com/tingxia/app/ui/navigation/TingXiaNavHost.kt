@@ -4,9 +4,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,14 +45,23 @@ fun TingXiaNavHost(
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showMini = playerState.bookId != null && currentRoute != Routes.PLAYER
+    val snackbar = remember { SnackbarHostState() }
 
     DisposableEffect(Unit) {
         playerViewModel.connect()
         onDispose { /* keep session alive for background play */ }
     }
 
+    LaunchedEffect(playerState.lastError) {
+        playerState.lastError?.let {
+            snackbar.showSnackbar(it)
+            playerViewModel.clearError()
+        }
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (showMini) {
                 MiniPlayerBar(
@@ -73,8 +86,9 @@ fun TingXiaNavHost(
                             onOpenBook = { id -> navController.navigate(Routes.book(id)) },
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             onContinue = { bookId ->
-                                playerViewModel.playBook(bookId)
-                                navController.navigate(Routes.PLAYER)
+                                playerViewModel.playBook(bookId) { ok ->
+                                    if (ok) navController.navigate(Routes.PLAYER)
+                                }
                             },
                         )
                     }
@@ -87,12 +101,14 @@ fun TingXiaNavHost(
                             bookId = bookId,
                             onBack = { navController.popBackStack() },
                             onPlayChapter = { chapterId ->
-                                playerViewModel.playBook(bookId, chapterId)
-                                navController.navigate(Routes.PLAYER)
+                                playerViewModel.playBook(bookId, chapterId) { ok ->
+                                    if (ok) navController.navigate(Routes.PLAYER)
+                                }
                             },
                             onContinue = {
-                                playerViewModel.playBook(bookId)
-                                navController.navigate(Routes.PLAYER)
+                                playerViewModel.playBook(bookId) { ok ->
+                                    if (ok) navController.navigate(Routes.PLAYER)
+                                }
                             },
                         )
                     }

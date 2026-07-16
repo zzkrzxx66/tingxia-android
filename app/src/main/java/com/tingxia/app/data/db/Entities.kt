@@ -5,7 +5,10 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "books")
+@Entity(
+    tableName = "books",
+    indices = [Index(value = ["rootUri"], unique = true)],
+)
 data class BookEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,

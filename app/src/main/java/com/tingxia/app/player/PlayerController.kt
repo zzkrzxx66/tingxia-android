@@ -53,11 +53,12 @@ data class PlayerUiState(
     val sleepRemainingMs: Long? = null,
     val coverPath: String? = null,
     val needsReauth: Boolean = false,
+    val lastError: String? = null,
 )
 
 /**
- * App-facing façade over Media3 [MediaController].
- * UI / ViewModels talk only to this, never hold ExoPlayer directly.
+ * UI façade over Media3 [MediaController].
+ * Does **not** write progress — [PlaybackService] is the sole progress writer.
  */
 @OptIn(UnstableApi::class)
 @Singleton
@@ -71,14 +72,6 @@ class PlayerController @Inject constructor(
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var positionJob: Job? = null
-    private var progressSaveJob: Job? = null
-    private var lastSavedPosition = -1L
-    private var lastSavedChapterId = -1L
-
-    /** Snapshot of the chapter being left, for correct progress flush on transition. */
-    private var pendingLeaveBookId: Long? = null
-    private var pendingLeaveChapterId: Long? = null
-    private var pendingLeavePositionMs: Long = 0L
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -86,39 +79,11 @@ class PlayerController @Inject constructor(
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.value = _state.value.copy(isPlaying = isPlaying)
-            if (isPlaying) {
-                startProgressLoop()
-            } else {
-                stopProgressLoop()
-                flushProgress()
-            }
+            if (isPlaying) startProgressLoop() else stopProgressLoop()
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            // Capture outgoing chapter progress BEFORE updating state to the new item.
-            val prev = _state.value
-            val leaveBookId = prev.bookId
-            val leaveChapterId = prev.chapterId
-            val leavePosition = prev.positionMs
-            val leaveDuration = prev.durationMs
-
             updateFromMediaItem(mediaItem)
-
-            if (
-                leaveBookId != null &&
-                leaveChapterId != null &&
-                leaveChapterId != _state.value.chapterId
-            ) {
-                // When auto-advancing, old chapter is effectively finished.
-                val positionToSave = when (reason) {
-                    Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ->
-                        if (leaveDuration > 0L) leaveDuration else leavePosition
-                    else -> leavePosition
-                }
-                saveProgressNow(leaveBookId, leaveChapterId, positionToSave)
-            } else {
-                flushProgress()
-            }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -134,15 +99,24 @@ class PlayerController @Inject constructor(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            val bookId = _state.value.bookId ?: return
+            val bookId = _state.value.bookId
             val isPermission = error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                 error.cause is SecurityException
-            if (isPermission) {
-                _state.value = _state.value.copy(needsReauth = true, isPlaying = false)
+            if (isPermission && bookId != null) {
+                _state.value = _state.value.copy(
+                    needsReauth = true,
+                    isPlaying = false,
+                    lastError = "目录权限失效，请重新授权",
+                )
                 scope.launch(Dispatchers.IO) {
                     bookRepository.markNeedsReauth(bookId, true)
                 }
+            } else {
+                _state.value = _state.value.copy(
+                    isPlaying = false,
+                    lastError = error.message ?: "播放失败",
+                )
             }
         }
     }
@@ -168,7 +142,6 @@ class PlayerController @Inject constructor(
     }
 
     fun disconnect() {
-        flushProgress()
         stopProgressLoop()
         controller?.removeListener(listener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
@@ -177,18 +150,24 @@ class PlayerController @Inject constructor(
         _state.value = _state.value.copy(isConnected = false)
     }
 
-    suspend fun playBook(bookId: Long, chapterId: Long? = null, positionMs: Long? = null) {
+    /**
+     * @return true if playback started; false if blocked (e.g. needs reauth / missing data).
+     */
+    suspend fun playBook(bookId: Long, chapterId: Long? = null, positionMs: Long? = null): Boolean {
         ensureConnected()
-        // Access check before loading media
         val accessible = bookRepository.checkBookAccess(bookId)
         if (!accessible) {
-            _state.value = _state.value.copy(bookId = bookId, needsReauth = true)
-            return
+            _state.value = _state.value.copy(
+                bookId = bookId,
+                needsReauth = true,
+                lastError = "目录权限失效，请重新授权",
+            )
+            return false
         }
 
-        val book = bookRepository.getBook(bookId) ?: return
+        val book = bookRepository.getBook(bookId) ?: return false
         val chapters = bookRepository.getChapters(bookId)
-        if (chapters.isEmpty()) return
+        if (chapters.isEmpty()) return false
 
         val startChapterId = chapterId
             ?: book.currentChapterId
@@ -198,9 +177,7 @@ class PlayerController @Inject constructor(
             ?: if (chapterId == null || chapterId == book.currentChapterId) book.currentPositionMs else 0L
 
         val items = chapters.map { it.toMediaItem(book, chapters.size) }
-        val c = controller ?: return
-        // Flush previous book's progress before swapping playlist
-        flushProgress()
+        val c = controller ?: return false
         c.setMediaItems(items, startIndex, startPos.coerceAtLeast(0L))
         val speed = preferences.defaultSpeed.first()
         c.setPlaybackSpeed(speed)
@@ -214,14 +191,15 @@ class PlayerController @Inject constructor(
             chapterCount = chapters.size,
             speed = speed,
             needsReauth = false,
+            lastError = null,
         )
         updateFromMediaItem(c.currentMediaItem)
+        return true
     }
 
     fun play() = controller?.play()
     fun pause() {
         controller?.pause()
-        flushProgress()
     }
 
     fun togglePlayPause() {
@@ -241,11 +219,6 @@ class PlayerController @Inject constructor(
     }
 
     fun nextChapter() {
-        // Snapshot current before transition
-        val s = _state.value
-        pendingLeaveBookId = s.bookId
-        pendingLeaveChapterId = s.chapterId
-        pendingLeavePositionMs = s.positionMs
         controller?.seekToNextMediaItem()
     }
 
@@ -254,10 +227,6 @@ class PlayerController @Inject constructor(
         if (c.currentPosition > 3_000L) {
             c.seekTo(0L)
         } else {
-            val s = _state.value
-            pendingLeaveBookId = s.bookId
-            pendingLeaveChapterId = s.chapterId
-            pendingLeavePositionMs = s.positionMs
             c.seekToPreviousMediaItem()
         }
     }
@@ -276,10 +245,14 @@ class PlayerController @Inject constructor(
             args,
         )
         _state.value = _state.value.copy(
-            sleepRemainingMs = if (minutes > 0) minutes * 60_000L else null
+            sleepRemainingMs = if (minutes > 0) minutes * 60_000L else null,
         )
         if (minutes > 0) startSleepTicker(minutes * 60_000L)
         else sleepJob?.cancel()
+    }
+
+    fun clearError() {
+        _state.value = _state.value.copy(lastError = null)
     }
 
     private var sleepJob: Job? = null
@@ -353,7 +326,6 @@ class PlayerController @Inject constructor(
             chapterCount = count,
             coverPath = item.mediaMetadata.artworkUri?.toString() ?: _state.value.coverPath,
             durationMs = controller?.duration?.coerceAtLeast(0L) ?: _state.value.durationMs,
-            // Reset position for new item until player reports
             positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
         )
     }
@@ -370,7 +342,6 @@ class PlayerController @Inject constructor(
                         bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
                         isPlaying = c.isPlaying,
                     )
-                    maybeSaveProgress()
                 }
                 delay(500)
             }
@@ -380,43 +351,6 @@ class PlayerController @Inject constructor(
     private fun stopProgressLoop() {
         positionJob?.cancel()
         positionJob = null
-    }
-
-    private fun maybeSaveProgress() {
-        val s = _state.value
-        val bookId = s.bookId ?: return
-        val chapterId = s.chapterId ?: return
-        val pos = s.positionMs
-        if (chapterId == lastSavedChapterId && kotlin.math.abs(pos - lastSavedPosition) < 5_000L) {
-            return
-        }
-        if (progressSaveJob?.isActive == true) return
-        progressSaveJob = scope.launch(Dispatchers.IO) {
-            delay(8_000)
-            val cur = _state.value
-            // Only save if still on the same chapter we scheduled for
-            val b = cur.bookId ?: return@launch
-            val ch = cur.chapterId ?: return@launch
-            if (ch != chapterId) return@launch
-            bookRepository.saveProgress(b, ch, cur.positionMs)
-            lastSavedPosition = cur.positionMs
-            lastSavedChapterId = ch
-        }
-    }
-
-    fun flushProgress() {
-        val s = _state.value
-        val bookId = s.bookId ?: return
-        val chapterId = s.chapterId ?: return
-        saveProgressNow(bookId, chapterId, s.positionMs)
-    }
-
-    private fun saveProgressNow(bookId: Long, chapterId: Long, positionMs: Long) {
-        scope.launch(Dispatchers.IO) {
-            bookRepository.saveProgress(bookId, chapterId, positionMs)
-            lastSavedPosition = positionMs
-            lastSavedChapterId = chapterId
-        }
     }
 
     companion object {

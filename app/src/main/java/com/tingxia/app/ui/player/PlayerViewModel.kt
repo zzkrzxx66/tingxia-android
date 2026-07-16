@@ -18,9 +18,17 @@ class PlayerViewModel @Inject constructor(
 
     fun connect() = playerController.connect()
 
-    fun playBook(bookId: Long, chapterId: Long? = null) {
+    /**
+     * @param onResult called on main with whether playback actually started.
+     */
+    fun playBook(
+        bookId: Long,
+        chapterId: Long? = null,
+        onResult: (Boolean) -> Unit = {},
+    ) {
         viewModelScope.launch {
-            playerController.playBook(bookId, chapterId)
+            val ok = playerController.playBook(bookId, chapterId)
+            onResult(ok)
         }
     }
 
@@ -31,9 +39,5 @@ class PlayerViewModel @Inject constructor(
     fun previousChapter() = playerController.previousChapter()
     fun setSpeed(speed: Float) = playerController.setSpeed(speed)
     fun setSleepMinutes(minutes: Int) = playerController.setSleepMinutes(minutes)
-
-    override fun onCleared() {
-        playerController.flushProgress()
-        super.onCleared()
-    }
+    fun clearError() = playerController.clearError()
 }
