@@ -44,6 +44,8 @@ data class RescanApplyResult(
     val removedChapterIds: Set<Long>,
 )
 
+class ReauthDecisionRequiredException(val preview: RescanPreview) : Exception("请确认重新授权后的章节对应关系")
+
 @Singleton
 class BookRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -195,11 +197,25 @@ class BookRepository @Inject constructor(
         plan: RescanPlanner.Plan,
         acceptedWeak: Map<Long, ScannedChapter> = emptyMap(),
         acceptedAmbiguous: Map<String, Long> = emptyMap(),
+        rejectedWeak: Set<Long> = emptySet(),
+        rejectedAmbiguous: Set<String> = emptySet(),
+    ): RescanApplyResult {
+        return applyRescanInternal(bookId, plan, acceptedWeak, acceptedAmbiguous, rejectedWeak, rejectedAmbiguous)
+    }
+
+    private suspend fun applyRescanInternal(
+        bookId: Long,
+        plan: RescanPlanner.Plan,
+        acceptedWeak: Map<Long, ScannedChapter>,
+        acceptedAmbiguous: Map<String, Long>,
+        rejectedWeak: Set<Long>,
+        rejectedAmbiguous: Set<String>,
+        replacementBook: BookEntity? = null,
     ): RescanApplyResult {
         val book = bookDao.getBook(bookId) ?: error("书籍不存在")
         val existing = chapterDao.getChapters(bookId).map { it.toModel() }
         // Recompute plan with decisions to be safe
-        val finalPlan = if (acceptedWeak.isEmpty() && acceptedAmbiguous.isEmpty()) {
+        val finalPlan = if (acceptedWeak.isEmpty() && acceptedAmbiguous.isEmpty() && rejectedWeak.isEmpty() && rejectedAmbiguous.isEmpty()) {
             plan
         } else {
             RescanPlanner.plan(
@@ -208,6 +224,8 @@ class BookRepository @Inject constructor(
                 scanned = plan.finalChaptersPreview,
                 acceptedWeak = acceptedWeak,
                 acceptedAmbiguous = acceptedAmbiguous,
+                rejectedWeak = rejectedWeak,
+                rejectedAmbiguous = rejectedAmbiguous,
             )
         }
         if (finalPlan.weakMatches.isNotEmpty() || finalPlan.ambiguous.isNotEmpty()) {
@@ -220,6 +238,7 @@ class BookRepository @Inject constructor(
         val scannedOrder = finalPlan.finalChaptersPreview
 
         return database.withTransaction {
+            replacementBook?.let { bookDao.updateBook(it) }
             val oldEntities = chapterDao.getChapters(bookId)
             val oldById = oldEntities.associateBy { it.id }
 
@@ -242,8 +261,7 @@ class BookRepository @Inject constructor(
             // 3) Update matched rows (content) with temporary still-negative or update fields first
             val finalIndexByOldId = mutableMapOf<Long, Int>()
             scannedOrder.forEachIndexed { newIndex, sc ->
-                val oldId = strong.entries.firstOrNull { it.value.uri == sc.uri || it.value.relativePath == sc.relativePath }?.key
-                    ?: strong.entries.firstOrNull { it.value.stableKey == sc.stableKey }?.key
+                val oldId = strong.entries.firstOrNull { it.value.uri == sc.uri }?.key
                 if (oldId != null) {
                     finalIndexByOldId[oldId] = newIndex
                 }
@@ -273,9 +291,7 @@ class BookRepository @Inject constructor(
             val addedIdByUri = mutableMapOf<String, Long>()
             scannedOrder.forEachIndexed { newIndex, sc ->
                 val matchedOld = strong.entries.firstOrNull {
-                    it.value.uri == sc.uri ||
-                        it.value.relativePath == sc.relativePath ||
-                        it.value.stableKey == sc.stableKey
+                    it.value.uri == sc.uri
                 }?.key
                 if (matchedOld == null) {
                     val id = chapterDao.insert(
@@ -339,7 +355,6 @@ class BookRepository @Inject constructor(
                 listenedDurationMs = listened,
             )
 
-            invalidateOffsetIndex(bookId)
             val updated = bookDao.getBook(bookId)!!.toModel()
             RescanApplyResult(
                 book = updated,
@@ -348,13 +363,17 @@ class BookRepository @Inject constructor(
                 currentPositionMs = newPos,
                 removedChapterIds = removedIds,
             )
-        }
+        }.also { invalidateOffsetIndex(bookId) }
     }
 
     suspend fun reauthBook(
         bookId: Long,
         treeUri: Uri,
         onProgress: (ScanProgress) -> Unit = {},
+        acceptedWeak: Map<Long, ScannedChapter> = emptyMap(),
+        acceptedAmbiguous: Map<String, Long> = emptyMap(),
+        rejectedWeak: Set<Long> = emptySet(),
+        rejectedAmbiguous: Set<String> = emptySet(),
     ): Book {
         val existing = bookDao.getBook(bookId) ?: error("书籍不存在")
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -382,14 +401,29 @@ class BookRepository @Inject constructor(
                 error("所选目录与原书籍章节不匹配，请选择正确的书目文件夹")
             }
 
-            // Update root first, then apply rescan plan against new scan.
-            database.withTransaction {
-                bookDao.updateBook(existing.copy(rootUri = scanned.rootUri, needsReauth = false, coverPath = scanned.coverPath ?: existing.coverPath))
-            }
             val plan = RescanPlanner.plan(bookId, oldChapters, scanned.chapters)
-            // Auto-accept weak matches on reauth for better UX when same library moved.
-            val acceptedWeak = plan.weakMatches
-            val result = applyRescan(bookId, plan, acceptedWeak = acceptedWeak, acceptedAmbiguous = emptyMap())
+            if (plan.hasUserDecisions &&
+                acceptedWeak.isEmpty() && acceptedAmbiguous.isEmpty() &&
+                rejectedWeak.isEmpty() && rejectedAmbiguous.isEmpty()
+            ) {
+                val removedIds = plan.removed.map { it.id }
+                val affected = if (removedIds.isEmpty()) 0 else bookmarkDao.countForChapters(removedIds)
+                throw ReauthDecisionRequiredException(RescanPreview(bookId, plan, affected))
+            }
+            val replacement = existing.copy(
+                rootUri = scanned.rootUri,
+                needsReauth = false,
+                coverPath = scanned.coverPath ?: existing.coverPath,
+            )
+            val result = applyRescanInternal(
+                bookId = bookId,
+                plan = plan,
+                acceptedWeak = acceptedWeak,
+                acceptedAmbiguous = acceptedAmbiguous,
+                rejectedWeak = rejectedWeak,
+                rejectedAmbiguous = rejectedAmbiguous,
+                replacementBook = replacement,
+            )
             if (oldRoot != scanned.rootUri) {
                 maybeReleaseRootUri(oldRoot, excludeBookId = bookId)
             }

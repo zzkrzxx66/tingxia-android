@@ -186,17 +186,17 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
-                    sleepMode is SleepTimerMode.EndOfChapter
-                ) {
-                    // AUTO already advanced; step back and stop for "end of chapter".
+                val stopAtBoundary = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                    (sleepMode is SleepTimerMode.EndOfChapter || !autoPlayNext(mediaItem))
+                if (stopAtBoundary) {
+                    // AUTO already advanced; step back and stop at the completed chapter.
                     if (player.hasPreviousMediaItem()) {
                         player.seekToPreviousMediaItem()
                         val dur = player.duration
                         if (dur > 0) player.seekTo(dur)
                     }
                     player.pause()
-                    clearSleep(restoreVolume = true)
+                    if (sleepMode is SleepTimerMode.EndOfChapter) clearSleep(restoreVolume = true)
                 } else if (sleepMode is SleepTimerMode.EndOfChapter) {
                     sleepTargetChapterId = parseIds(mediaItem)?.second ?: sleepTargetChapterId
                 }
@@ -256,7 +256,6 @@ class PlaybackService : MediaSessionService() {
             "end_of_chapter" -> {
                 fadeJob?.cancel()
                 sleepJob?.cancel()
-        fadeJob?.cancel()
                 restoreVolumeIfNeeded(player)
                 sleepMode = SleepTimerMode.EndOfChapter
                 val ch = args.getLong("chapterId", -1L).takeIf { it > 0 } ?: lastChapterId
@@ -273,7 +272,6 @@ class PlaybackService : MediaSessionService() {
 
     private fun scheduleSleepMs(player: Player, durationMs: Long) {
         sleepJob?.cancel()
-        fadeJob?.cancel()
         fadeJob?.cancel()
         restoreVolumeIfNeeded(player)
         if (durationMs <= 0L) {
@@ -327,7 +325,6 @@ class PlaybackService : MediaSessionService() {
         sleepJob?.cancel()
         fadeJob?.cancel()
         sleepJob = null
-        fadeJob?.cancel()
         fadeJob = null
         sleepMode = SleepTimerMode.Off
         sleepTargetChapterId = null
@@ -347,6 +344,9 @@ class PlaybackService : MediaSessionService() {
             ?: return null
         return bookId to chapterId
     }
+
+    private fun autoPlayNext(item: MediaItem?): Boolean =
+        item?.mediaMetadata?.extras?.getBoolean(PlayerController.KEY_AUTO_PLAY_NEXT, true) ?: true
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession

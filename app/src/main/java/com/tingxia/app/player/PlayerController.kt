@@ -177,8 +177,10 @@ class PlayerController @Inject constructor(
             ?: book.currentChapterId
             ?: chapters.first().id
         val startIndex = chapters.indexOfFirst { it.id == startChapterId }.coerceAtLeast(0)
-        val startPos = positionMs
+        val requestedPos = positionMs
             ?: if (chapterId == null || chapterId == book.currentChapterId) book.currentPositionMs else 0L
+        val duration = chapters[startIndex].durationMs
+        val startPos = if (duration > 0L) requestedPos.coerceIn(0L, duration) else requestedPos.coerceAtLeast(0L)
 
         val items = chapters.map { it.toMediaItem(book, chapters.size) }
         val c = controller ?: return false
@@ -302,19 +304,6 @@ class PlayerController @Inject constructor(
             )
         }
         c.sendCustomCommand(SessionCommand(CustomCommands.SET_SLEEP_MODE, Bundle.EMPTY), args)
-        // legacy
-        if (mode is SleepTimerMode.AfterDuration) {
-            c.sendCustomCommand(
-                SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY),
-                bundleOf("minutes" to (mode.durationMs / 60_000L).toInt()),
-            )
-        } else if (mode is SleepTimerMode.Off) {
-            c.sendCustomCommand(
-                SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY),
-                bundleOf("minutes" to 0),
-            )
-        }
-
         _state.value = _state.value.copy(
             sleepMode = mode,
             sleepRemainingMs = when (mode) {
@@ -449,6 +438,7 @@ class PlayerController @Inject constructor(
         const val KEY_CHAPTER_ID = "chapter_id"
         const val KEY_CHAPTER_INDEX = "chapter_index"
         const val KEY_CHAPTER_COUNT = "chapter_count"
+        const val KEY_AUTO_PLAY_NEXT = "auto_play_next"
     }
 }
 
@@ -458,6 +448,7 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         PlayerController.KEY_CHAPTER_ID to id,
         PlayerController.KEY_CHAPTER_INDEX to index,
         PlayerController.KEY_CHAPTER_COUNT to chapterCount,
+        PlayerController.KEY_AUTO_PLAY_NEXT to book.autoPlayNext,
     )
     val metadata = MediaMetadata.Builder()
         .setTitle(displayTitle)

@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -74,6 +77,7 @@ fun BookDetailScreen(
     val rescanning by viewModel.rescanning.collectAsStateWithLifecycle()
     val rescanProgress by viewModel.rescanProgress.collectAsStateWithLifecycle()
     val rescanPreview by viewModel.rescanPreview.collectAsStateWithLifecycle()
+    val decisionVersion by viewModel.decisionVersion.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     var confirmRemove by remember { mutableStateOf(false) }
@@ -191,6 +195,18 @@ fun BookDetailScreen(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("自动播放下一章", style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = book?.autoPlayNext ?: true,
+                                onCheckedChange = viewModel::setAutoPlayNext,
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = onContinue,
                             modifier = Modifier.fillMaxWidth(),
@@ -256,12 +272,38 @@ fun BookDetailScreen(
             onDismissRequest = { viewModel.dismissRescanPreview() },
             title = { Text("扫描结果") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("新增 ${preview.plan.addedCount} 章")
                     Text("删除 ${preview.plan.removedCount} 章")
                     Text("变更 ${preview.plan.renamedCount} 章")
-                    if (preview.plan.ambiguousCount > 0) {
-                        Text("歧义 ${preview.plan.ambiguousCount} 章（确认后将弱匹配自动纳入）")
+                    preview.plan.weakMatches.forEach { (oldId, scanned) ->
+                        Spacer(Modifier.height(8.dp))
+                        Text("弱匹配：${scanned.fileName}", fontWeight = FontWeight.SemiBold)
+                        Row {
+                            TextButton(onClick = { viewModel.decideWeak(oldId, true) }) {
+                                Text(if (viewModel.weakAccepted(oldId)) "✓ 保留原章节" else "保留原章节")
+                            }
+                            TextButton(onClick = { viewModel.decideWeak(oldId, false) }) {
+                                Text(if (viewModel.isWeakDecided(oldId) && !viewModel.weakAccepted(oldId)) "✓ 视为新增" else "视为新增")
+                            }
+                        }
+                    }
+                    preview.plan.ambiguous.forEach { ambiguous ->
+                        Spacer(Modifier.height(8.dp))
+                        Text("无法确认：${ambiguous.scanned.fileName}", fontWeight = FontWeight.SemiBold)
+                        ambiguous.candidates.forEach { candidate ->
+                            TextButton(onClick = {
+                                viewModel.decideAmbiguous(ambiguous.scanned.uri, candidate.oldChapter.id)
+                            }) {
+                                val chosen = viewModel.ambiguousChoice(ambiguous.scanned.uri) == candidate.oldChapter.id
+                                Text((if (chosen) "✓ " else "") + "对应 ${candidate.oldChapter.displayTitle}")
+                            }
+                        }
+                        TextButton(onClick = { viewModel.decideAmbiguous(ambiguous.scanned.uri, null) }) {
+                            val rejected = viewModel.isAmbiguousDecided(ambiguous.scanned.uri) &&
+                                viewModel.ambiguousChoice(ambiguous.scanned.uri) == null
+                            Text((if (rejected) "✓ " else "") + "视为新增章节")
+                        }
                     }
                     if (preview.affectedBookmarkCount > 0) {
                         Text(
@@ -278,6 +320,7 @@ fun BookDetailScreen(
                             onRescanApplied(id, ch, pos)
                         }
                     },
+                    enabled = viewModel.canConfirmRescan(),
                 ) { Text("应用") }
             },
             dismissButton = {

@@ -42,6 +42,8 @@ object RescanPlanner {
         scanned: List<ScannedChapter>,
         acceptedWeak: Map<Long, ScannedChapter> = emptyMap(),
         acceptedAmbiguous: Map<String, Long> = emptyMap(), // scanned.uri -> oldChapterId
+        rejectedWeak: Set<Long> = emptySet(),
+        rejectedAmbiguous: Set<String> = emptySet(),
     ): Plan {
         val base = ChapterMatcher.match(existing, scanned)
         // Apply user-accepted weak/ambiguous into strong set.
@@ -62,15 +64,26 @@ object RescanPlanner {
         // also allow accepting currently weak by caller re-pass
         weak.putAll(base.weakMatches.filterKeys { !strong.containsKey(it) })
         acceptedWeak.keys.forEach { weak.remove(it) }
+        rejectedWeak.forEach { oldId ->
+            base.weakMatches[oldId]?.let { added += it }
+            weak.remove(oldId)
+            removedIds.add(oldId)
+        }
 
         val iter = ambiguousLeft.iterator()
+        val claimedOldIds = strong.keys.toMutableSet()
         while (iter.hasNext()) {
             val amb = iter.next()
             val chosenOldId = acceptedAmbiguous[amb.scanned.uri]
             if (chosenOldId != null) {
+                require(amb.candidates.any { it.oldChapter.id == chosenOldId }) { "所选章节不在歧义候选中" }
+                require(claimedOldIds.add(chosenOldId)) { "同一旧章节不能匹配多个新文件" }
                 strong[chosenOldId] = amb.scanned
                 removedIds.remove(chosenOldId)
                 added.removeAll { it.uri == amb.scanned.uri }
+                iter.remove()
+            } else if (amb.scanned.uri in rejectedAmbiguous) {
+                added += amb.scanned
                 iter.remove()
             }
         }

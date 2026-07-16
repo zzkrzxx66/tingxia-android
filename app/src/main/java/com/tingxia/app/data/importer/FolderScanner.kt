@@ -53,7 +53,8 @@ class FolderScanner @Inject constructor(
         var coverUri: String? = null
 
         val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        traverse(treeUri, rootDocId, relativePrefix = "") { name, uri, docId, mime, size, isDir, relativePath ->
+        val visitedDirectories = mutableSetOf(rootDocId)
+        traverse(treeUri, rootDocId, relativePrefix = "", visitedDirectories = visitedDirectories, depth = 0) { name, uri, docId, mime, size, isDir, relativePath ->
             coroutineContext.ensureActive()
             if (isDir) return@traverse
             val lower = name.lowercase(Locale.ROOT)
@@ -122,6 +123,8 @@ class FolderScanner @Inject constructor(
         treeUri: Uri,
         parentDocId: String,
         relativePrefix: String,
+        visitedDirectories: MutableSet<String>,
+        depth: Int,
         visitor: (
             name: String,
             uri: Uri,
@@ -132,6 +135,7 @@ class FolderScanner @Inject constructor(
             relativePath: String,
         ) -> Unit,
     ) {
+        require(depth <= MAX_SCAN_DEPTH) { "目录层级过深，已停止扫描" }
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -153,8 +157,8 @@ class FolderScanner @Inject constructor(
                 val relativePath = if (relativePrefix.isEmpty()) name else "$relativePrefix/$name"
                 val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
                 visitor(name, docUri, docId, mime, size, isDir, relativePath)
-                if (isDir) {
-                    traverse(treeUri, docId, relativePath, visitor)
+                if (isDir && visitedDirectories.add(docId)) {
+                    traverse(treeUri, docId, relativePath, visitedDirectories, depth + 1, visitor)
                 }
             }
         }
@@ -176,6 +180,7 @@ class FolderScanner @Inject constructor(
     }
 
     companion object {
+        private const val MAX_SCAN_DEPTH = 64
         private val AUDIO_EXT = setOf(
             "mp3", "m4a", "m4b", "aac", "flac", "ogg", "oga", "wav", "opus"
         )

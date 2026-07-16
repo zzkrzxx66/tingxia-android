@@ -97,4 +97,34 @@ class ChapterMatcherTest {
         assertEquals(1, r.removed.size)
         assertEquals(1, r.added.size)
     }
+
+    @Test
+    fun filenameOnlyMatchRequiresExplicitDecision() {
+        val old = listOf(ch(1, "a.mp3", path = "old/a.mp3", size = 0, duration = 0))
+        val neu = listOf(sc("a.mp3", "u2", path = "new/a.mp3", size = 0, duration = 0))
+
+        val preview = RescanPlanner.plan(1, old, neu)
+        assertEquals(setOf(1L), preview.weakMatches.keys)
+
+        val rejected = RescanPlanner.plan(1, old, neu, rejectedWeak = setOf(1L))
+        assertTrue(rejected.weakMatches.isEmpty())
+        assertEquals(listOf(1L), rejected.removed.map { it.id })
+        assertEquals(listOf("u2"), rejected.added.map { it.uri })
+    }
+
+    @Test
+    fun rejectedAmbiguousScanBecomesAddedChapter() {
+        val old = listOf(
+            ch(1, "a.mp3", path = "same/a.mp3", size = 0, duration = 0),
+            ch(2, "a.mp3", path = "same/a.mp3", size = 0, duration = 0),
+        )
+        val neu = listOf(sc("a.mp3", "u3", path = "same/a.mp3", size = 0, duration = 0))
+
+        val preview = RescanPlanner.plan(1, old, neu)
+        assertEquals(1, preview.ambiguousCount)
+
+        val rejected = RescanPlanner.plan(1, old, neu, rejectedAmbiguous = setOf("u3"))
+        assertTrue(rejected.ambiguous.isEmpty())
+        assertEquals(listOf("u3"), rejected.added.map { it.uri })
+    }
 }

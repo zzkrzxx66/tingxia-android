@@ -11,6 +11,7 @@ import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.BookmarkRepository
 import com.tingxia.app.data.repo.RescanPreview
+import com.tingxia.app.data.repo.ReauthDecisionRequiredException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,6 +53,11 @@ class BookDetailViewModel @Inject constructor(
 
     private val _rescanPreview = MutableStateFlow<RescanPreview?>(null)
     val rescanPreview: StateFlow<RescanPreview?> = _rescanPreview.asStateFlow()
+    private val weakDecisions = mutableMapOf<Long, Boolean>()
+    private val ambiguousDecisions = mutableMapOf<String, Long?>()
+    private val _decisionVersion = MutableStateFlow(0)
+    val decisionVersion: StateFlow<Int> = _decisionVersion.asStateFlow()
+    private var pendingReauthUri: Uri? = null
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -78,10 +84,16 @@ class BookDetailViewModel @Inject constructor(
             _reauthing.value = true
             _reauthProgress.value = null
             try {
-                bookRepository.reauthBook(bookId, uri) { progress ->
+                bookRepository.reauthBook(bookId, uri, onProgress = { progress ->
                     _reauthProgress.value = progress
-                }
+                })
                 _message.value = "重新授权完成"
+            } catch (e: ReauthDecisionRequiredException) {
+                pendingReauthUri = uri
+                weakDecisions.clear()
+                ambiguousDecisions.clear()
+                _rescanPreview.value = e.preview
+                _message.value = "请确认新目录中的章节对应关系"
             } catch (e: Exception) {
                 _error.value = e.message ?: "重新授权失败"
             } finally {
@@ -102,6 +114,8 @@ class BookDetailViewModel @Inject constructor(
                     _rescanProgress.value = p
                 }
                 _rescanPreview.value = preview
+                weakDecisions.clear()
+                ambiguousDecisions.clear()
                 if (
                     preview.plan.addedCount == 0 &&
                     preview.plan.removedCount == 0 &&
@@ -122,22 +136,70 @@ class BookDetailViewModel @Inject constructor(
 
     fun dismissRescanPreview() {
         _rescanPreview.value = null
+        pendingReauthUri = null
+        weakDecisions.clear()
+        ambiguousDecisions.clear()
+    }
+
+    fun decideWeak(oldChapterId: Long, accept: Boolean) {
+        weakDecisions[oldChapterId] = accept
+        _decisionVersion.value++
+    }
+
+    fun decideAmbiguous(scannedUri: String, oldChapterId: Long?) {
+        ambiguousDecisions[scannedUri] = oldChapterId
+        _decisionVersion.value++
+    }
+
+    fun isWeakDecided(oldChapterId: Long) = weakDecisions.containsKey(oldChapterId)
+    fun weakAccepted(oldChapterId: Long) = weakDecisions[oldChapterId] == true
+    fun isAmbiguousDecided(uri: String) = ambiguousDecisions.containsKey(uri)
+    fun ambiguousChoice(uri: String) = ambiguousDecisions[uri]
+
+    fun canConfirmRescan(): Boolean {
+        val plan = _rescanPreview.value?.plan ?: return false
+        return plan.weakMatches.keys.all(weakDecisions::containsKey) &&
+            plan.ambiguous.all { ambiguousDecisions.containsKey(it.scanned.uri) }
     }
 
     fun confirmRescan(onApplied: (bookId: Long, chapterId: Long?, positionMs: Long) -> Unit = { _, _, _ -> }) {
         val preview = _rescanPreview.value ?: return
-        if (preview.plan.weakMatches.isNotEmpty() || preview.plan.ambiguous.isNotEmpty()) {
-            // Auto-accept weak matches for MVP simplicity when user confirms dialog.
-        }
+        if (!canConfirmRescan()) return
         viewModelScope.launch {
             try {
-                val acceptedWeak = preview.plan.weakMatches
-                val result = bookRepository.applyRescan(
-                    bookId = bookId,
-                    plan = preview.plan,
-                    acceptedWeak = acceptedWeak,
-                )
+                val acceptedWeak = preview.plan.weakMatches.filterKeys { weakDecisions[it] == true }
+                val rejectedWeak = preview.plan.weakMatches.keys.filterTo(mutableSetOf()) { weakDecisions[it] == false }
+                val acceptedAmbiguous = ambiguousDecisions.mapNotNull { (uri, id) -> id?.let { uri to it } }.toMap()
+                val rejectedAmbiguous = ambiguousDecisions.filterValues { it == null }.keys
+                val reauthUri = pendingReauthUri
+                val result = if (reauthUri != null) {
+                    val updated = bookRepository.reauthBook(
+                        bookId = bookId,
+                        treeUri = reauthUri,
+                        acceptedWeak = acceptedWeak,
+                        acceptedAmbiguous = acceptedAmbiguous,
+                        rejectedWeak = rejectedWeak,
+                        rejectedAmbiguous = rejectedAmbiguous,
+                    )
+                    com.tingxia.app.data.repo.RescanApplyResult(
+                        book = updated,
+                        chapters = bookRepository.getChapters(bookId),
+                        currentChapterId = updated.currentChapterId,
+                        currentPositionMs = updated.currentPositionMs,
+                        removedChapterIds = emptySet(),
+                    )
+                } else {
+                    bookRepository.applyRescan(
+                        bookId = bookId,
+                        plan = preview.plan,
+                        acceptedWeak = acceptedWeak,
+                        acceptedAmbiguous = acceptedAmbiguous,
+                        rejectedWeak = rejectedWeak,
+                        rejectedAmbiguous = rejectedAmbiguous,
+                    )
+                }
                 _rescanPreview.value = null
+                pendingReauthUri = null
                 _message.value = "已更新：+${preview.plan.addedCount} / -${preview.plan.removedCount} / ~${preview.plan.renamedCount}"
                 onApplied(bookId, result.currentChapterId, result.currentPositionMs)
             } catch (e: Exception) {
@@ -152,6 +214,10 @@ class BookDetailViewModel @Inject constructor(
 
     fun updateBookmarkNote(id: Long, note: String?) {
         viewModelScope.launch { bookmarkRepository.updateNote(id, note) }
+    }
+
+    fun setAutoPlayNext(enabled: Boolean) {
+        viewModelScope.launch { bookRepository.setAutoPlayNext(bookId, enabled) }
     }
 
     fun clearError() { _error.value = null }

@@ -38,7 +38,13 @@ class BookmarkRepository @Inject constructor(
         positionMs: Long,
         note: String? = null,
     ): Bookmark {
-        val pos = positionMs.coerceAtLeast(0L)
+        val chapter = chapterDao.getChapter(chapterId) ?: error("章节不存在")
+        require(chapter.bookId == bookId) { "书签章节不属于当前书籍" }
+        val pos = if (chapter.durationMs > 0L) {
+            positionMs.coerceIn(0L, chapter.durationMs)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
         val latest = bookmarkDao.latestForChapter(bookId, chapterId)
         val now = System.currentTimeMillis()
         if (latest != null &&
@@ -48,8 +54,7 @@ class BookmarkRepository @Inject constructor(
             // Merge rapid duplicate taps.
             val updated = latest.copy(positionMs = pos, note = note ?: latest.note, createdAt = now)
             bookmarkDao.update(updated)
-            val ch = chapterDao.getChapter(chapterId)
-            return updated.toModel(ch?.customTitle ?: ch?.title, ch?.index)
+            return updated.toModel(chapter.customTitle ?: chapter.title, chapter.index)
         }
         val id = bookmarkDao.insert(
             BookmarkEntity(
@@ -61,8 +66,7 @@ class BookmarkRepository @Inject constructor(
             ),
         )
         val entity = bookmarkDao.getBookmark(id)!!
-        val ch = chapterDao.getChapter(chapterId)
-        return entity.toModel(ch?.customTitle ?: ch?.title, ch?.index)
+        return entity.toModel(chapter.customTitle ?: chapter.title, chapter.index)
     }
 
     suspend fun updateNote(id: Long, note: String?) {
