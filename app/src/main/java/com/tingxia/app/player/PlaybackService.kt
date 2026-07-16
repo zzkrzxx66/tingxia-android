@@ -26,18 +26,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
- * Single **serialized** writer of playback progress.
- * All DB writes go through [progressChannel] so periodic/pause/transition cannot race.
+ * Single serialized progress writer via [ProgressWriter].
  * UI/PlayerController must not call [BookRepository.saveProgress].
  */
 @UnstableApi
@@ -50,29 +47,21 @@ class PlaybackService : MediaSessionService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var sleepJob: Job? = null
     private var tickerJob: Job? = null
-    private var writerJob: Job? = null
+    private var progressWriter: ProgressWriter? = null
 
-    // Snapshots always taken on the player/main looper.
     private var lastBookId: Long? = null
     private var lastChapterId: Long? = null
     private var lastPositionMs: Long = 0L
     private var lastDurationMs: Long = 0L
 
-    /** Monotonic sequence so a late stale capture can still be ordered (writer is FIFO). */
-    private var progressSeq: Long = 0L
-
-    private data class ProgressWrite(
-        val seq: Long,
-        val bookId: Long,
-        val chapterId: Long,
-        val positionMs: Long,
-    )
-
-    private val progressChannel = Channel<ProgressWrite>(capacity = Channel.UNLIMITED)
-
     override fun onCreate() {
         super.onCreate()
-        startProgressWriter()
+        progressWriter = ProgressWriter(
+            scope = serviceScope,
+            save = { bookId, chapterId, positionMs ->
+                bookRepository.saveProgress(bookId, chapterId, positionMs)
+            },
+        )
 
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(
@@ -155,26 +144,6 @@ class PlaybackService : MediaSessionService() {
         startProgressPersistence(player)
     }
 
-    private fun startProgressWriter() {
-        writerJob?.cancel()
-        writerJob = serviceScope.launch(Dispatchers.IO) {
-            for (write in progressChannel) {
-                try {
-                    bookRepository.saveProgress(write.bookId, write.chapterId, write.positionMs)
-                } catch (_: Exception) {
-                }
-            }
-        }
-    }
-
-    private fun enqueueProgress(bookId: Long, chapterId: Long, positionMs: Long) {
-        val seq = ++progressSeq
-        // trySend never blocks; channel is unlimited.
-        progressChannel.trySend(
-            ProgressWrite(seq, bookId, chapterId, positionMs.coerceAtLeast(0L)),
-        )
-    }
-
     private fun seekFwd(player: Player, delta: Long) {
         val dur = player.duration
         val target = player.currentPosition + delta
@@ -201,17 +170,12 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (!isPlaying) {
-                    // Capture synchronously on player thread via main dispatcher launch.
                     serviceScope.launch { captureAndEnqueueCurrent(player) }
                 }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                serviceScope.launch {
-                    // Model only keeps one current pointer per book: write the entered chapter.
-                    // Leave-chapter completion is not stored separately.
-                    handleEnter(player, mediaItem)
-                }
+                serviceScope.launch { handleEnter(player, mediaItem) }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -249,7 +213,7 @@ class PlaybackService : MediaSessionService() {
                 positionMs = newPos,
             )
         }
-        enter?.let { enqueueProgress(it.bookId, it.chapterId, it.positionMs) }
+        enter?.let { progressWriter?.enqueue(it.bookId, it.chapterId, it.positionMs) }
     }
 
     private suspend fun captureAndEnqueueCurrent(player: Player) {
@@ -265,7 +229,7 @@ class PlaybackService : MediaSessionService() {
             }
             ids?.let { Triple(it.first, it.second, pos) }
         } ?: return
-        enqueueProgress(snap.first, snap.second, snap.third)
+        progressWriter?.enqueue(snap.first, snap.second, snap.third)
     }
 
     private fun parseIds(item: MediaItem?): Pair<Long, Long>? {
@@ -286,7 +250,7 @@ class PlaybackService : MediaSessionService() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
         if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
-            flushProgressBlocking(player)
+            closeWriterWithFinal(player)
             stopSelf()
         }
     }
@@ -294,19 +258,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         tickerJob?.cancel()
         sleepJob?.cancel()
-        // Capture last position then close channel so writer drains remaining items.
-        flushProgressBlocking(mediaSession?.player)
-        progressChannel.close()
-        // Wait briefly for writer to drain (avoid long main-thread stall).
-        try {
-            runBlocking {
-                withTimeoutOrNull(500) {
-                    writerJob?.join()
-                }
-            }
-        } catch (_: Exception) {
-        }
-        writerJob?.cancel()
+        closeWriterWithFinal(mediaSession?.player)
         serviceScope.cancel()
         mediaSession?.run {
             player.release()
@@ -316,32 +268,31 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private fun flushProgressBlocking(player: Player?) {
+    private fun closeWriterWithFinal(player: Player?) {
+        // Capture latest ids on current thread (player looper or last snapshot).
+        val b: Long?
+        val ch: Long?
+        val pos: Long
+        if (player != null) {
+            val ids = parseIds(player.currentMediaItem)
+            b = ids?.first ?: lastBookId
+            ch = ids?.second ?: lastChapterId
+            pos = if (ids != null) player.currentPosition.coerceAtLeast(0L) else lastPositionMs
+        } else {
+            b = lastBookId
+            ch = lastChapterId
+            pos = lastPositionMs
+        }
+        val writer = progressWriter
+        progressWriter = null
+        if (writer == null) return
         try {
-            val b: Long?
-            val ch: Long?
-            val pos: Long
-            if (player != null) {
-                val ids = parseIds(player.currentMediaItem)
-                b = ids?.first ?: lastBookId
-                ch = ids?.second ?: lastChapterId
-                pos = if (ids != null) player.currentPosition.coerceAtLeast(0L) else lastPositionMs
-            } else {
-                b = lastBookId
-                ch = lastChapterId
-                pos = lastPositionMs
-            }
-            if (b != null && ch != null) {
-                // Direct write for teardown path (channel may be closing); still single process.
-                runBlocking {
-                    withTimeoutOrNull(800) {
-                        withContext(Dispatchers.IO) {
-                            bookRepository.saveProgress(b, ch, pos)
-                        }
-                    }
-                }
+            runBlocking {
+                // Final write goes through the queue AFTER any pending items → no stale overwrite.
+                writer.closeWithFinal(b, ch, pos, timeoutMs = 1_500)
             }
         } catch (_: Exception) {
+            writer.cancel()
         }
     }
 }
