@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple “box / ear” mark for 听匣 -->
+    <path
+        android:fillColor="#7C9CFF"
+        android:pathData="M30,34h48a6,6 0 0 1 6,6v34a6,6 0 0 1 -6,6H30a6,6 0 0 1 -6,-6V40a6,6 0 0 1 6,-6z" />
+    <path
+        android:fillColor="#1B1B1F"
+        android:pathData="M42,48h24v6H42zM42,60h18v6H42z" />
+    <path
+        android:fillColor="#A8C0FF"
+        android:pathData="M74,46c6,4 10,12 10,20s-4,16 -10,20v-8c3,-3 5,-7 5,-12s-2,-9 -5,-12v-8z" />
+</vector>

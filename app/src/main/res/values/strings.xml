@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">听匣</string>
+    <string name="notification_channel_playback">播放控制</string>
+    <string name="notification_channel_playback_desc">有声书后台播放与媒体控件</string>
+    <string name="continue_listening">继续收听</string>
+    <string name="shelf_title">书架</string>
+    <string name="import_folder">导入文件夹</string>
+    <string name="settings">设置</string>
+    <string name="no_books">还没有书</string>
+    <string name="no_books_hint">点击右下角，选择一个包含音频文件的文件夹导入</string>
+    <string name="chapters">章节</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+    <string name="next_chapter">下一章</string>
+    <string name="prev_chapter">上一章</string>
+    <string name="speed">倍速</string>
+    <string name="sleep_timer">睡眠定时</string>
+    <string name="sleep_off">关闭</string>
+    <string name="reauth_needed">目录权限失效，请重新授权</string>
+    <string name="importing">正在导入…</string>
+    <string name="import_done">导入完成</string>
+    <string name="import_failed">导入失败</string>
+    <string name="remove_book">从书架移除</string>
+    <string name="remove_book_confirm">仅从书架移除，不会删除手机上的原文件。</string>
+    <string name="dark_theme">深色主题</string>
+    <string name="default_speed">默认倍速</string>
+    <string name="about_battery">后台播放提示</string>
+    <string name="about_battery_body">部分国产系统会限制后台。若锁屏后中断，请在系统设置中为听匣关闭电池优化，并允许自启动/关联启动（按需）。</string>
+    <string name="version_label">版本</string>
+</resources>
