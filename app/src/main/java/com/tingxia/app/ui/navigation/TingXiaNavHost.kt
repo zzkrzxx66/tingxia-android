@@ -1,6 +1,7 @@
 package com.tingxia.app.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -13,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
@@ -67,9 +69,13 @@ fun TingXiaNavHost(
         }
     }
 
+    // Outer Scaffold only hosts the mini player / snackbar.
+    // contentWindowInsets = 0 so status-bar padding is applied once by each
+    // destination's own TopAppBar (avoids a large blank strip under the status bar).
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (showMini) {
@@ -84,7 +90,8 @@ fun TingXiaNavHost(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    // Only lift content above the mini player; never re-apply status bars.
+                    .padding(bottom = if (showMini) innerPadding.calculateBottomPadding() else 0.dp),
             ) {
                 NavHost(
                     navController = navController,
