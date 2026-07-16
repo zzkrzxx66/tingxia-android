@@ -1,8 +1,10 @@
 package com.tingxia.app.player
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -118,5 +120,34 @@ class ProgressWriterOrderingTest {
         assertTrue(ok)
         // Stale chapter must not win; only final chapter 2 from direct save.
         assertEquals(listOf(Save(1, 2, 0)), saved.toList())
+    }
+
+    @Test
+    fun timeout_doesNotDirectSaveUntilNonCooperativeOldWriterStops() = runTest {
+        val saved = CopyOnWriteArrayList<Save>()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val writer = ProgressWriter(
+            scope = this,
+            save = { b, c, p ->
+                if (c == 1L) {
+                    withContext(NonCancellable) { delay(10_000) }
+                }
+                saved += Save(b, c, p)
+            },
+            writerDispatcher = dispatcher,
+            finalMaxAttempts = 1,
+        )
+
+        writer.enqueue(1, 1, 111)
+        runCurrent()
+
+        val deferred = async {
+            writer.closeWithFinal(1, 2, 0, timeoutMs = 100)
+        }
+        advanceTimeBy(700)
+        runCurrent()
+
+        assertFalse(deferred.await())
+        assertTrue("final direct save must not race the old writer", saved.none { it.chapterId == 2L })
     }
 }

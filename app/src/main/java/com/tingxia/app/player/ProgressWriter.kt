@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Serial progress sink: all writes go through a single consumer.
@@ -28,7 +27,6 @@ class ProgressWriter(
     private val retryDelayMs: Long = 50,
 ) {
     data class Write(
-        val seq: Long,
         val bookId: Long,
         val chapterId: Long,
         val positionMs: Long,
@@ -37,7 +35,6 @@ class ProgressWriter(
     )
 
     private val channel = Channel<Write>(capacity = Channel.UNLIMITED)
-    private val seqGen = AtomicLong(0)
     private val closed = AtomicBoolean(false)
 
     private val writerJob: Job = scope.launch(writerDispatcher) {
@@ -65,7 +62,6 @@ class ProgressWriter(
         if (closed.get()) return
         channel.trySend(
             Write(
-                seq = seqGen.incrementAndGet(),
                 bookId = bookId,
                 chapterId = chapterId,
                 positionMs = positionMs.coerceAtLeast(0L),
@@ -100,7 +96,6 @@ class ProgressWriter(
         if (needFinal && ack != null) {
             channel.trySend(
                 Write(
-                    seq = seqGen.incrementAndGet(),
                     bookId = finalBookId!!,
                     chapterId = finalChapterId!!,
                     positionMs = finalPos,
@@ -125,18 +120,27 @@ class ProgressWriter(
 
         // Timeout or failure: stop old writer so no stale save can complete later.
         writerJob.cancel()
-        withTimeoutOrNull(500) { writerJob.join() }
+        val oldWriterStopped = withTimeoutOrNull(500) {
+            writerJob.join()
+            true
+        } ?: false
+
+        // Never run a direct fallback while an old, potentially non-cooperative
+        // write may still complete afterward and overwrite the final progress.
+        if (!oldWriterStopped) return false
 
         if (!needFinal) return drainedOk == true
 
         // One last direct attempt after the queue is dead — cannot be overtaken.
-        return try {
-            withContext(writerDispatcher) {
-                saveWithRetry(finalBookId!!, finalChapterId!!, finalPos)
+        return withTimeoutOrNull(timeoutMs) {
+            try {
+                withContext(writerDispatcher) {
+                    saveWithRetry(finalBookId!!, finalChapterId!!, finalPos)
+                }
+            } catch (_: Exception) {
+                false
             }
-        } catch (_: Exception) {
-            false
-        }
+        } ?: false
     }
 
     fun cancel() {

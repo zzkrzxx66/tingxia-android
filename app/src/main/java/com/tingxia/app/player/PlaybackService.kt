@@ -3,6 +3,7 @@ package com.tingxia.app.player
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -199,7 +200,6 @@ class PlaybackService : MediaSessionService() {
         val enter = withContext(Dispatchers.Main.immediate) {
             val newIds = parseIds(newItem)
             val newPos = player.currentPosition.coerceAtLeast(0L)
-            val newDur = player.duration.coerceAtLeast(0L)
             if (newIds != null) {
                 lastBookId = newIds.first
                 lastChapterId = newIds.second
@@ -214,7 +214,6 @@ class PlaybackService : MediaSessionService() {
         val snap = withContext(Dispatchers.Main.immediate) {
             val ids = parseIds(player.currentMediaItem)
             val pos = player.currentPosition.coerceAtLeast(0L)
-            val dur = player.duration.coerceAtLeast(0L)
             if (ids != null) {
                 lastBookId = ids.first
                 lastChapterId = ids.second
@@ -280,12 +279,20 @@ class PlaybackService : MediaSessionService() {
         progressWriter = null
         if (writer == null) return
         try {
-            runBlocking {
+            val saved = runBlocking {
                 // Final write goes through the queue AFTER any pending items → no stale overwrite.
                 writer.closeWithFinal(b, ch, pos, timeoutMs = 1_500)
             }
+            if (!saved && b != null && ch != null) {
+                Log.w(TAG, "Final progress save did not complete for book=$b chapter=$ch")
+            }
         } catch (_: Exception) {
             writer.cancel()
+            Log.w(TAG, "Final progress save failed during service teardown")
         }
+    }
+
+    private companion object {
+        const val TAG = "TingXiaPlayback"
     }
 }

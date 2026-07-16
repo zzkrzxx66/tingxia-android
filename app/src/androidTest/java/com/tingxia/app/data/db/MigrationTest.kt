@@ -137,6 +137,35 @@ class MigrationTest {
     }
 
     @Test
+    fun migrate2To3_appliesAllDedupeTieBreakers() {
+        helper.createDatabase(testDb, 2).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt, needsReauth
+                ) VALUES
+                    (1, 'older-play', NULL, NULL, 'content://tree/tie', 0, 90, NULL, 9999, 9999, 0, 0),
+                    (2, 'more-listened', NULL, NULL, 'content://tree/tie', 0, 100, NULL, 10, 2000, 0, 0),
+                    (3, 'higher-position', NULL, NULL, 'content://tree/tie', 0, 100, NULL, 20, 2000, 0, 0),
+                    (4, 'higher-id', NULL, NULL, 'content://tree/tie', 0, 100, NULL, 20, 2000, 0, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(testDb, 3, true, MIGRATION_2_3).apply {
+            query("SELECT id, title FROM books").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(4L, c.getLong(0))
+                assertEquals("higher-id", c.getString(1))
+                assertFalse(c.moveToNext())
+            }
+            close()
+        }
+    }
+
+    @Test
     fun migrate1To3_viaFullChain() {
         helper.createDatabase(testDb, 1).apply {
             execSQL(
