@@ -6,17 +6,24 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.coroutineContext
 
 data class ScannedChapter(
     val title: String,
     val uri: String,
+    val documentId: String?,
+    val relativePath: String,
     val fileName: String,
+    val fileSize: Long,
+    val mimeType: String?,
     val durationMs: Long,
     val index: Int,
+    val stableKey: String,
 )
 
 data class ScannedBook(
@@ -42,10 +49,12 @@ class FolderScanner @Inject constructor(
         onProgress: (ScanProgress) -> Unit = {},
     ): ScannedBook = withContext(Dispatchers.IO) {
         val folderName = queryDisplayName(treeUri) ?: "未命名书籍"
-        val audioFiles = mutableListOf<Pair<String, Uri>>()
+        val audioFiles = mutableListOf<AudioFile>()
         var coverUri: String? = null
 
-        traverse(treeUri) { name, uri, mime, isDir ->
+        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        traverse(treeUri, rootDocId, relativePrefix = "") { name, uri, docId, mime, size, isDir, relativePath ->
+            coroutineContext.ensureActive()
             if (isDir) return@traverse
             val lower = name.lowercase(Locale.ROOT)
             when {
@@ -53,22 +62,35 @@ class FolderScanner @Inject constructor(
                     lower == "cover.webp" -> {
                     if (coverUri == null) coverUri = uri.toString()
                 }
-                isAudio(name, mime) -> audioFiles += name to uri
+                isAudio(name, mime) -> audioFiles += AudioFile(
+                    name = name,
+                    uri = uri,
+                    documentId = docId,
+                    relativePath = relativePath,
+                    mimeType = mime,
+                    fileSize = size,
+                )
             }
         }
 
-        audioFiles.sortWith { a, b -> naturalCompare(a.first, b.first) }
+        audioFiles.sortWith { a, b -> naturalCompare(a.relativePath, b.relativePath) }
 
-        val chapters = audioFiles.mapIndexed { index, (name, uri) ->
-            onProgress(ScanProgress(index + 1, name))
-            val duration = metadataReader.readDurationMs(uri)
-            val title = stripExtension(name)
+        val chapters = audioFiles.mapIndexed { index, file ->
+            coroutineContext.ensureActive()
+            onProgress(ScanProgress(index + 1, file.relativePath))
+            val duration = metadataReader.readDurationMs(file.uri)
+            val stableKey = ChapterIdentity.stableKey(file.relativePath, file.fileSize, duration)
             ScannedChapter(
-                title = title,
-                uri = uri.toString(),
-                fileName = name,
+                title = stripExtension(file.name),
+                uri = file.uri.toString(),
+                documentId = file.documentId,
+                relativePath = file.relativePath,
+                fileName = file.name,
+                fileSize = file.fileSize,
+                mimeType = file.mimeType,
                 durationMs = duration,
                 index = index,
+                stableKey = stableKey,
             )
         }
 
@@ -76,11 +98,7 @@ class FolderScanner @Inject constructor(
             error("该文件夹中未找到支持的音频文件")
         }
 
-        // Prefer embedded album art of first track if no cover file
-        val cover = coverUri ?: metadataReader.extractEmbeddedCover(chapters.first().uri)?.let {
-            // saved as file path by metadata reader
-            it
-        }
+        val cover = coverUri ?: metadataReader.extractEmbeddedCover(chapters.first().uri)
 
         ScannedBook(
             title = folderName,
@@ -91,61 +109,52 @@ class FolderScanner @Inject constructor(
         )
     }
 
+    private data class AudioFile(
+        val name: String,
+        val uri: Uri,
+        val documentId: String?,
+        val relativePath: String,
+        val mimeType: String?,
+        val fileSize: Long,
+    )
+
     private fun traverse(
         treeUri: Uri,
-        visitor: (name: String, uri: Uri, mime: String?, isDir: Boolean) -> Unit,
-    ) {
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            treeUri,
-            DocumentsContract.getTreeDocumentId(treeUri),
-        )
-        val projection = arrayOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            DocumentsContract.Document.COLUMN_MIME_TYPE,
-        )
-        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-            val idIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val nameIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            val mimeIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
-            while (cursor.moveToNext()) {
-                val docId = cursor.getString(idIdx)
-                val name = cursor.getString(nameIdx) ?: continue
-                val mime = cursor.getString(mimeIdx)
-                val isDir = mime == DocumentsContract.Document.MIME_TYPE_DIR
-                val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-                visitor(name, docUri, mime, isDir)
-                if (isDir) {
-                    // one-level nested folders: treat nested audio as part of book (common layout)
-                    traverseChildren(treeUri, docId, visitor)
-                }
-            }
-        }
-    }
-
-    private fun traverseChildren(
-        treeUri: Uri,
         parentDocId: String,
-        visitor: (name: String, uri: Uri, mime: String?, isDir: Boolean) -> Unit,
+        relativePrefix: String,
+        visitor: (
+            name: String,
+            uri: Uri,
+            docId: String,
+            mime: String?,
+            size: Long,
+            isDir: Boolean,
+            relativePath: String,
+        ) -> Unit,
     ) {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
         )
         context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
             val idIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val sizeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
             while (cursor.moveToNext()) {
-                val docId = cursor.getString(idIdx)
+                val docId = cursor.getString(idIdx) ?: continue
                 val name = cursor.getString(nameIdx) ?: continue
                 val mime = cursor.getString(mimeIdx)
+                val size = if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) cursor.getLong(sizeIdx) else 0L
                 val isDir = mime == DocumentsContract.Document.MIME_TYPE_DIR
+                val relativePath = if (relativePrefix.isEmpty()) name else "$relativePrefix/$name"
                 val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-                if (!isDir) {
-                    visitor(name, docUri, mime, false)
+                visitor(name, docUri, docId, mime, size, isDir, relativePath)
+                if (isDir) {
+                    traverse(treeUri, docId, relativePath, visitor)
                 }
             }
         }
@@ -163,7 +172,6 @@ class FolderScanner @Inject constructor(
         )?.use { c ->
             if (c.moveToFirst()) return c.getString(0)
         }
-        // fallback: last path segment
         return treeUri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')
     }
 
@@ -183,9 +191,6 @@ class FolderScanner @Inject constructor(
             return if (i > 0) name.substring(0, i) else name
         }
 
-        /**
-         * Numeric-aware natural sort: 第2章 before 第10章.
-         */
         fun naturalCompare(a: String, b: String): Int {
             val ra = tokenize(a)
             val rb = tokenize(b)
@@ -244,9 +249,6 @@ class MetadataReader @Inject constructor(
         }
     }
 
-    /**
-     * Extract embedded album art to app files dir; returns absolute path or null.
-     */
     fun extractEmbeddedCover(uriString: String): String? {
         val uri = Uri.parse(uriString)
         val retriever = MediaMetadataRetriever()

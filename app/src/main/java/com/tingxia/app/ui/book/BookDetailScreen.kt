@@ -19,9 +19,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.formatDuration
@@ -58,20 +62,34 @@ fun BookDetailScreen(
     onBack: () -> Unit,
     onPlayChapter: (Long) -> Unit,
     onContinue: () -> Unit,
+    onPlayBookmark: (chapterId: Long, positionMs: Long) -> Unit = { _, _ -> },
+    onRescanApplied: (bookId: Long, chapterId: Long?, positionMs: Long) -> Unit = { _, _, _ -> },
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val book by viewModel.book.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val reauthing by viewModel.reauthing.collectAsStateWithLifecycle()
     val reauthProgress by viewModel.reauthProgress.collectAsStateWithLifecycle()
+    val rescanning by viewModel.rescanning.collectAsStateWithLifecycle()
+    val rescanProgress by viewModel.rescanProgress.collectAsStateWithLifecycle()
+    val rescanPreview by viewModel.rescanPreview.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
     var confirmRemove by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(error) {
         error?.let {
             snackbar.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+    LaunchedEffect(message) {
+        message?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearMessage()
         }
     }
 
@@ -97,8 +115,33 @@ fun BookDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { confirmRemove = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = "从书架移除")
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("重新扫描目录") },
+                            onClick = {
+                                menu = false
+                                viewModel.startRescan()
+                            },
+                            enabled = !rescanning && book?.needsReauth != true,
+                        )
+                        DropdownMenuItem(
+                            text = { Text("重新授权目录") },
+                            onClick = {
+                                menu = false
+                                reauthTree.launch(null)
+                            },
+                            enabled = !reauthing,
+                        )
+                        DropdownMenuItem(
+                            text = { Text("从书架移除") },
+                            onClick = {
+                                menu = false
+                                confirmRemove = true
+                            },
+                        )
                     }
                 },
             )
@@ -151,7 +194,7 @@ fun BookDetailScreen(
                         Button(
                             onClick = onContinue,
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = book?.needsReauth != true && !reauthing,
+                            enabled = book?.needsReauth != true && !reauthing && !rescanning,
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
@@ -172,19 +215,12 @@ fun BookDetailScreen(
                         enabled = !reauthing,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (reauthing) "正在重新关联…" else "重新授权目录")
+                        Text(if (reauthing) "正在重新授权…" else "重新授权目录")
                     }
-                    if (reauthing) {
-                        Spacer(Modifier.height(8.dp))
-                        reauthProgress?.let {
-                            Text(
-                                "已扫描 ${it.scannedFiles} · ${it.currentName}",
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                }
+                if (rescanning) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("正在扫描… ${rescanProgress?.currentName.orEmpty()}")
                 }
                 Spacer(Modifier.height(20.dp))
                 Text("章节", style = MaterialTheme.typography.titleMedium)
@@ -198,7 +234,56 @@ fun BookDetailScreen(
                     onClick = { onPlayChapter(chapter.id) },
                 )
             }
+            if (bookmarks.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    Text("书签", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                }
+                items(bookmarks, key = { "bm-${it.id}" }) { bm ->
+                    BookmarkRow(
+                        bookmark = bm,
+                        onClick = { onPlayBookmark(bm.chapterId, bm.positionMs) },
+                        onDelete = { viewModel.deleteBookmark(bm.id) },
+                    )
+                }
+            }
         }
+    }
+
+    rescanPreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissRescanPreview() },
+            title = { Text("扫描结果") },
+            text = {
+                Column {
+                    Text("新增 ${preview.plan.addedCount} 章")
+                    Text("删除 ${preview.plan.removedCount} 章")
+                    Text("变更 ${preview.plan.renamedCount} 章")
+                    if (preview.plan.ambiguousCount > 0) {
+                        Text("歧义 ${preview.plan.ambiguousCount} 章（确认后将弱匹配自动纳入）")
+                    }
+                    if (preview.affectedBookmarkCount > 0) {
+                        Text(
+                            "将删除 ${preview.affectedBookmarkCount} 个关联书签",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.confirmRescan { id, ch, pos ->
+                            onRescanApplied(id, ch, pos)
+                        }
+                    },
+                ) { Text("应用") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissRescanPreview() }) { Text("取消") }
+            },
+        )
     }
 
     if (confirmRemove) {
@@ -244,7 +329,7 @@ private fun ChapterRow(
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                chapter.title,
+                chapter.displayTitle,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary
@@ -267,6 +352,44 @@ private fun ChapterRow(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun BookmarkRow(
+    bookmark: Bookmark,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            val chapterLabel = bookmark.chapterIndex?.let { "第 ${it + 1} 章" } ?: "章节"
+            Text(
+                "$chapterLabel · ${formatDuration(bookmark.positionMs)}",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            bookmark.note?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            bookmark.chapterTitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "删除书签")
         }
     }
 }

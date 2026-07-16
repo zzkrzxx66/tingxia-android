@@ -6,7 +6,10 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.tingxia.app.data.model.ShelfFilter
+import com.tingxia.app.data.model.ShelfSort
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -22,15 +25,26 @@ class UserPreferencesRepository @Inject constructor(
     private object Keys {
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val DEFAULT_SPEED = floatPreferencesKey("default_speed")
+        val SHELF_SORT = stringPreferencesKey("shelf_sort")
+        val SHELF_FILTER = stringPreferencesKey("shelf_filter")
     }
 
-    /** null = follow system; true/false = force */
     val darkTheme: Flow<Boolean?> = context.dataStore.data.map { prefs ->
-        if (prefs.contains(Keys.DARK_THEME)) prefs[Keys.DARK_THEME] else true // default dark-first
+        if (prefs.contains(Keys.DARK_THEME)) prefs[Keys.DARK_THEME] else true
     }
 
     val defaultSpeed: Flow<Float> = context.dataStore.data.map { prefs ->
         prefs[Keys.DEFAULT_SPEED] ?: 1.0f
+    }
+
+    val shelfSort: Flow<ShelfSort> = context.dataStore.data.map { prefs ->
+        runCatching { ShelfSort.valueOf(prefs[Keys.SHELF_SORT] ?: ShelfSort.RECENT.name) }
+            .getOrDefault(ShelfSort.RECENT)
+    }
+
+    val shelfFilter: Flow<ShelfFilter> = context.dataStore.data.map { prefs ->
+        runCatching { ShelfFilter.valueOf(prefs[Keys.SHELF_FILTER] ?: ShelfFilter.ALL.name) }
+            .getOrDefault(ShelfFilter.ALL)
     }
 
     suspend fun setDarkTheme(enabled: Boolean) {
@@ -39,5 +53,13 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setDefaultSpeed(speed: Float) {
         context.dataStore.edit { it[Keys.DEFAULT_SPEED] = speed }
+    }
+
+    suspend fun setShelfSort(sort: ShelfSort) {
+        context.dataStore.edit { it[Keys.SHELF_SORT] = sort.name }
+    }
+
+    suspend fun setShelfFilter(filter: ShelfFilter) {
+        context.dataStore.edit { it[Keys.SHELF_FILTER] = filter.name }
     }
 }

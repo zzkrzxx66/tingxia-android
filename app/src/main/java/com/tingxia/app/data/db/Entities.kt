@@ -22,6 +22,9 @@ data class BookEntity(
     val listenedDurationMs: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
     val needsReauth: Boolean = false,
+    val playbackSpeed: Float? = null,
+    val autoPlayNext: Boolean = true,
+    val lastScannedAt: Long = 0L,
 )
 
 @Entity(
@@ -34,7 +37,11 @@ data class BookEntity(
             onDelete = ForeignKey.CASCADE,
         )
     ],
-    indices = [Index("bookId"), Index(value = ["bookId", "index"], unique = true)]
+    indices = [
+        Index("bookId"),
+        Index(value = ["bookId", "index"], unique = true),
+        Index("stableKey"),
+    ]
 )
 data class ChapterEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -44,4 +51,39 @@ data class ChapterEntity(
     val index: Int,
     val durationMs: Long = 0L,
     val fileName: String,
+    val relativePath: String = fileName,
+    val fileSize: Long = 0L,
+    val documentId: String? = null,
+    val mimeType: String? = null,
+    val stableKey: String? = null,
+    val customTitle: String? = null,
+    val completionState: Int = 0,
+    val completedAt: Long? = null,
+)
+
+@Entity(
+    tableName = "bookmarks",
+    foreignKeys = [
+        ForeignKey(
+            entity = BookEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["bookId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ChapterEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["chapterId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("bookId"), Index("chapterId")],
+)
+data class BookmarkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: Long,
+    val chapterId: Long,
+    val positionMs: Long,
+    val note: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
 )

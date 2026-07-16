@@ -1,5 +1,6 @@
 package com.tingxia.app.data.model
 
+import com.tingxia.app.data.db.BookmarkEntity
 import com.tingxia.app.data.db.BookEntity
 import com.tingxia.app.data.db.ChapterEntity
 
@@ -16,12 +17,18 @@ data class Book(
     val listenedDurationMs: Long,
     val createdAt: Long,
     val needsReauth: Boolean,
+    val playbackSpeed: Float? = null,
+    val autoPlayNext: Boolean = true,
+    val lastScannedAt: Long = 0L,
 ) {
     val progressFraction: Float
         get() {
             if (totalDurationMs <= 0L) return 0f
             return (listenedDurationMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
         }
+
+    val displaySpeed: Float?
+        get() = playbackSpeed
 }
 
 data class Chapter(
@@ -32,12 +39,31 @@ data class Chapter(
     val index: Int,
     val durationMs: Long,
     val fileName: String,
+    val relativePath: String = fileName,
+    val fileSize: Long = 0L,
+    val documentId: String? = null,
+    val mimeType: String? = null,
+    val stableKey: String? = null,
+    val customTitle: String? = null,
+    val completionState: Int = 0,
+    val completedAt: Long? = null,
+) {
+    val displayTitle: String
+        get() = customTitle?.takeIf { it.isNotBlank() } ?: title
+}
+
+data class Bookmark(
+    val id: Long,
+    val bookId: Long,
+    val chapterId: Long,
+    val positionMs: Long,
+    val note: String?,
+    val createdAt: Long,
+    val chapterTitle: String? = null,
+    val chapterIndex: Int? = null,
 )
 
 object ProgressCalculator {
-    /**
-     * Listened duration = sum of full durations of chapters before current + position in current.
-     */
     fun listenedDurationMs(
         chapters: List<Chapter>,
         currentChapterId: Long?,
@@ -84,6 +110,9 @@ fun BookEntity.toModel() = Book(
     listenedDurationMs = listenedDurationMs,
     createdAt = createdAt,
     needsReauth = needsReauth,
+    playbackSpeed = playbackSpeed,
+    autoPlayNext = autoPlayNext,
+    lastScannedAt = lastScannedAt,
 )
 
 fun ChapterEntity.toModel() = Chapter(
@@ -94,4 +123,26 @@ fun ChapterEntity.toModel() = Chapter(
     index = index,
     durationMs = durationMs,
     fileName = fileName,
+    relativePath = relativePath.ifBlank { fileName },
+    fileSize = fileSize,
+    documentId = documentId,
+    mimeType = mimeType,
+    stableKey = stableKey,
+    customTitle = customTitle,
+    completionState = completionState,
+    completedAt = completedAt,
+)
+
+fun BookmarkEntity.toModel(
+    chapterTitle: String? = null,
+    chapterIndex: Int? = null,
+) = Bookmark(
+    id = id,
+    bookId = bookId,
+    chapterId = chapterId,
+    positionMs = positionMs,
+    note = note,
+    createdAt = createdAt,
+    chapterTitle = chapterTitle,
+    chapterIndex = chapterIndex,
 )

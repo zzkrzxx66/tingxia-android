@@ -50,6 +50,11 @@ class PlaybackService : MediaSessionService() {
     private var tickerJob: Job? = null
     private var progressWriter: ProgressWriter? = null
 
+    private var sleepMode: SleepTimerMode = SleepTimerMode.Off
+    private var sleepTargetChapterId: Long? = null
+    private var originalVolume: Float? = null
+    private var fadeJob: Job? = null
+
     private var lastBookId: Long? = null
     private var lastChapterId: Long? = null
     private var lastPositionMs: Long = 0L
@@ -98,6 +103,8 @@ class PlaybackService : MediaSessionService() {
                         add(SessionCommand(CustomCommands.SEEK_FWD_30, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SET_SPEED, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY))
+                        add(SessionCommand(CustomCommands.SET_SLEEP_MODE, Bundle.EMPTY))
+                        add(SessionCommand(CustomCommands.SET_BOOK_SPEED, Bundle.EMPTY))
                     }
                 }.build()
                 val playerCommands = Player.Commands.Builder()
@@ -129,7 +136,12 @@ class PlaybackService : MediaSessionService() {
                         p.seekTo((p.currentPosition - SeekOffsets.LONG_MS).coerceAtLeast(0))
                     CustomCommands.SEEK_FWD_30 -> seekFwd(p, SeekOffsets.LONG_MS)
                     CustomCommands.SET_SPEED -> p.setPlaybackSpeed(args.getFloat("speed", 1f))
+                    CustomCommands.SET_BOOK_SPEED -> {
+                        val speed = args.getFloat("speed", 1f)
+                        p.setPlaybackSpeed(speed)
+                    }
                     CustomCommands.SET_SLEEP -> scheduleSleep(p, args.getInt("minutes", 0))
+                    CustomCommands.SET_SLEEP_MODE -> applySleepMode(p, args)
                 }
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
@@ -151,11 +163,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun scheduleSleep(player: Player, minutes: Int) {
-        sleepJob?.cancel()
-        if (minutes <= 0) return
-        sleepJob = serviceScope.launch {
-            delay(minutes * 60_000L)
-            if (isActive) player.pause()
+        if (minutes <= 0) {
+            clearSleep(restoreVolume = true)
+        } else {
+            scheduleSleepMs(player, minutes * 60_000L)
         }
     }
 
@@ -175,6 +186,20 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                    sleepMode is SleepTimerMode.EndOfChapter
+                ) {
+                    // AUTO already advanced; step back and stop for "end of chapter".
+                    if (player.hasPreviousMediaItem()) {
+                        player.seekToPreviousMediaItem()
+                        val dur = player.duration
+                        if (dur > 0) player.seekTo(dur)
+                    }
+                    player.pause()
+                    clearSleep(restoreVolume = true)
+                } else if (sleepMode is SleepTimerMode.EndOfChapter) {
+                    sleepTargetChapterId = parseIds(mediaItem)?.second ?: sleepTargetChapterId
+                }
                 serviceScope.launch { handleEnter(player, mediaItem) }
             }
 
@@ -224,6 +249,93 @@ class PlaybackService : MediaSessionService() {
         progressWriter?.enqueue(snap.first, snap.second, snap.third)
     }
 
+
+    private fun applySleepMode(player: Player, args: Bundle) {
+        when (args.getString("mode")) {
+            "off" -> clearSleep(restoreVolume = true)
+            "end_of_chapter" -> {
+                fadeJob?.cancel()
+                sleepJob?.cancel()
+        fadeJob?.cancel()
+                restoreVolumeIfNeeded(player)
+                sleepMode = SleepTimerMode.EndOfChapter
+                val ch = args.getLong("chapterId", -1L).takeIf { it > 0 } ?: lastChapterId
+                sleepTargetChapterId = ch
+                // Pause auto-advance by handling AUTO transitions.
+            }
+            "duration" -> {
+                val durationMs = args.getLong("durationMs", 0L)
+                scheduleSleepMs(player, durationMs)
+            }
+            else -> clearSleep(restoreVolume = true)
+        }
+    }
+
+    private fun scheduleSleepMs(player: Player, durationMs: Long) {
+        sleepJob?.cancel()
+        fadeJob?.cancel()
+        fadeJob?.cancel()
+        restoreVolumeIfNeeded(player)
+        if (durationMs <= 0L) {
+            clearSleep(restoreVolume = true)
+            return
+        }
+        sleepMode = SleepTimerMode.AfterDuration(durationMs)
+        sleepTargetChapterId = null
+        val fadeStart = (durationMs - 30_000L).coerceAtLeast(0L)
+        sleepJob = serviceScope.launch {
+            if (fadeStart > 0) delay(fadeStart)
+            if (!isActive) return@launch
+            if (sleepMode !is SleepTimerMode.AfterDuration) return@launch
+            startFadeOut(player)
+            val remainingFade = minOf(30_000L, durationMs)
+            delay(remainingFade)
+            if (isActive && sleepMode is SleepTimerMode.AfterDuration) {
+                player.pause()
+                clearSleep(restoreVolume = true)
+            }
+        }
+    }
+
+    private fun startFadeOut(player: Player) {
+        fadeJob?.cancel()
+        if (originalVolume == null) {
+            originalVolume = player.volume
+        }
+        val startVol = originalVolume ?: player.volume
+        fadeJob = serviceScope.launch {
+            val steps = 30
+            repeat(steps) { i ->
+                if (!isActive) return@launch
+                val fraction = 1f - ((i + 1).toFloat() / steps)
+                player.volume = (startVol * fraction).coerceAtLeast(0f)
+                delay(1_000)
+            }
+        }
+    }
+
+    private fun restoreVolumeIfNeeded(player: Player) {
+        originalVolume?.let {
+            player.volume = it
+            originalVolume = null
+        }
+        fadeJob?.cancel()
+        fadeJob = null
+    }
+
+    private fun clearSleep(restoreVolume: Boolean) {
+        sleepJob?.cancel()
+        fadeJob?.cancel()
+        sleepJob = null
+        fadeJob?.cancel()
+        fadeJob = null
+        sleepMode = SleepTimerMode.Off
+        sleepTargetChapterId = null
+        if (restoreVolume) {
+            mediaSession?.player?.let { restoreVolumeIfNeeded(it) }
+        }
+    }
+
     private fun parseIds(item: MediaItem?): Pair<Long, Long>? {
         if (item == null) return null
         val extras = item.mediaMetadata.extras
@@ -250,6 +362,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         tickerJob?.cancel()
         sleepJob?.cancel()
+        fadeJob?.cancel()
         closeWriterWithFinal(mediaSession?.player)
         serviceScope.cancel()
         mediaSession?.run {

@@ -4,11 +4,12 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [BookEntity::class, ChapterEntity::class],
-    version = 3,
+    entities = [BookEntity::class, ChapterEntity::class, BookmarkEntity::class],
+    version = 4,
     exportSchema = true,
 )
 abstract class TingXiaDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     abstract fun chapterDao(): ChapterDao
+    abstract fun bookmarkDao(): BookmarkDao
 }

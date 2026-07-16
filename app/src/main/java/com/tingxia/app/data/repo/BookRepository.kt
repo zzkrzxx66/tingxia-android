@@ -7,14 +7,20 @@ import android.provider.DocumentsContract
 import androidx.room.withTransaction
 import com.tingxia.app.data.db.BookDao
 import com.tingxia.app.data.db.BookEntity
+import com.tingxia.app.data.db.BookmarkDao
 import com.tingxia.app.data.db.ChapterDao
 import com.tingxia.app.data.db.ChapterEntity
 import com.tingxia.app.data.db.TingXiaDatabase
+import com.tingxia.app.data.importer.ChapterIdentity
 import com.tingxia.app.data.importer.FolderScanner
+import com.tingxia.app.data.importer.RescanPlanner
 import com.tingxia.app.data.importer.ScanProgress
+import com.tingxia.app.data.importer.ScannedChapter
 import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.data.model.ChapterOffsetIndex
+import com.tingxia.app.data.model.ShelfFilter
+import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.data.model.toModel
 import com.tingxia.app.data.policy.SafPermissionPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,19 +30,44 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class RescanPreview(
+    val bookId: Long,
+    val plan: RescanPlanner.Plan,
+    val affectedBookmarkCount: Int,
+)
+
+data class RescanApplyResult(
+    val book: Book,
+    val chapters: List<Chapter>,
+    val currentChapterId: Long?,
+    val currentPositionMs: Long,
+    val removedChapterIds: Set<Long>,
+)
+
 @Singleton
 class BookRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: TingXiaDatabase,
     private val bookDao: BookDao,
     private val chapterDao: ChapterDao,
+    private val bookmarkDao: BookmarkDao,
     private val folderScanner: FolderScanner,
 ) {
-    /** Cached start-offset index per book for O(1) listened-duration updates. */
     private val offsetIndexCache = ConcurrentHashMap<Long, ChapterOffsetIndex>()
 
     fun observeBooks(): Flow<List<Book>> =
         bookDao.observeBooks().map { list -> list.map { it.toModel() } }
+
+    fun observeBooks(
+        query: String,
+        sort: ShelfSort,
+        filter: ShelfFilter,
+    ): Flow<List<Book>> =
+        bookDao.observeBooksFiltered(
+            query = query.trim(),
+            sort = sort.name,
+            filter = filter.name,
+        ).map { list -> list.map { it.toModel() } }
 
     fun observeBook(id: Long): Flow<Book?> =
         bookDao.observeBook(id).map { it?.toModel() }
@@ -57,11 +88,6 @@ class BookRepository @Inject constructor(
     suspend fun findBookIdByRootUri(rootUri: String): Long? =
         bookDao.findIdByRootUri(rootUri)
 
-    /**
-     * Import a folder as a book. Permission is taken before scan; if scan fails and this tree
-     * is not already used by another book, the newly acquired permission is released.
-     * Same rootUri is not imported twice.
-     */
     suspend fun importFolder(
         treeUri: Uri,
         onProgress: (ScanProgress) -> Unit = {},
@@ -77,13 +103,13 @@ class BookRepository @Inject constructor(
 
         val root = treeUri.toString()
         bookDao.findIdByRootUri(root)?.let { existingId ->
-            // Already imported — just return existing book.
             return bookDao.getBook(existingId)!!.toModel()
         }
 
         return try {
             val scanned = folderScanner.scanTree(treeUri, onProgress)
             database.withTransaction {
+                val now = System.currentTimeMillis()
                 val bookId = bookDao.insertBook(
                     BookEntity(
                         title = scanned.title,
@@ -96,6 +122,9 @@ class BookRepository @Inject constructor(
                         currentPositionMs = 0L,
                         listenedDurationMs = 0L,
                         needsReauth = false,
+                        playbackSpeed = null,
+                        autoPlayNext = true,
+                        lastScannedAt = now,
                     ),
                 )
                 val chapters = scanned.chapters.map { ch ->
@@ -106,6 +135,11 @@ class BookRepository @Inject constructor(
                         index = ch.index,
                         durationMs = ch.durationMs,
                         fileName = ch.fileName,
+                        relativePath = ch.relativePath,
+                        fileSize = ch.fileSize,
+                        documentId = ch.documentId,
+                        mimeType = ch.mimeType,
+                        stableKey = ch.stableKey,
                     )
                 }
                 val ids = chapterDao.insertAll(chapters)
@@ -136,11 +170,187 @@ class BookRepository @Inject constructor(
         }
     }
 
-    /**
-     * Re-bind an existing book to a SAF tree after permission loss.
-     * Rejects trees that do not sufficiently match the original chapter file names
-     * (unless the root URI is identical).
-     */
+    suspend fun previewRescan(
+        bookId: Long,
+        onProgress: (ScanProgress) -> Unit = {},
+    ): RescanPreview {
+        val book = bookDao.getBook(bookId) ?: error("书籍不存在")
+        if (!canAccessUri(Uri.parse(book.rootUri))) {
+            bookDao.setNeedsReauth(bookId, true)
+            error("目录权限失效，请重新授权")
+        }
+        val existing = chapterDao.getChapters(bookId).map { it.toModel() }
+        val scanned = folderScanner.scanTree(Uri.parse(book.rootUri), onProgress)
+        if (scanned.rootUri != book.rootUri) {
+            error("扫描结果目录与书籍目录不一致，请使用重新授权")
+        }
+        val plan = RescanPlanner.plan(bookId, existing, scanned.chapters)
+        val removedIds = plan.removed.map { it.id }
+        val affected = if (removedIds.isEmpty()) 0 else bookmarkDao.countForChapters(removedIds)
+        return RescanPreview(bookId, plan, affected)
+    }
+
+    suspend fun applyRescan(
+        bookId: Long,
+        plan: RescanPlanner.Plan,
+        acceptedWeak: Map<Long, ScannedChapter> = emptyMap(),
+        acceptedAmbiguous: Map<String, Long> = emptyMap(),
+    ): RescanApplyResult {
+        val book = bookDao.getBook(bookId) ?: error("书籍不存在")
+        val existing = chapterDao.getChapters(bookId).map { it.toModel() }
+        // Recompute plan with decisions to be safe
+        val finalPlan = if (acceptedWeak.isEmpty() && acceptedAmbiguous.isEmpty()) {
+            plan
+        } else {
+            RescanPlanner.plan(
+                bookId = bookId,
+                existing = existing,
+                scanned = plan.finalChaptersPreview,
+                acceptedWeak = acceptedWeak,
+                acceptedAmbiguous = acceptedAmbiguous,
+            )
+        }
+        if (finalPlan.weakMatches.isNotEmpty() || finalPlan.ambiguous.isNotEmpty()) {
+            error("仍有未确认的弱匹配或歧义章节")
+        }
+
+        val strong = finalPlan.autoMatches
+        val removedIds = finalPlan.removed.map { it.id }.toSet()
+        val added = finalPlan.added
+        val scannedOrder = finalPlan.finalChaptersPreview
+
+        return database.withTransaction {
+            val oldEntities = chapterDao.getChapters(bookId)
+            val oldById = oldEntities.associateBy { it.id }
+
+            // 1) Move retained indices to temporary negative values
+            oldEntities.forEach { ch ->
+                if (ch.id in strong || ch.id !in removedIds) {
+                    // all currently present; only keep matched ones
+                }
+            }
+            val keptIds = strong.keys
+            oldEntities.filter { it.id in keptIds }.forEach { ch ->
+                chapterDao.updateIndex(ch.id, -(ch.index + 1))
+            }
+
+            // 2) Delete removed
+            if (removedIds.isNotEmpty()) {
+                chapterDao.deleteByIds(removedIds.toList())
+            }
+
+            // 3) Update matched rows (content) with temporary still-negative or update fields first
+            val finalIndexByOldId = mutableMapOf<Long, Int>()
+            scannedOrder.forEachIndexed { newIndex, sc ->
+                val oldId = strong.entries.firstOrNull { it.value.uri == sc.uri || it.value.relativePath == sc.relativePath }?.key
+                    ?: strong.entries.firstOrNull { it.value.stableKey == sc.stableKey }?.key
+                if (oldId != null) {
+                    finalIndexByOldId[oldId] = newIndex
+                }
+            }
+
+            strong.forEach { (oldId, sc) ->
+                val old = oldById[oldId] ?: return@forEach
+                val newIndex = finalIndexByOldId[oldId] ?: sc.index
+                chapterDao.update(
+                    old.copy(
+                        title = sc.title,
+                        uri = sc.uri,
+                        // keep temp negative index for now if still negative
+                        index = -(old.index + 1),
+                        durationMs = sc.durationMs,
+                        fileName = sc.fileName,
+                        relativePath = sc.relativePath,
+                        fileSize = sc.fileSize,
+                        documentId = sc.documentId,
+                        mimeType = sc.mimeType,
+                        stableKey = sc.stableKey,
+                    ),
+                )
+            }
+
+            // 4) Insert added with final indices
+            val addedIdByUri = mutableMapOf<String, Long>()
+            scannedOrder.forEachIndexed { newIndex, sc ->
+                val matchedOld = strong.entries.firstOrNull {
+                    it.value.uri == sc.uri ||
+                        it.value.relativePath == sc.relativePath ||
+                        it.value.stableKey == sc.stableKey
+                }?.key
+                if (matchedOld == null) {
+                    val id = chapterDao.insert(
+                        ChapterEntity(
+                            bookId = bookId,
+                            title = sc.title,
+                            uri = sc.uri,
+                            index = newIndex,
+                            durationMs = sc.durationMs,
+                            fileName = sc.fileName,
+                            relativePath = sc.relativePath,
+                            fileSize = sc.fileSize,
+                            documentId = sc.documentId,
+                            mimeType = sc.mimeType,
+                            stableKey = sc.stableKey,
+                        ),
+                    )
+                    addedIdByUri[sc.uri] = id
+                }
+            }
+
+            // 5) Write final indices for matched
+            finalIndexByOldId.forEach { (oldId, newIndex) ->
+                chapterDao.updateIndex(oldId, newIndex)
+            }
+
+            // Build final chapter models
+            val finalEntities = chapterDao.getChapters(bookId).sortedBy { it.index }
+            val finalModels = finalEntities.map { it.toModel() }
+
+            // Resolve current chapter
+            val oldCurrent = book.currentChapterId
+            val currentStill = oldCurrent != null && oldCurrent in strong
+            val newCurrentId: Long?
+            val newPos: Long
+            if (currentStill) {
+                newCurrentId = oldCurrent
+                val newDur = finalModels.firstOrNull { it.id == oldCurrent }?.durationMs ?: 0L
+                newPos = if (newDur > 0L) book.currentPositionMs.coerceIn(0L, newDur) else book.currentPositionMs
+            } else {
+                val replacement = RescanPlanner.chooseReplacementChapterId(
+                    oldChapters = oldEntities.map { it.toModel() },
+                    removedIds = removedIds,
+                    currentChapterId = oldCurrent,
+                    survivingOldIdToNewIndex = finalIndexByOldId,
+                    addedInOrder = added,
+                    newChapterIdsInFinalOrder = finalModels.map { it.id },
+                )
+                newCurrentId = replacement
+                newPos = 0L
+            }
+
+            val listened = ProgressCalculatorSafe.listened(finalModels, newCurrentId, newPos)
+            val now = System.currentTimeMillis()
+            bookDao.updateAfterRescan(
+                bookId = bookId,
+                totalDurationMs = finalModels.sumOf { it.durationMs },
+                lastScannedAt = now,
+                currentChapterId = newCurrentId,
+                currentPositionMs = newPos,
+                listenedDurationMs = listened,
+            )
+
+            invalidateOffsetIndex(bookId)
+            val updated = bookDao.getBook(bookId)!!.toModel()
+            RescanApplyResult(
+                book = updated,
+                chapters = finalModels,
+                currentChapterId = newCurrentId,
+                currentPositionMs = newPos,
+                removedChapterIds = removedIds,
+            )
+        }
+    }
+
     suspend fun reauthBook(
         bookId: Long,
         treeUri: Uri,
@@ -158,7 +368,7 @@ class BookRepository @Inject constructor(
 
         val oldRoot = existing.rootUri
         val newRoot = treeUri.toString()
-        val oldChapters = chapterDao.getChapters(bookId)
+        val oldChapters = chapterDao.getChapters(bookId).map { it.toModel() }
 
         return try {
             val scanned = folderScanner.scanTree(treeUri, onProgress)
@@ -172,71 +382,18 @@ class BookRepository @Inject constructor(
                 error("所选目录与原书籍章节不匹配，请选择正确的书目文件夹")
             }
 
+            // Update root first, then apply rescan plan against new scan.
             database.withTransaction {
-                val progressChapterFile = oldChapters
-                    .firstOrNull { it.id == existing.currentChapterId }
-                    ?.fileName
-                val savedPosition = existing.currentPositionMs
-
-                chapterDao.deleteForBook(bookId)
-                val newEntities = scanned.chapters.map { ch ->
-                    ChapterEntity(
-                        bookId = bookId,
-                        title = ch.title,
-                        uri = ch.uri,
-                        index = ch.index,
-                        durationMs = ch.durationMs,
-                        fileName = ch.fileName,
-                    )
-                }
-                val ids = chapterDao.insertAll(newEntities)
-                val matchedIndex = progressChapterFile?.let { name ->
-                    scanned.chapters.indexOfFirst { it.fileName == name }
-                }?.takeIf { it >= 0 } ?: 0
-                val chapterId = ids.getOrNull(matchedIndex) ?: ids.firstOrNull()
-                val position = if (
-                    progressChapterFile != null &&
-                    scanned.chapters.getOrNull(matchedIndex)?.fileName == progressChapterFile
-                ) {
-                    savedPosition
-                } else {
-                    0L
-                }
-
-                val chapterModels = scanned.chapters.mapIndexed { idx, ch ->
-                    Chapter(
-                        id = ids.getOrElse(idx) { 0L },
-                        bookId = bookId,
-                        title = ch.title,
-                        uri = ch.uri,
-                        index = ch.index,
-                        durationMs = ch.durationMs,
-                        fileName = ch.fileName,
-                    )
-                }
-                val index = ChapterOffsetIndex(chapterModels)
-                offsetIndexCache[bookId] = index
-                val listened = index.listenedDurationMs(chapterId, position)
-
-                bookDao.updateBook(
-                    existing.copy(
-                        title = scanned.title.ifBlank { existing.title },
-                        coverPath = scanned.coverPath ?: existing.coverPath,
-                        rootUri = scanned.rootUri,
-                        totalDurationMs = scanned.totalDurationMs,
-                        currentChapterId = chapterId,
-                        currentPositionMs = position,
-                        listenedDurationMs = listened,
-                        needsReauth = false,
-                    ),
-                )
-
-                if (oldRoot != scanned.rootUri) {
-                    maybeReleaseRootUri(oldRoot, excludeBookId = bookId)
-                }
-
-                bookDao.getBook(bookId)!!.toModel()
+                bookDao.updateBook(existing.copy(rootUri = scanned.rootUri, needsReauth = false, coverPath = scanned.coverPath ?: existing.coverPath))
             }
+            val plan = RescanPlanner.plan(bookId, oldChapters, scanned.chapters)
+            // Auto-accept weak matches on reauth for better UX when same library moved.
+            val acceptedWeak = plan.weakMatches
+            val result = applyRescan(bookId, plan, acceptedWeak = acceptedWeak, acceptedAmbiguous = emptyMap())
+            if (oldRoot != scanned.rootUri) {
+                maybeReleaseRootUri(oldRoot, excludeBookId = bookId)
+            }
+            result.book
         } catch (e: Exception) {
             val count = bookDao.countByRootUri(newRoot)
             if (
@@ -261,14 +418,9 @@ class BookRepository @Inject constructor(
         if (bookDao.countByRootUri(root) == 0) {
             releaseUriPermission(Uri.parse(root))
         }
-        // Clean extracted embedded covers under app filesDir/covers/
         deleteLocalCoverIfOwned(coverPath)
     }
 
-    /**
-     * Persist progress. Does **not** clear [needsReauth] — that is only cleared by
-     * successful URI access checks or reauth completion.
-     */
     suspend fun saveProgress(bookId: Long, chapterId: Long, positionMs: Long) {
         val pos = positionMs.coerceAtLeast(0L)
         val index = offsetIndexCache[bookId] ?: rebuildOffsetIndex(bookId)
@@ -281,11 +433,18 @@ class BookRepository @Inject constructor(
         )
     }
 
+    suspend fun setBookPlaybackSpeed(bookId: Long, speed: Float?) {
+        bookDao.updatePlaybackSpeed(bookId, speed)
+    }
+
+    suspend fun setAutoPlayNext(bookId: Long, autoPlayNext: Boolean) {
+        bookDao.updateAutoPlayNext(bookId, autoPlayNext)
+    }
+
     suspend fun markNeedsReauth(bookId: Long, needs: Boolean) {
         bookDao.setNeedsReauth(bookId, needs)
     }
 
-    /** Probe whether the book's root URI is still readable. */
     suspend fun checkBookAccess(bookId: Long): Boolean {
         val book = bookDao.getBook(bookId) ?: return false
         val ok = canAccessUri(Uri.parse(book.rootUri))
@@ -353,7 +512,6 @@ class BookRepository @Inject constructor(
 
     private suspend fun maybeReleaseRootUri(rootUri: String, excludeBookId: Long) {
         val remaining = bookDao.countByRootUriExcluding(rootUri, excludeBookId)
-        // Model remaining as BookRefs with dummy ids for policy (count is enough for release)
         if (remaining == 0) {
             releaseUriPermission(Uri.parse(rootUri))
         }
@@ -370,5 +528,14 @@ class BookRepository @Inject constructor(
             }
         } catch (_: Exception) {
         }
+    }
+}
+
+/** Local helper to avoid circular imports in transaction. */
+private object ProgressCalculatorSafe {
+    fun listened(chapters: List<Chapter>, currentChapterId: Long?, positionMs: Long): Long {
+        return com.tingxia.app.data.model.ProgressCalculator.listenedDurationMs(
+            chapters, currentChapterId, positionMs,
+        )
     }
 }

@@ -42,6 +42,7 @@ fun TingXiaNavHost(
 ) {
     val navController = rememberNavController()
     val playerState by playerViewModel.state.collectAsStateWithLifecycle()
+    val toast by playerViewModel.toast.collectAsStateWithLifecycle()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showMini = playerState.bookId != null && currentRoute != Routes.PLAYER
@@ -56,6 +57,12 @@ fun TingXiaNavHost(
         playerState.lastError?.let {
             snackbar.showSnackbar(it)
             playerViewModel.clearError()
+        }
+    }
+    LaunchedEffect(toast) {
+        toast?.let {
+            snackbar.showSnackbar(it)
+            playerViewModel.clearToast()
         }
     }
 
@@ -110,6 +117,19 @@ fun TingXiaNavHost(
                                     if (ok) navController.navigate(Routes.PLAYER)
                                 }
                             },
+                            onPlayBookmark = { chapterId, positionMs ->
+                                playerViewModel.playBook(bookId, chapterId, positionMs) { ok ->
+                                    if (ok) navController.navigate(Routes.PLAYER)
+                                }
+                            },
+                            onRescanApplied = { id, chapterId, positionMs ->
+                                playerViewModel.refreshAfterRescan(
+                                    bookId = id,
+                                    chapterId = chapterId,
+                                    positionMs = positionMs,
+                                    wasPlaying = playerState.isPlaying && playerState.bookId == id,
+                                )
+                            },
                         )
                     }
                     composable(Routes.PLAYER) {
@@ -123,6 +143,8 @@ fun TingXiaNavHost(
                             onNext = { playerViewModel.nextChapter() },
                             onSpeed = { playerViewModel.setSpeed(it) },
                             onSleep = { playerViewModel.setSleepMinutes(it) },
+                            onSleepEndOfChapter = { playerViewModel.setSleepEndOfChapter() },
+                            onAddBookmark = { playerViewModel.addBookmark() },
                         )
                     }
                     composable(Routes.SETTINGS) {

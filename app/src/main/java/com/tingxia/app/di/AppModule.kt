@@ -2,11 +2,13 @@ package com.tingxia.app.di
 
 import android.content.Context
 import androidx.room.Room
+import com.tingxia.app.data.db.BookmarkDao
 import com.tingxia.app.data.db.BookDao
 import com.tingxia.app.data.db.ChapterDao
 import com.tingxia.app.data.db.TingXiaDatabase
 import com.tingxia.app.data.db.migration.MIGRATION_1_2
 import com.tingxia.app.data.db.migration.MIGRATION_2_3
+import com.tingxia.app.data.db.migration.MIGRATION_3_4
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -22,7 +24,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TingXiaDatabase =
         Room.databaseBuilder(context, TingXiaDatabase::class.java, "tingxia.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
 
     @Provides
@@ -30,4 +32,7 @@ object AppModule {
 
     @Provides
     fun provideChapterDao(db: TingXiaDatabase): ChapterDao = db.chapterDao()
+
+    @Provides
+    fun provideBookmarkDao(db: TingXiaDatabase): BookmarkDao = db.bookmarkDao()
 }

@@ -137,3 +137,50 @@ private fun dedupeBooksByRootUri(db: SupportSQLiteDatabase) {
         """.trimIndent(),
     )
 }
+
+/**
+ * v3 → v4:
+ * - book playback settings
+ * - chapter rescan identity fields + completion placeholders
+ * - bookmarks table
+ *
+ * Historical chapters keep stableKey = NULL until first successful rescan.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN playbackSpeed REAL")
+        db.execSQL("ALTER TABLE books ADD COLUMN autoPlayNext INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE books ADD COLUMN lastScannedAt INTEGER NOT NULL DEFAULT 0")
+
+        db.execSQL("ALTER TABLE chapters ADD COLUMN relativePath TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN fileSize INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN documentId TEXT")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN mimeType TEXT")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN stableKey TEXT")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN customTitle TEXT")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN completionState INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN completedAt INTEGER")
+
+        // Backfill relativePath from fileName for old rows (SQLite default on ALTER is empty string).
+        db.execSQL("UPDATE chapters SET relativePath = fileName WHERE relativePath = '' OR relativePath IS NULL")
+
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_chapters_stableKey` ON `chapters` (`stableKey`)")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `bookmarks` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `bookId` INTEGER NOT NULL,
+                `chapterId` INTEGER NOT NULL,
+                `positionMs` INTEGER NOT NULL,
+                `note` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`chapterId`) REFERENCES `chapters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_bookId` ON `bookmarks` (`bookId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_chapterId` ON `bookmarks` (`chapterId`)")
+    }
+}

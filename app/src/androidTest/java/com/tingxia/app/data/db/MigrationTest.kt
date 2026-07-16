@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.tingxia.app.data.db.migration.MIGRATION_1_2
 import com.tingxia.app.data.db.migration.MIGRATION_2_3
+import com.tingxia.app.data.db.migration.MIGRATION_3_4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -191,6 +192,40 @@ class MigrationTest {
             query("SELECT listenedDurationMs FROM books WHERE id = 1").use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals(100L, c.getLong(0))
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate3To4_addsBookmarksAndChapterIdentityFields() {
+        helper.createDatabase(testDb, 3).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt, needsReauth
+                ) VALUES (1, 't', NULL, NULL, 'content://tree/z', 1000, 1, 1, 10, 10, 0, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO chapters (id, bookId, title, uri, `index`, durationMs, fileName)
+                VALUES (1, 1, 'c1', 'u1', 0, 1000, '01.mp3')
+                """.trimIndent(),
+            )
+            close()
+        }
+        helper.runMigrationsAndValidate(testDb, 4, true, MIGRATION_3_4).apply {
+            query("SELECT relativePath, stableKey, playbackSpeed, autoPlayNext FROM books, chapters WHERE books.id=1 AND chapters.id=1").use { c ->
+                // just ensure query works; relativePath backfilled
+            }
+            query("SELECT relativePath FROM chapters WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("01.mp3", c.getString(0))
+            }
+            query("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarks'").use { c ->
+                assertTrue(c.moveToFirst())
             }
             close()
         }

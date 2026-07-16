@@ -50,16 +50,14 @@ data class PlayerUiState(
     val durationMs: Long = 0L,
     val bufferedMs: Long = 0L,
     val speed: Float = 1.0f,
+    val sleepMode: SleepTimerMode = SleepTimerMode.Off,
     val sleepRemainingMs: Long? = null,
+    val sleepTargetChapterId: Long? = null,
     val coverPath: String? = null,
     val needsReauth: Boolean = false,
     val lastError: String? = null,
 )
 
-/**
- * UI façade over Media3 [MediaController].
- * Does **not** write progress — [PlaybackService] is the sole progress writer.
- */
 @OptIn(UnstableApi::class)
 @Singleton
 class PlayerController @Inject constructor(
@@ -72,6 +70,7 @@ class PlayerController @Inject constructor(
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var positionJob: Job? = null
+    private var sleepJob: Job? = null
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -84,6 +83,10 @@ class PlayerController @Inject constructor(
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             updateFromMediaItem(mediaItem)
+            // Manual chapter change keeps EndOfChapter timer targeting the new chapter.
+            if (_state.value.sleepMode is SleepTimerMode.EndOfChapter) {
+                _state.value = _state.value.copy(sleepTargetChapterId = _state.value.chapterId)
+            }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -150,10 +153,11 @@ class PlayerController @Inject constructor(
         _state.value = _state.value.copy(isConnected = false)
     }
 
-    /**
-     * @return true if playback started; false if blocked (e.g. needs reauth / missing data).
-     */
-    suspend fun playBook(bookId: Long, chapterId: Long? = null, positionMs: Long? = null): Boolean {
+    suspend fun playBook(
+        bookId: Long,
+        chapterId: Long? = null,
+        positionMs: Long? = null,
+    ): Boolean {
         ensureConnected()
         val accessible = bookRepository.checkBookAccess(bookId)
         if (!accessible) {
@@ -179,8 +183,9 @@ class PlayerController @Inject constructor(
         val items = chapters.map { it.toMediaItem(book, chapters.size) }
         val c = controller ?: return false
         c.setMediaItems(items, startIndex, startPos.coerceAtLeast(0L))
-        val speed = preferences.defaultSpeed.first()
+        val speed = book.playbackSpeed ?: preferences.defaultSpeed.first()
         c.setPlaybackSpeed(speed)
+        // autoPlayNext: Media3 continues by default; service enforces EndOfChapter sleep.
         c.prepare()
         c.play()
 
@@ -195,6 +200,30 @@ class PlayerController @Inject constructor(
         )
         updateFromMediaItem(c.currentMediaItem)
         return true
+    }
+
+    /** Rebuild playlist after rescan while preserving chapter id + position when possible. */
+    suspend fun refreshPlaylistAfterRescan(
+        bookId: Long,
+        chapterId: Long?,
+        positionMs: Long,
+        wasPlaying: Boolean,
+    ) {
+        ensureConnected()
+        if (_state.value.bookId != bookId) return
+        val book = bookRepository.getBook(bookId) ?: return
+        val chapters = bookRepository.getChapters(bookId)
+        if (chapters.isEmpty()) return
+        val c = controller ?: return
+        val startId = chapterId ?: chapters.first().id
+        val startIndex = chapters.indexOfFirst { it.id == startId }.coerceAtLeast(0)
+        val ch = chapters.getOrNull(startIndex)
+        val pos = if (ch != null && ch.durationMs > 0) positionMs.coerceIn(0, ch.durationMs) else positionMs
+        c.setMediaItems(chapters.map { it.toMediaItem(book, chapters.size) }, startIndex, pos)
+        c.prepare()
+        if (wasPlaying) c.play() else c.pause()
+        _state.value = _state.value.copy(chapterCount = chapters.size)
+        updateFromMediaItem(c.currentMediaItem)
     }
 
     fun play() = controller?.play()
@@ -231,31 +260,90 @@ class PlayerController @Inject constructor(
         }
     }
 
-    fun setSpeed(speed: Float) {
+    fun setSpeed(speed: Float, asBookDefault: Boolean = true) {
         controller?.setPlaybackSpeed(speed)
         _state.value = _state.value.copy(speed = speed)
-        scope.launch { preferences.setDefaultSpeed(speed) }
+        val bookId = _state.value.bookId
+        scope.launch {
+            if (asBookDefault && bookId != null) {
+                bookRepository.setBookPlaybackSpeed(bookId, speed)
+            } else {
+                preferences.setDefaultSpeed(speed)
+            }
+        }
+        if (bookId != null) {
+            val args = bundleOf("bookId" to bookId, "speed" to speed)
+            controller?.sendCustomCommand(
+                SessionCommand(CustomCommands.SET_BOOK_SPEED, Bundle.EMPTY),
+                args,
+            )
+        }
     }
 
     fun setSleepMinutes(minutes: Int) {
+        if (minutes <= 0) {
+            setSleepMode(SleepTimerMode.Off)
+        } else {
+            setSleepMode(SleepTimerMode.AfterDuration(minutes * 60_000L))
+        }
+    }
+
+    fun setSleepMode(mode: SleepTimerMode) {
         val c = controller ?: return
-        val args = bundleOf("minutes" to minutes)
-        c.sendCustomCommand(
-            SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY),
-            args,
-        )
+        val args = when (mode) {
+            is SleepTimerMode.Off -> bundleOf("mode" to "off")
+            is SleepTimerMode.EndOfChapter -> bundleOf(
+                "mode" to "end_of_chapter",
+                "chapterId" to (_state.value.chapterId ?: -1L),
+            )
+            is SleepTimerMode.AfterDuration -> bundleOf(
+                "mode" to "duration",
+                "durationMs" to mode.durationMs,
+            )
+        }
+        c.sendCustomCommand(SessionCommand(CustomCommands.SET_SLEEP_MODE, Bundle.EMPTY), args)
+        // legacy
+        if (mode is SleepTimerMode.AfterDuration) {
+            c.sendCustomCommand(
+                SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY),
+                bundleOf("minutes" to (mode.durationMs / 60_000L).toInt()),
+            )
+        } else if (mode is SleepTimerMode.Off) {
+            c.sendCustomCommand(
+                SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY),
+                bundleOf("minutes" to 0),
+            )
+        }
+
         _state.value = _state.value.copy(
-            sleepRemainingMs = if (minutes > 0) minutes * 60_000L else null,
+            sleepMode = mode,
+            sleepRemainingMs = when (mode) {
+                is SleepTimerMode.AfterDuration -> mode.durationMs
+                else -> null
+            },
+            sleepTargetChapterId = when (mode) {
+                is SleepTimerMode.EndOfChapter -> _state.value.chapterId
+                else -> null
+            },
         )
-        if (minutes > 0) startSleepTicker(minutes * 60_000L)
-        else sleepJob?.cancel()
+        sleepJob?.cancel()
+        if (mode is SleepTimerMode.AfterDuration) {
+            startSleepTicker(mode.durationMs)
+        }
+    }
+
+    fun extendSleep(extraMs: Long = 15 * 60_000L) {
+        val mode = _state.value.sleepMode
+        if (mode is SleepTimerMode.AfterDuration) {
+            val left = (_state.value.sleepRemainingMs ?: 0L) + extraMs
+            setSleepMode(SleepTimerMode.AfterDuration(left))
+        }
     }
 
     fun clearError() {
         _state.value = _state.value.copy(lastError = null)
     }
 
-    private var sleepJob: Job? = null
     private fun startSleepTicker(totalMs: Long) {
         sleepJob?.cancel()
         val endAt = System.currentTimeMillis() + totalMs
@@ -263,7 +351,10 @@ class PlayerController @Inject constructor(
             while (isActive) {
                 val left = endAt - System.currentTimeMillis()
                 if (left <= 0) {
-                    _state.value = _state.value.copy(sleepRemainingMs = null)
+                    _state.value = _state.value.copy(
+                        sleepRemainingMs = null,
+                        sleepMode = SleepTimerMode.Off,
+                    )
                     break
                 }
                 _state.value = _state.value.copy(sleepRemainingMs = left)
@@ -369,7 +460,7 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         PlayerController.KEY_CHAPTER_COUNT to chapterCount,
     )
     val metadata = MediaMetadata.Builder()
-        .setTitle(title)
+        .setTitle(displayTitle)
         .setAlbumTitle(book.title)
         .setArtist(book.author ?: book.title)
         .setArtworkUri(book.coverPath?.let { path ->

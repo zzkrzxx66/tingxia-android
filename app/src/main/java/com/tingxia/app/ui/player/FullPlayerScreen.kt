@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
@@ -64,6 +65,8 @@ fun FullPlayerScreen(
     onNext: () -> Unit,
     onSpeed: (Float) -> Unit,
     onSleep: (Int) -> Unit,
+    onSleepEndOfChapter: () -> Unit = {},
+    onAddBookmark: () -> Unit = {},
 ) {
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
@@ -211,6 +214,11 @@ fun FullPlayerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
             ) {
+                AssistChip(
+                    onClick = onAddBookmark,
+                    label = { Text("书签") },
+                    leadingIcon = { Icon(Icons.Default.BookmarkAdd, contentDescription = "书签") },
+                )
                 Box {
                     AssistChip(
                         onClick = { speedMenu = true },
@@ -230,11 +238,16 @@ fun FullPlayerScreen(
                     }
                 }
                 Box {
-                    val sleepLabel = state.sleepRemainingMs?.let { ms ->
-                        val m = (ms / 60_000).toInt()
-                        val s = ((ms % 60_000) / 1000).toInt()
-                        "%d:%02d".format(m, s)
-                    } ?: "睡眠"
+                    val sleepLabel = when {
+                        state.sleepRemainingMs != null -> {
+                            val ms = state.sleepRemainingMs!!
+                            val m = (ms / 60_000).toInt()
+                            val s = ((ms % 60_000) / 1000).toInt()
+                            "%d:%02d".format(m, s)
+                        }
+                        state.sleepMode.toString().contains("EndOfChapter") -> "本章结束"
+                        else -> "睡眠"
+                    }
                     AssistChip(
                         onClick = { sleepMenu = true },
                         label = { Text(sleepLabel) },
@@ -250,6 +263,13 @@ fun FullPlayerScreen(
                                 },
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text("本章结束") },
+                            onClick = {
+                                onSleepEndOfChapter()
+                                sleepMenu = false
+                            },
+                        )
                     }
                 }
             }
