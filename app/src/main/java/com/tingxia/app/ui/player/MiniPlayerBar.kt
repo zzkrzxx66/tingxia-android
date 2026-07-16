@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tingxia.app.player.PlayerUiState
@@ -33,8 +34,9 @@ fun MiniPlayerBar(
     onOpen: () -> Unit,
 ) {
     Surface(
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
@@ -50,18 +52,20 @@ fun MiniPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BookCover(
                     title = state.bookTitle.orEmpty(),
                     coverPath = state.coverPath,
-                    size = 48.dp,
-                    corner = 8.dp,
+                    size = 44.dp,
+                    corner = 10.dp,
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -79,11 +83,17 @@ fun MiniPlayerBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = onToggle) {
+                IconButton(
+                    onClick = onToggle,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(MaterialTheme.shapes.small),
+                ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (state.isPlaying) "暂停" else "播放",
-                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp),
                     )
                 }
             }

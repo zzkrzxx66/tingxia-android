@@ -40,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,6 +105,7 @@ fun BookDetailScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -111,8 +113,12 @@ fun BookDetailScreen(
                         book?.title.orEmpty(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleLarge,
                     )
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -164,7 +170,8 @@ fun BookDetailScreen(
                     BookCover(
                         title = book?.title.orEmpty(),
                         coverPath = book?.coverPath,
-                        size = 120.dp,
+                        size = 118.dp,
+                        corner = 16.dp,
                     )
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -211,6 +218,7 @@ fun BookDetailScreen(
                             onClick = onContinue,
                             modifier = Modifier.fillMaxWidth(),
                             enabled = book?.needsReauth != true && !reauthing && !rescanning,
+                            shape = MaterialTheme.shapes.medium,
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
@@ -239,7 +247,7 @@ fun BookDetailScreen(
                     Text("正在扫描… ${rescanProgress?.currentName.orEmpty()}")
                 }
                 Spacer(Modifier.height(20.dp))
-                Text("章节", style = MaterialTheme.typography.titleMedium)
+                Text("章节", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(8.dp))
             }
             items(chapters, key = { it.id }) { chapter ->
@@ -253,7 +261,7 @@ fun BookDetailScreen(
             if (bookmarks.isNotEmpty()) {
                 item {
                     Spacer(Modifier.height(16.dp))
-                    Text("书签", style = MaterialTheme.typography.titleMedium)
+                    Text("书签", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.height(8.dp))
                 }
                 items(bookmarks, key = { "bm-${it.id}" }) { bm ->
@@ -365,10 +373,10 @@ private fun ChapterRow(
     ) {
         Text(
             text = "%02d".format(chapter.index + 1),
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = if (isCurrent) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(36.dp),
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            modifier = Modifier.width(34.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(

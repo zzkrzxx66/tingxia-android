@@ -33,7 +33,10 @@ class MainActivity : ComponentActivity() {
                 null -> isSystemInDarkTheme()
             }
             TingXiaTheme(darkTheme = useDark) {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background,
+                ) {
                     TingXiaNavHost()
                 }
             }

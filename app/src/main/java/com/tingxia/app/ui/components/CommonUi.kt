@@ -1,6 +1,7 @@
 package com.tingxia.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -19,16 +21,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.tingxia.app.ui.theme.CoverPalette
 import java.io.File
-
-private val CoverPalette = listOf(
-    Color(0xFF3D5A9E),
-    Color(0xFF5B4B8A),
-    Color(0xFF2E6B5E),
-    Color(0xFF8A4B3D),
-    Color(0xFF4B6B8A),
-    Color(0xFF6B4B6B),
-)
 
 @Composable
 fun BookCover(
@@ -44,7 +38,15 @@ fun BookCover(
     } else {
         modifier.aspectRatio(1f).clip(shape)
     }
-    Box(boxMod) {
+    Box(
+        boxMod.then(
+            Modifier.border(
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                shape = shape,
+            ),
+        ),
+    ) {
         val model: Any? = when {
             coverPath.isNullOrBlank() -> null
             coverPath.startsWith("content:") || coverPath.startsWith("file:") ||
@@ -59,18 +61,25 @@ fun BookCover(
                 contentScale = ContentScale.Crop,
             )
         } else {
-            val color = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
+            val base = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
+            val top = base.copy(alpha = 1f)
+            val bottom = Color(
+                red = (base.red * 0.72f).coerceIn(0f, 1f),
+                green = (base.green * 0.72f).coerceIn(0f, 1f),
+                blue = (base.blue * 0.72f).coerceIn(0f, 1f),
+            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(color),
+                    .background(Brush.verticalGradient(listOf(top, bottom))),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = title.take(1).ifEmpty { "书" },
-                    color = Color.White,
-                    fontSize = if (size != null && size < 80.dp) 22.sp else 36.sp,
-                    fontWeight = FontWeight.Bold,
+                    text = title.take(1).ifEmpty { "听" },
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontSize = if (size != null && size < 80.dp) 20.sp else 34.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.sp,
                 )
             }
         }
