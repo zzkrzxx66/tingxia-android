@@ -52,7 +52,7 @@ jobs:
           test -f keystore/tingxia-debug.jks
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tingxia-debug-apk
           path: |
