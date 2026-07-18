@@ -1,6 +1,8 @@
 package com.tingxia.app.data.importer
 
 import com.tingxia.app.data.model.Chapter
+import java.util.PriorityQueue
+import java.util.Locale
 
 /**
  * Pure chapter matching for rescan. JVM-testable; no Android APIs.
@@ -46,30 +48,40 @@ object ChapterMatcher {
             )
         }
 
-        val remainingOld = existing.toMutableList()
-        val remainingNew = scanned.toMutableList()
+        val remainingOldIds = existing.mapTo(linkedSetOf()) { it.id }
+        val remainingNewKeys = scanned.mapTo(linkedSetOf(), ::newKey)
         val strong = linkedMapOf<Long, ScannedChapter>()
         val weak = linkedMapOf<Long, ScannedChapter>()
         val ambiguous = mutableListOf<AmbiguousPair>()
+        val stats = MatchStats(existing, scanned)
+        val allScores = existing.flatMap { old ->
+            scanned.mapNotNull { neu -> score(old, neu, stats) }
+        }
+        val byNew = allScores.groupBy { newKey(it.scanned) }
+        val queue = PriorityQueue<Score>(
+            compareByDescending<Score> { it.score }
+                .thenBy { it.oldChapter.index }
+                .thenBy { it.scanned.index }
+                .thenBy { it.oldChapter.id },
+        ).apply { addAll(allScores) }
 
-        // Greedy best-score matching, highest score first, unique old/new.
-        while (remainingOld.isNotEmpty() && remainingNew.isNotEmpty()) {
-            var best: Score? = null
-            for (old in remainingOld) {
-                for (neu in remainingNew) {
-                    val s = score(old, neu, existing, scanned)
-                    if (s != null && (best == null || s.score > best.score)) {
-                        best = s
-                    }
+        // Greedy best-score matching with a precomputed candidate queue.
+        while (remainingOldIds.isNotEmpty() && remainingNewKeys.isNotEmpty()) {
+            var pick: Score? = null
+            while (queue.isNotEmpty() && pick == null) {
+                val candidate = queue.remove()
+                if (candidate.oldChapter.id in remainingOldIds && newKey(candidate.scanned) in remainingNewKeys) {
+                    pick = candidate
                 }
             }
-            val pick = best ?: break
+            pick ?: break
             if (pick.score < 45) break
 
             // Check ambiguity among remaining for this scanned item.
-            val candidatesForNew = remainingOld.mapNotNull { old ->
-                score(old, pick.scanned, existing, scanned)
-            }.sortedByDescending { it.score }
+            val pickedKey = newKey(pick.scanned)
+            val candidatesForNew = byNew[pickedKey].orEmpty()
+                .filter { it.oldChapter.id in remainingOldIds }
+                .sortedWith(compareByDescending<Score> { it.score }.thenBy { it.oldChapter.index })
 
             val top = candidatesForNew.first()
             val second = candidatesForNew.getOrNull(1)
@@ -77,15 +89,15 @@ object ChapterMatcher {
 
             if (top.score >= 65 && gap >= 15) {
                 strong[top.oldChapter.id] = top.scanned
-                remainingOld.removeAll { it.id == top.oldChapter.id }
-                remainingNew.removeAll { it.uri == top.scanned.uri && it.relativePath == top.scanned.relativePath }
+                remainingOldIds.remove(top.oldChapter.id)
+                remainingNewKeys.remove(pickedKey)
             } else if (top.score in 45..64 && gap >= 15) {
                 weak[top.oldChapter.id] = top.scanned
-                remainingOld.removeAll { it.id == top.oldChapter.id }
-                remainingNew.removeAll { it.uri == top.scanned.uri && it.relativePath == top.scanned.relativePath }
+                remainingOldIds.remove(top.oldChapter.id)
+                remainingNewKeys.remove(pickedKey)
             } else if (top.score >= 45) {
                 ambiguous += AmbiguousPair(pick.scanned, candidatesForNew.take(3))
-                remainingNew.removeAll { it.uri == pick.scanned.uri && it.relativePath == pick.scanned.relativePath }
+                remainingNewKeys.remove(pickedKey)
             } else {
                 break
             }
@@ -95,8 +107,8 @@ object ChapterMatcher {
             matches = strong,
             weakMatches = weak,
             ambiguous = ambiguous,
-            added = remainingNew.toList(),
-            removed = remainingOld.toList(),
+            added = scanned.filter { newKey(it) in remainingNewKeys },
+            removed = existing.filter { it.id in remainingOldIds },
         )
     }
 
@@ -105,7 +117,9 @@ object ChapterMatcher {
         neu: ScannedChapter,
         allOld: List<Chapter>,
         allNew: List<ScannedChapter>,
-    ): Score? {
+    ): Score? = score(old, neu, MatchStats(allOld, allNew))
+
+    private fun score(old: Chapter, neu: ScannedChapter, stats: MatchStats): Score? {
         if (old.uri == neu.uri) {
             return Score(old, neu, 100, "uri")
         }
@@ -131,24 +145,33 @@ object ChapterMatcher {
             return Score(old, neu, 80, "name+size+duration")
         }
         if (sizeOk && durOk) {
-            val unique = allNew.count {
-                it.fileSize == neu.fileSize && ChapterIdentity.durationSec(it.durationMs) == newDurSec
-            } == 1 && allOld.count {
-                it.fileSize == old.fileSize && ChapterIdentity.durationSec(it.durationMs) == oldDurSec
-            } == 1
+            val unique = stats.newSizeDurationCount[neu.fileSize to newDurSec] == 1 &&
+                stats.oldSizeDurationCount[old.fileSize to oldDurSec] == 1
             if (unique) return Score(old, neu, 70, "size+duration unique")
         }
         if (nameOk && sizeOk) {
-            val unique = allNew.count {
-                it.fileName.equals(neu.fileName, ignoreCase = true) && it.fileSize == neu.fileSize
-            } == 1
+            val unique = stats.newNameSizeCount[neu.fileName.lowercase(Locale.ROOT) to neu.fileSize] == 1
             if (unique) return Score(old, neu, 65, "name+size unique")
         }
         if (nameOk) {
-            val oldUnique = allOld.count { it.fileName.equals(old.fileName, ignoreCase = true) } == 1
-            val newUnique = allNew.count { it.fileName.equals(neu.fileName, ignoreCase = true) } == 1
+            val oldUnique = stats.oldNameCount[old.fileName.lowercase(Locale.ROOT)] == 1
+            val newUnique = stats.newNameCount[neu.fileName.lowercase(Locale.ROOT)] == 1
             if (oldUnique && newUnique) return Score(old, neu, 45, "name unique weak")
         }
         return null
+    }
+
+    private fun newKey(chapter: ScannedChapter): String = "${chapter.uri}\u0000${chapter.relativePath}"
+
+    private class MatchStats(old: List<Chapter>, new: List<ScannedChapter>) {
+        val oldNameCount = old.groupingBy { it.fileName.lowercase(Locale.ROOT) }.eachCount()
+        val newNameCount = new.groupingBy { it.fileName.lowercase(Locale.ROOT) }.eachCount()
+        val oldSizeDurationCount = old.groupingBy {
+            it.fileSize to ChapterIdentity.durationSec(it.durationMs)
+        }.eachCount()
+        val newSizeDurationCount = new.groupingBy {
+            it.fileSize to ChapterIdentity.durationSec(it.durationMs)
+        }.eachCount()
+        val newNameSizeCount = new.groupingBy { it.fileName.lowercase(Locale.ROOT) to it.fileSize }.eachCount()
     }
 }

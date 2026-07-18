@@ -38,20 +38,16 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun refreshAfterRescan(bookId: Long, chapterId: Long?, positionMs: Long, wasPlaying: Boolean) {
-        viewModelScope.launch {
-            playerController.refreshPlaylistAfterRescan(bookId, chapterId, positionMs, wasPlaying)
-        }
-    }
-
     fun togglePlayPause() = playerController.togglePlayPause()
     fun seekTo(ms: Long) = playerController.seekTo(ms)
     fun seekBy(delta: Long) = playerController.seekBy(delta)
     fun nextChapter() = playerController.nextChapter()
     fun previousChapter() = playerController.previousChapter()
     fun setSpeed(speed: Float) = playerController.setSpeed(speed, asBookDefault = true)
+    fun useGlobalSpeed() = playerController.useGlobalSpeed()
     fun setSleepMinutes(minutes: Int) = playerController.setSleepMinutes(minutes)
     fun setSleepEndOfChapter() = playerController.setSleepMode(SleepTimerMode.EndOfChapter)
+    fun extendSleep() = playerController.extendSleep()
     fun clearError() = playerController.clearError()
 
     fun addBookmark() {
@@ -69,4 +65,8 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun clearToast() { _toast.value = null }
+
+    fun showMessage(message: String) {
+        _toast.value = message
+    }
 }

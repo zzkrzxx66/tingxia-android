@@ -1,5 +1,7 @@
 package com.tingxia.app.data.policy
 
+import java.util.Locale
+
 /**
  * SAF persistable-permission release / reauth matching rules.
  * Pure so unit tests cover production code, not a copy of it.
@@ -34,8 +36,8 @@ object SafPermissionPolicy {
     ): Boolean {
         if (oldRootUri == newRootUri) return true
         if (oldFileNames.isEmpty()) return newFileNames.isNotEmpty()
-        val oldSet = oldFileNames.map { it.lowercase() }.toSet()
-        val newSet = newFileNames.map { it.lowercase() }.toSet()
+        val oldSet = oldFileNames.map { it.lowercase(Locale.ROOT) }.toSet()
+        val newSet = newFileNames.map { it.lowercase(Locale.ROOT) }.toSet()
         val overlap = oldSet.intersect(newSet).size
         return overlap.toFloat() / oldSet.size >= minOverlapRatio
     }

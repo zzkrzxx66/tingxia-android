@@ -127,4 +127,33 @@ class ChapterMatcherTest {
         assertTrue(rejected.ambiguous.isEmpty())
         assertEquals(listOf("u3"), rejected.added.map { it.uri })
     }
+
+    @Test(timeout = 5_000)
+    fun largeBookMatchingDoesNotRecomputeTheFullMatrixPerChapter() {
+        val count = 400
+        val old = (1..count).map { index ->
+            ch(
+                id = index.toLong(),
+                fileName = "%04d.mp3".format(index),
+                uri = "content://doc/$index",
+                size = 10_000L + index,
+                duration = 60_000L + index,
+            )
+        }
+        val scanned = (1..count).map { index ->
+            sc(
+                fileName = "%04d.mp3".format(index),
+                uri = "content://doc/$index",
+                size = 10_000L + index,
+                duration = 60_000L + index,
+                index = index - 1,
+            )
+        }
+
+        val result = ChapterMatcher.match(old, scanned)
+
+        assertEquals(count, result.matches.size)
+        assertTrue(result.added.isEmpty())
+        assertTrue(result.removed.isEmpty())
+    }
 }

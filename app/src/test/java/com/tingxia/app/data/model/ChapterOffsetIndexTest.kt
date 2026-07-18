@@ -14,8 +14,8 @@ class ChapterOffsetIndexTest {
     fun listenedIncludesPrevious() {
         val idx = ChapterOffsetIndex(chapters())
         assertEquals(6000L, idx.totalDurationMs)
-        assertEquals(1500L, idx.listenedDurationMs(2, 500))
-        assertEquals(3100L, idx.listenedDurationMs(3, 100))
-        assertEquals(1000L, idx.listenedDurationMs(1, 99999))
+        assertEquals(1500L, idx.linearPositionMs(2, 500))
+        assertEquals(3100L, idx.linearPositionMs(3, 100))
+        assertEquals(1000L, idx.linearPositionMs(1, 99999))
     }
 }

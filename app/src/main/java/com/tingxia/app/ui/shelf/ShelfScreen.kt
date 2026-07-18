@@ -166,6 +166,7 @@ fun ShelfScreen(
                                 ShelfFilter.ALL to "全部",
                                 ShelfFilter.NOT_STARTED to "未开始",
                                 ShelfFilter.IN_PROGRESS to "收听中",
+                                ShelfFilter.COMPLETED to "已完成",
                                 ShelfFilter.NEEDS_REAUTH to "需重新授权",
                             ).forEach { (value, label) ->
                                 DropdownMenuItem(
@@ -289,7 +290,11 @@ fun ShelfScreen(
                                 Text("正在导入", style = MaterialTheme.typography.titleSmall)
                                 importProgress?.let {
                                     Text(
-                                        "${it.scannedFiles} · ${it.currentName}",
+                                        buildString {
+                                            append(it.scannedFiles)
+                                            if (it.totalFiles > 0) append(" / ${it.totalFiles}")
+                                            append(" · ${it.currentName}")
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,

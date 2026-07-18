@@ -56,8 +56,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.tingxia.app.player.PlaybackSpeeds
 import com.tingxia.app.player.PlayerUiState
+import com.tingxia.app.R
 import com.tingxia.app.player.SeekOffsets
 import com.tingxia.app.player.SleepOptions
 import com.tingxia.app.ui.components.BookCover
@@ -74,8 +76,10 @@ fun FullPlayerScreen(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSpeed: (Float) -> Unit,
+    onUseGlobalSpeed: () -> Unit = {},
     onSleep: (Int) -> Unit,
     onSleepEndOfChapter: () -> Unit = {},
+    onExtendSleep: () -> Unit = {},
     onAddBookmark: () -> Unit = {},
 ) {
     var scrubbing by remember { mutableStateOf(false) }
@@ -239,6 +243,20 @@ fun FullPlayerScreen(
                         leadingIcon = { Icon(Icons.Default.Speed, contentDescription = null) },
                     )
                     DropdownMenu(expanded = speedMenu, onDismissRequest = { speedMenu = false }) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (state.usesBookSpeedOverride) R.string.use_global_speed
+                                        else R.string.using_global_speed,
+                                    ),
+                                )
+                            },
+                            onClick = {
+                                onUseGlobalSpeed()
+                                speedMenu = false
+                            },
+                        )
                         PlaybackSpeeds.ALL.forEach { s ->
                             DropdownMenuItem(
                                 text = { Text(PlaybackSpeeds.label(s)) },
@@ -258,7 +276,7 @@ fun FullPlayerScreen(
                             val s = ((ms % 60_000) / 1000).toInt()
                             "%d:%02d".format(m, s)
                         }
-                        state.sleepMode.toString().contains("EndOfChapter") -> "本章结束"
+                        state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter -> "本章结束"
                         else -> "睡眠"
                     }
                     AssistChip(
@@ -283,6 +301,15 @@ fun FullPlayerScreen(
                                 sleepMenu = false
                             },
                         )
+                        if (state.sleepRemainingMs != null) {
+                            DropdownMenuItem(
+                                text = { Text("延长 15 分钟") },
+                                onClick = {
+                                    onExtendSleep()
+                                    sleepMenu = false
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("自定义…") },
                             onClick = {

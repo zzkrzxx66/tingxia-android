@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -39,7 +40,7 @@ fun BookCover(
         modifier.aspectRatio(1f).clip(shape)
     }
     Box(
-        boxMod.then(
+        boxMod.clearAndSetSemantics { }.then(
             Modifier.border(
                 width = 0.5.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
@@ -56,7 +57,7 @@ fun BookCover(
         if (model != null) {
             AsyncImage(
                 model = model,
-                contentDescription = title,
+                contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )

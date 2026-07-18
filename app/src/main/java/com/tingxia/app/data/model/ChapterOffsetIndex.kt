@@ -28,13 +28,16 @@ class ChapterOffsetIndex(
         totalDurationMs = acc
     }
 
-    fun listenedDurationMs(chapterId: Long?, positionMs: Long): Long {
+    fun linearPositionMs(chapterId: Long?, positionMs: Long): Long {
         if (chapterId == null) return positionMs.coerceAtLeast(0L)
         val start = startOffsetById[chapterId] ?: return positionMs.coerceAtLeast(0L)
         val dur = durationById[chapterId] ?: 0L
         val pos = if (dur > 0L) positionMs.coerceIn(0L, dur) else positionMs.coerceAtLeast(0L)
         return start + pos
     }
+
+    @Deprecated("Use linearPositionMs", ReplaceWith("linearPositionMs(chapterId, positionMs)"))
+    fun listenedDurationMs(chapterId: Long?, positionMs: Long): Long = linearPositionMs(chapterId, positionMs)
 
     fun contains(chapterId: Long): Boolean = startOffsetById.containsKey(chapterId)
 }

@@ -25,6 +25,7 @@ class ProgressWriter(
     private val writerDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val finalMaxAttempts: Int = 3,
     private val retryDelayMs: Long = 50,
+    private val onWriteFailure: (Throwable) -> Unit = {},
 ) {
     data class Write(
         val bookId: Long,
@@ -50,7 +51,8 @@ class ProgressWriter(
                 write.ack?.trySend(false)
                 write.ack?.close()
                 throw CancellationException()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                onWriteFailure(e)
                 false
             }
             write.ack?.trySend(ok)
@@ -67,6 +69,37 @@ class ProgressWriter(
                 positionMs = positionMs.coerceAtLeast(0L),
             ),
         )
+    }
+
+    /**
+     * Saves [bookId]/[chapterId] after every item already queued, without closing
+     * the writer. Library mutations use this as a barrier before changing chapters.
+     */
+    suspend fun flushWithCurrent(
+        bookId: Long?,
+        chapterId: Long?,
+        positionMs: Long,
+        timeoutMs: Long = 1_500,
+    ): Boolean {
+        if (closed.get()) return false
+        if (bookId == null || chapterId == null) return true
+        val ack = Channel<Boolean>(1)
+        val sent = channel.trySend(
+            Write(
+                bookId = bookId,
+                chapterId = chapterId,
+                positionMs = positionMs.coerceAtLeast(0L),
+                isFinal = true,
+                ack = ack,
+            ),
+        ).isSuccess
+        if (!sent) {
+            ack.close()
+            return false
+        }
+        return withTimeoutOrNull(timeoutMs) {
+            ack.receiveCatching().getOrNull() ?: false
+        } ?: false
     }
 
     /**

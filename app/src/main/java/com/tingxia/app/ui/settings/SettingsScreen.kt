@@ -20,7 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
@@ -34,9 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.BuildConfig
+import com.tingxia.app.R
+import com.tingxia.app.data.repo.ThemeMode
 import com.tingxia.app.player.PlaybackSpeeds
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +48,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val dark by viewModel.darkTheme.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val speed by viewModel.defaultSpeed.collectAsStateWithLifecycle()
     var speedExpanded by remember { mutableStateOf(false) }
 
@@ -53,10 +56,10 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("设置", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -72,23 +75,27 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
-            Text("外观", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.appearance), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("深色主题", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = dark != false,
-                    onCheckedChange = { viewModel.setDarkTheme(it) },
-                )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                listOf(
+                    ThemeMode.SYSTEM to stringResource(R.string.theme_system),
+                    ThemeMode.LIGHT to stringResource(R.string.theme_light),
+                    ThemeMode.DARK to stringResource(R.string.theme_dark),
+                ).forEach { (mode, label) ->
+                    FilterChip(
+                        selected = themeMode == mode,
+                        onClick = { viewModel.setThemeMode(mode) },
+                        label = { Text(label) },
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
             }
 
             Spacer(Modifier.height(28.dp))
-            Text("播放", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.playback), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(8.dp))
-            Text("默认倍速", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.default_speed), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(4.dp))
             ExposedDropdownMenuBox(
                 expanded = speedExpanded,
@@ -120,23 +127,23 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            Text("后台播放提示", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.about_battery), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
-                "部分国产系统会限制后台。若锁屏后中断，请在系统设置中为听匣关闭电池优化，并允许自启动/关联启动（按需）。",
+                stringResource(R.string.about_battery_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Spacer(Modifier.height(24.dp))
-            Text("关于", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.about), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
-                "听匣 · 本地有声书播放器",
+                stringResource(R.string.app_description),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -3,6 +3,7 @@ package com.tingxia.app.player
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -13,13 +14,17 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import com.tingxia.app.MainActivity
+import com.tingxia.app.R
+import com.tingxia.app.TingXiaApp
 import com.tingxia.app.data.repo.BookRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -52,8 +57,10 @@ class PlaybackService : MediaSessionService() {
 
     private var sleepMode: SleepTimerMode = SleepTimerMode.Off
     private var sleepTargetChapterId: Long? = null
+    private var sleepEndElapsedMs: Long? = null
     private var originalVolume: Float? = null
     private var fadeJob: Job? = null
+    private var currentAutoPlayNext: Boolean = true
 
     private var lastBookId: Long? = null
     private var lastChapterId: Long? = null
@@ -61,11 +68,18 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(TingXiaApp.PLAYBACK_CHANNEL_ID)
+                .setChannelName(R.string.notification_channel_playback)
+                .build(),
+        )
         progressWriter = ProgressWriter(
             scope = serviceScope,
             save = { bookId, chapterId, positionMs ->
                 bookRepository.saveProgress(bookId, chapterId, positionMs)
             },
+            onWriteFailure = { error -> Log.w(TAG, "Progress write failed", error) },
         )
 
         val player = ExoPlayer.Builder(this)
@@ -94,22 +108,45 @@ class PlaybackService : MediaSessionService() {
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo,
             ): MediaSession.ConnectionResult {
-                val isTrusted = controller.packageName == packageName
+                val isOwnApp = controller.packageName == packageName
+                val isTrustedSystemController = controller.isTrusted ||
+                    session.isMediaNotificationController(controller) ||
+                    session.isAutomotiveController(controller) ||
+                    session.isAutoCompanionController(controller)
+                if (!isOwnApp && !isTrustedSystemController) {
+                    return MediaSession.ConnectionResult.reject()
+                }
                 val sessionCommands = SessionCommands.Builder().apply {
-                    if (isTrusted) {
+                    if (isOwnApp) {
                         add(SessionCommand(CustomCommands.SEEK_BACK_15, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SEEK_FWD_15, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SEEK_BACK_30, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SEEK_FWD_30, Bundle.EMPTY))
-                        add(SessionCommand(CustomCommands.SET_SPEED, Bundle.EMPTY))
-                        add(SessionCommand(CustomCommands.SET_SLEEP, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SET_SLEEP_MODE, Bundle.EMPTY))
                         add(SessionCommand(CustomCommands.SET_BOOK_SPEED, Bundle.EMPTY))
+                        add(SessionCommand(CustomCommands.SET_AUTO_PLAY_NEXT, Bundle.EMPTY))
+                        add(SessionCommand(CustomCommands.PREPARE_LIBRARY_MUTATION, Bundle.EMPTY))
                     }
                 }.build()
-                val playerCommands = Player.Commands.Builder()
-                    .addAllCommands()
-                    .build()
+                val playerCommands = if (isOwnApp) {
+                    Player.Commands.Builder().addAllCommands().build()
+                } else {
+                    // External trusted surfaces may control transport, but must not
+                    // replace the queue or inject arbitrary media items.
+                    Player.Commands.Builder()
+                        .add(Player.COMMAND_PLAY_PAUSE)
+                        .add(Player.COMMAND_PREPARE)
+                        .add(Player.COMMAND_STOP)
+                        .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                        .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                        .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                        .add(Player.COMMAND_SEEK_BACK)
+                        .add(Player.COMMAND_SEEK_FORWARD)
+                        .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
+                        .add(Player.COMMAND_GET_TIMELINE)
+                        .add(Player.COMMAND_GET_METADATA)
+                        .build()
+                }
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(sessionCommands)
                     .setAvailablePlayerCommands(playerCommands)
@@ -135,13 +172,22 @@ class PlaybackService : MediaSessionService() {
                     CustomCommands.SEEK_BACK_30 ->
                         p.seekTo((p.currentPosition - SeekOffsets.LONG_MS).coerceAtLeast(0))
                     CustomCommands.SEEK_FWD_30 -> seekFwd(p, SeekOffsets.LONG_MS)
-                    CustomCommands.SET_SPEED -> p.setPlaybackSpeed(args.getFloat("speed", 1f))
                     CustomCommands.SET_BOOK_SPEED -> {
                         val speed = args.getFloat("speed", 1f)
-                        p.setPlaybackSpeed(speed)
+                        if (speed in PlaybackSpeeds.ALL) p.setPlaybackSpeed(speed)
                     }
-                    CustomCommands.SET_SLEEP -> scheduleSleep(p, args.getInt("minutes", 0))
+                    CustomCommands.SET_AUTO_PLAY_NEXT -> {
+                        val requestedBookId = args.getLong("bookId", -1L)
+                        val enabled = args.getBoolean("enabled", true)
+                        if (requestedBookId == lastBookId) {
+                            currentAutoPlayNext = enabled
+                            updatePauseAtEnd(p)
+                        }
+                    }
                     CustomCommands.SET_SLEEP_MODE -> applySleepMode(p, args)
+                    CustomCommands.PREPARE_LIBRARY_MUTATION -> {
+                        return prepareLibraryMutation(p, args)
+                    }
                 }
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
@@ -153,6 +199,8 @@ class PlaybackService : MediaSessionService() {
             .setId("tingxia_playback")
             .build()
 
+        publishRuntimeState()
+
         startProgressPersistence(player)
     }
 
@@ -160,14 +208,6 @@ class PlaybackService : MediaSessionService() {
         val dur = player.duration
         val target = player.currentPosition + delta
         if (dur > 0) player.seekTo(target.coerceAtMost(dur)) else player.seekTo(target)
-    }
-
-    private fun scheduleSleep(player: Player, minutes: Int) {
-        if (minutes <= 0) {
-            clearSleep(restoreVolume = true)
-        } else {
-            scheduleSleepMs(player, minutes * 60_000L)
-        }
     }
 
     private fun startProgressPersistence(player: Player) {
@@ -186,21 +226,43 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                val stopAtBoundary = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
-                    (sleepMode is SleepTimerMode.EndOfChapter || !autoPlayNext(mediaItem))
-                if (stopAtBoundary) {
-                    // AUTO already advanced; step back and stop at the completed chapter.
-                    if (player.hasPreviousMediaItem()) {
-                        player.seekToPreviousMediaItem()
-                        val dur = player.duration
-                        if (dur > 0) player.seekTo(dur)
+                val completedChapterId = lastChapterId
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && completedChapterId != null) {
+                    serviceScope.launch(Dispatchers.IO) {
+                        bookRepository.setChapterCompleted(completedChapterId, true)
                     }
-                    player.pause()
-                    if (sleepMode is SleepTimerMode.EndOfChapter) clearSleep(restoreVolume = true)
-                } else if (sleepMode is SleepTimerMode.EndOfChapter) {
+                }
+                currentAutoPlayNext = autoPlayNext(mediaItem)
+                updatePauseAtEnd(player)
+                if (sleepMode is SleepTimerMode.EndOfChapter) {
                     sleepTargetChapterId = parseIds(mediaItem)?.second ?: sleepTargetChapterId
+                    publishRuntimeState()
                 }
                 serviceScope.launch { handleEnter(player, mediaItem) }
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady &&
+                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
+                ) {
+                    lastChapterId?.let { completedChapterId ->
+                        serviceScope.launch(Dispatchers.IO) {
+                            bookRepository.setChapterCompleted(completedChapterId, true)
+                        }
+                    }
+                    if (sleepMode is SleepTimerMode.EndOfChapter) clearSleep(restoreVolume = true)
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    lastChapterId?.let { completedChapterId ->
+                        serviceScope.launch(Dispatchers.IO) {
+                            bookRepository.setChapterCompleted(completedChapterId, true)
+                        }
+                    }
+                    if (sleepMode is SleepTimerMode.EndOfChapter) clearSleep(restoreVolume = true)
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -258,9 +320,11 @@ class PlaybackService : MediaSessionService() {
                 sleepJob?.cancel()
                 restoreVolumeIfNeeded(player)
                 sleepMode = SleepTimerMode.EndOfChapter
+                sleepEndElapsedMs = null
                 val ch = args.getLong("chapterId", -1L).takeIf { it > 0 } ?: lastChapterId
                 sleepTargetChapterId = ch
-                // Pause auto-advance by handling AUTO transitions.
+                updatePauseAtEnd(player)
+                publishRuntimeState()
             }
             "duration" -> {
                 val durationMs = args.getLong("durationMs", 0L)
@@ -280,6 +344,9 @@ class PlaybackService : MediaSessionService() {
         }
         sleepMode = SleepTimerMode.AfterDuration(durationMs)
         sleepTargetChapterId = null
+        sleepEndElapsedMs = SystemClock.elapsedRealtime() + durationMs
+        updatePauseAtEnd(player)
+        publishRuntimeState()
         val fadeStart = (durationMs - 30_000L).coerceAtLeast(0L)
         sleepJob = serviceScope.launch {
             if (fadeStart > 0) delay(fadeStart)
@@ -328,9 +395,80 @@ class PlaybackService : MediaSessionService() {
         fadeJob = null
         sleepMode = SleepTimerMode.Off
         sleepTargetChapterId = null
+        sleepEndElapsedMs = null
         if (restoreVolume) {
             mediaSession?.player?.let { restoreVolumeIfNeeded(it) }
         }
+        mediaSession?.player?.let { updatePauseAtEnd(it) }
+        publishRuntimeState()
+    }
+
+    private fun updatePauseAtEnd(player: Player) {
+        (player as? ExoPlayer)?.setPauseAtEndOfMediaItems(
+            sleepMode is SleepTimerMode.EndOfChapter || !currentAutoPlayNext,
+        )
+    }
+
+    private fun publishRuntimeState() {
+        val mode = when (sleepMode) {
+            SleepTimerMode.Off -> "off"
+            SleepTimerMode.EndOfChapter -> "end_of_chapter"
+            is SleepTimerMode.AfterDuration -> "duration"
+        }
+        mediaSession?.setSessionExtras(
+            Bundle().apply {
+                putString(PlaybackStateKeys.SLEEP_MODE, mode)
+                putLong(PlaybackStateKeys.SLEEP_END_ELAPSED_MS, sleepEndElapsedMs ?: -1L)
+                putLong(PlaybackStateKeys.SLEEP_TARGET_CHAPTER_ID, sleepTargetChapterId ?: -1L)
+            },
+        )
+    }
+
+    private fun prepareLibraryMutation(
+        player: Player,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        val future = SettableFuture.create<SessionResult>()
+        val requestedBookId = args.getLong(PlaybackStateKeys.MUTATION_BOOK_ID, -1L)
+        val clearPlaylist = args.getBoolean(PlaybackStateKeys.MUTATION_CLEAR_PLAYLIST, false)
+        val ids = parseIds(player.currentMediaItem)
+        val wasActive = ids?.first == requestedBookId
+        val wasPlaying = wasActive && player.isPlaying
+        val chapterId = if (wasActive) ids?.second else null
+        val positionMs = if (wasActive) player.currentPosition.coerceAtLeast(0L) else 0L
+        if (wasActive) player.pause()
+        serviceScope.launch {
+            val saved = if (wasActive) {
+                progressWriter?.flushWithCurrent(requestedBookId, chapterId, positionMs) ?: false
+            } else {
+                true
+            }
+            if (saved && wasActive && clearPlaylist) {
+                player.clearMediaItems()
+                lastBookId = null
+                lastChapterId = null
+                lastPositionMs = 0L
+                clearSleep(restoreVolume = true)
+            }
+            val resultExtras = Bundle().apply {
+                putBoolean(PlaybackStateKeys.MUTATION_WAS_ACTIVE, wasActive)
+                putBoolean(PlaybackStateKeys.MUTATION_WAS_PLAYING, wasPlaying)
+                putLong(PlaybackStateKeys.MUTATION_CHAPTER_ID, chapterId ?: -1L)
+                putLong(PlaybackStateKeys.MUTATION_POSITION_MS, positionMs)
+            }
+            if (!saved && wasPlaying) player.play()
+            future.set(
+                if (saved) {
+                    SessionResult(SessionResult.RESULT_SUCCESS, resultExtras)
+                } else {
+                    SessionResult(
+                        SessionError(SessionError.ERROR_IO, "无法保存当前播放进度"),
+                        resultExtras,
+                    )
+                },
+            )
+        }
+        return future
     }
 
     private fun parseIds(item: MediaItem?): Pair<Long, Long>? {

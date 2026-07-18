@@ -25,4 +25,12 @@ class NaturalSortTest {
         assertEquals("第1章", FolderScanner.stripExtension("第1章.mp3"))
         assertEquals("noext", FolderScanner.stripExtension("noext"))
     }
+
+
+    @Test
+    fun numericTiesHaveDeterministicRawPathFallback() {
+        val input = listOf("02.mp3", "2.mp3", "002.mp3")
+        val sorted = input.sortedWith(FolderScanner::naturalCompare)
+        assertEquals(listOf("002.mp3", "02.mp3", "2.mp3"), sorted)
+    }
 }

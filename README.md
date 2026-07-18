@@ -9,6 +9,16 @@
 - **定位**：本地文件夹导入 → 章节连播 → 后台播放 → 断点续听 → 倍速 / 睡眠定时
 - **第一版不做**：账号、云同步、在线书城
 
+## 当前能力
+
+- 递归扫描本地目录，受控并发读取章节元数据
+- 增量重扫与重新授权，保留章节身份、进度、书签和自定义标题
+- 后台播放、锁屏/蓝牙控制、断点续听和逐书倍速
+- 睡眠定时、本章结束暂停、渐弱停止
+- 书架搜索/排序/完成筛选，章节完成状态与批量标记
+- 书籍信息、章节标题和书签备注管理
+- 浅色、深色、跟随系统主题
+
 完整方案见 [方案.md](./方案.md)。
 
 ## 技术栈
@@ -27,6 +37,7 @@ Kotlin · Jetpack Compose · Hilt · Room · Media3 (ExoPlayer) · DataStore · 
 产物：`app/build/outputs/apk/debug/app-debug.apk`
 
 GitHub Actions：推送后自动 `assembleDebug` 并上传 APK Artifact。
+CI 同时运行 JVM 测试、Lint、Release/R8 构建，并在 API 26/35 模拟器验证 Room 迁移与数据库约束。
 
 ## 模块结构
 

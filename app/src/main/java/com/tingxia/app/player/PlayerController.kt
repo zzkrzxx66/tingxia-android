@@ -3,6 +3,7 @@ package com.tingxia.app.player
 import android.content.ComponentName
 import android.content.Context
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.core.os.bundleOf
 import androidx.media3.common.MediaItem
@@ -50,12 +51,20 @@ data class PlayerUiState(
     val durationMs: Long = 0L,
     val bufferedMs: Long = 0L,
     val speed: Float = 1.0f,
+    val usesBookSpeedOverride: Boolean = false,
     val sleepMode: SleepTimerMode = SleepTimerMode.Off,
     val sleepRemainingMs: Long? = null,
     val sleepTargetChapterId: Long? = null,
     val coverPath: String? = null,
     val needsReauth: Boolean = false,
     val lastError: String? = null,
+)
+
+data class LibraryMutationSnapshot(
+    val wasActive: Boolean = false,
+    val wasPlaying: Boolean = false,
+    val chapterId: Long? = null,
+    val positionMs: Long = 0L,
 )
 
 @OptIn(UnstableApi::class)
@@ -124,10 +133,24 @@ class PlayerController @Inject constructor(
         }
     }
 
+    private val controllerListener = object : MediaController.Listener {
+        override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+            syncRuntimeState(extras)
+        }
+
+        override fun onDisconnected(controller: MediaController) {
+            stopProgressLoop()
+            sleepJob?.cancel()
+            _state.value = _state.value.copy(isConnected = false)
+        }
+    }
+
     fun connect() {
         if (controller != null || controllerFuture != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(context, token).buildAsync()
+        controllerFuture = MediaController.Builder(context, token)
+            .setListener(controllerListener)
+            .buildAsync()
         controllerFuture?.addListener({
             try {
                 val c = controllerFuture?.get()
@@ -136,16 +159,22 @@ class PlayerController @Inject constructor(
                 _state.value = _state.value.copy(isConnected = c != null)
                 if (c != null) {
                     syncFromController(c)
+                    syncRuntimeState(c.sessionExtras)
                     if (c.isPlaying) startProgressLoop()
                 }
-            } catch (_: Exception) {
-                _state.value = _state.value.copy(isConnected = false)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isConnected = false,
+                    lastError = e.message ?: "无法连接播放服务",
+                )
             }
         }, MoreExecutors.directExecutor())
     }
 
     fun disconnect() {
         stopProgressLoop()
+        sleepJob?.cancel()
+        sleepJob = null
         controller?.removeListener(listener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controller = null
@@ -197,6 +226,7 @@ class PlayerController @Inject constructor(
             coverPath = book.coverPath,
             chapterCount = chapters.size,
             speed = speed,
+            usesBookSpeedOverride = book.playbackSpeed != null,
             needsReauth = false,
             lastError = null,
         )
@@ -226,6 +256,36 @@ class PlayerController @Inject constructor(
         if (wasPlaying) c.play() else c.pause()
         _state.value = _state.value.copy(chapterCount = chapters.size)
         updateFromMediaItem(c.currentMediaItem)
+    }
+
+    /** Flushes Service progress before chapters are changed or a book is removed. */
+    suspend fun prepareLibraryMutation(
+        bookId: Long,
+        clearPlaylist: Boolean = false,
+    ): LibraryMutationSnapshot {
+        ensureConnected()
+        val c = controller ?: return LibraryMutationSnapshot()
+        val result = c.sendCustomCommand(
+            SessionCommand(CustomCommands.PREPARE_LIBRARY_MUTATION, Bundle.EMPTY),
+            bundleOf(
+                PlaybackStateKeys.MUTATION_BOOK_ID to bookId,
+                PlaybackStateKeys.MUTATION_CLEAR_PLAYLIST to clearPlaylist,
+            ),
+        ).awaitResult()
+        if (result.resultCode != androidx.media3.session.SessionResult.RESULT_SUCCESS) {
+            error("无法保存当前播放进度，请稍后重试")
+        }
+        val extras = result.extras
+        val snapshot = LibraryMutationSnapshot(
+            wasActive = extras.getBoolean(PlaybackStateKeys.MUTATION_WAS_ACTIVE, false),
+            wasPlaying = extras.getBoolean(PlaybackStateKeys.MUTATION_WAS_PLAYING, false),
+            chapterId = extras.getLong(PlaybackStateKeys.MUTATION_CHAPTER_ID, -1L).takeIf { it > 0L },
+            positionMs = extras.getLong(PlaybackStateKeys.MUTATION_POSITION_MS, 0L),
+        )
+        if (clearPlaylist && snapshot.wasActive) {
+            _state.value = PlayerUiState(isConnected = true)
+        }
+        return snapshot
     }
 
     fun play() = controller?.play()
@@ -263,12 +323,17 @@ class PlayerController @Inject constructor(
     }
 
     fun setSpeed(speed: Float, asBookDefault: Boolean = true) {
+        require(speed in PlaybackSpeeds.ALL) { "不支持的播放倍速" }
         controller?.setPlaybackSpeed(speed)
-        _state.value = _state.value.copy(speed = speed)
+        _state.value = _state.value.copy(
+            speed = speed,
+            usesBookSpeedOverride = asBookDefault && _state.value.bookId != null,
+        )
         val bookId = _state.value.bookId
         scope.launch {
             if (asBookDefault && bookId != null) {
                 bookRepository.setBookPlaybackSpeed(bookId, speed)
+                refreshQueueMetadata(bookId)
             } else {
                 preferences.setDefaultSpeed(speed)
             }
@@ -280,6 +345,49 @@ class PlayerController @Inject constructor(
                 args,
             )
         }
+    }
+
+    fun useGlobalSpeed() {
+        val bookId = _state.value.bookId ?: return
+        scope.launch {
+            bookRepository.setBookPlaybackSpeed(bookId, null)
+            val speed = preferences.defaultSpeed.first()
+            controller?.setPlaybackSpeed(speed)
+            _state.value = _state.value.copy(speed = speed, usesBookSpeedOverride = false)
+            refreshQueueMetadata(bookId)
+        }
+    }
+
+    suspend fun setAutoPlayNext(bookId: Long, enabled: Boolean) {
+        ensureConnected()
+        val c = controller
+        bookRepository.setAutoPlayNext(bookId, enabled)
+        if (c == null || _state.value.bookId != bookId) {
+            return
+        }
+        val result = c.sendCustomCommand(
+            SessionCommand(CustomCommands.SET_AUTO_PLAY_NEXT, Bundle.EMPTY),
+            bundleOf("bookId" to bookId, "enabled" to enabled),
+        ).awaitResult()
+        if (result.resultCode != androidx.media3.session.SessionResult.RESULT_SUCCESS) {
+            error("更新连播设置失败")
+        }
+        refreshQueueMetadata(bookId)
+    }
+
+    suspend fun refreshQueueMetadata(bookId: Long) {
+        if (_state.value.bookId != bookId) return
+        val c = controller ?: return
+        val book = bookRepository.getBook(bookId) ?: return
+        val chapters = bookRepository.getChapters(bookId)
+        if (chapters.isEmpty() || c.mediaItemCount != chapters.size) return
+        c.replaceMediaItems(0, c.mediaItemCount, chapters.map { it.toMediaItem(book, chapters.size) })
+        _state.value = _state.value.copy(
+            bookTitle = book.title,
+            coverPath = book.coverPath,
+            usesBookSpeedOverride = book.playbackSpeed != null,
+        )
+        updateFromMediaItem(c.currentMediaItem)
     }
 
     fun setSleepMinutes(minutes: Int) {
@@ -317,7 +425,7 @@ class PlayerController @Inject constructor(
         )
         sleepJob?.cancel()
         if (mode is SleepTimerMode.AfterDuration) {
-            startSleepTicker(mode.durationMs)
+            startSleepTicker(SystemClock.elapsedRealtime() + mode.durationMs)
         }
     }
 
@@ -333,12 +441,11 @@ class PlayerController @Inject constructor(
         _state.value = _state.value.copy(lastError = null)
     }
 
-    private fun startSleepTicker(totalMs: Long) {
+    private fun startSleepTicker(endElapsedMs: Long) {
         sleepJob?.cancel()
-        val endAt = System.currentTimeMillis() + totalMs
         sleepJob = scope.launch {
             while (isActive) {
-                val left = endAt - System.currentTimeMillis()
+                val left = endElapsedMs - SystemClock.elapsedRealtime()
                 if (left <= 0) {
                     _state.value = _state.value.copy(
                         sleepRemainingMs = null,
@@ -370,10 +477,15 @@ class PlayerController @Inject constructor(
                         }
                     }, MoreExecutors.directExecutor())
                 }
-                controller = c
-                c.addListener(listener)
-                _state.value = _state.value.copy(isConnected = true)
-            } catch (_: Exception) {
+                if (controller == null) {
+                    controller = c
+                    c.addListener(listener)
+                    syncFromController(c)
+                    syncRuntimeState(c.sessionExtras)
+                    _state.value = _state.value.copy(isConnected = true)
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(lastError = e.message ?: "无法连接播放服务")
             }
         }
     }
@@ -388,6 +500,33 @@ class PlayerController @Inject constructor(
         updateFromMediaItem(c.currentMediaItem)
     }
 
+    private fun syncRuntimeState(extras: Bundle) {
+        val mode = when (extras.getString(PlaybackStateKeys.SLEEP_MODE, "off")) {
+            "duration" -> {
+                val endAt = extras.getLong(PlaybackStateKeys.SLEEP_END_ELAPSED_MS, -1L)
+                val remaining = (endAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                SleepTimerMode.AfterDuration(remaining)
+            }
+            "end_of_chapter" -> SleepTimerMode.EndOfChapter
+            else -> SleepTimerMode.Off
+        }
+        val endAt = extras.getLong(PlaybackStateKeys.SLEEP_END_ELAPSED_MS, -1L)
+        val target = extras.getLong(PlaybackStateKeys.SLEEP_TARGET_CHAPTER_ID, -1L).takeIf { it > 0L }
+        _state.value = _state.value.copy(
+            sleepMode = mode,
+            sleepRemainingMs = if (mode is SleepTimerMode.AfterDuration) {
+                (endAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+            } else {
+                null
+            },
+            sleepTargetChapterId = target,
+        )
+        sleepJob?.cancel()
+        if (mode is SleepTimerMode.AfterDuration && endAt > SystemClock.elapsedRealtime()) {
+            startSleepTicker(endAt)
+        }
+    }
+
     private fun updateFromMediaItem(item: MediaItem?) {
         if (item == null) return
         val extras = item.mediaMetadata.extras
@@ -397,6 +536,8 @@ class PlayerController @Inject constructor(
             ?: item.mediaId.substringAfter('_', missingDelimiterValue = "").toLongOrNull()
         val index = extras?.getInt(KEY_CHAPTER_INDEX) ?: 0
         val count = extras?.getInt(KEY_CHAPTER_COUNT) ?: _state.value.chapterCount
+        val usesBookSpeedOverride = extras?.getBoolean(KEY_BOOK_SPEED_OVERRIDE)
+            ?: _state.value.usesBookSpeedOverride
         _state.value = _state.value.copy(
             bookId = bookId ?: _state.value.bookId,
             bookTitle = item.mediaMetadata.albumTitle?.toString() ?: _state.value.bookTitle,
@@ -404,6 +545,7 @@ class PlayerController @Inject constructor(
             chapterTitle = item.mediaMetadata.title?.toString(),
             chapterIndex = index,
             chapterCount = count,
+            usesBookSpeedOverride = usesBookSpeedOverride,
             coverPath = item.mediaMetadata.artworkUri?.toString() ?: _state.value.coverPath,
             durationMs = controller?.duration?.coerceAtLeast(0L) ?: _state.value.durationMs,
             positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
@@ -439,8 +581,24 @@ class PlayerController @Inject constructor(
         const val KEY_CHAPTER_INDEX = "chapter_index"
         const val KEY_CHAPTER_COUNT = "chapter_count"
         const val KEY_AUTO_PLAY_NEXT = "auto_play_next"
+        const val KEY_BOOK_SPEED_OVERRIDE = "book_speed_override"
     }
 }
+
+private suspend fun ListenableFuture<androidx.media3.session.SessionResult>.awaitResult(): androidx.media3.session.SessionResult =
+    suspendCancellableCoroutine { continuation ->
+        addListener(
+            {
+                try {
+                    continuation.resume(get())
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            },
+            MoreExecutors.directExecutor(),
+        )
+        continuation.invokeOnCancellation { cancel(true) }
+    }
 
 fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
     val extras = bundleOf(
@@ -449,6 +607,7 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         PlayerController.KEY_CHAPTER_INDEX to index,
         PlayerController.KEY_CHAPTER_COUNT to chapterCount,
         PlayerController.KEY_AUTO_PLAY_NEXT to book.autoPlayNext,
+        PlayerController.KEY_BOOK_SPEED_OVERRIDE to (book.playbackSpeed != null),
     )
     val metadata = MediaMetadata.Builder()
         .setTitle(displayTitle)

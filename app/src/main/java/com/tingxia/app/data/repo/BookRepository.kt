@@ -34,6 +34,8 @@ data class RescanPreview(
     val bookId: Long,
     val plan: RescanPlanner.Plan,
     val affectedBookmarkCount: Int,
+    val baseChapterFingerprint: String,
+    val scannedCoverPath: String?,
 )
 
 data class RescanApplyResult(
@@ -45,6 +47,8 @@ data class RescanApplyResult(
 )
 
 class ReauthDecisionRequiredException(val preview: RescanPreview) : Exception("请确认重新授权后的章节对应关系")
+class PersistablePermissionException : Exception("无法保存该目录的长期读取权限，请尝试其他文件管理器或目录")
+class StaleRescanPreviewException : Exception("目录内容已发生变化，请重新扫描后再应用")
 
 @Singleton
 class BookRepository @Inject constructor(
@@ -101,6 +105,13 @@ class BookRepository @Inject constructor(
             context.contentResolver.takePersistableUriPermission(treeUri, flags)
             permissionTaken = true
         } catch (_: SecurityException) {
+            if (!alreadyHeld) throw PersistablePermissionException()
+        }
+        if (!alreadyHeld && !isUriPermissionHeld(treeUri)) {
+            if (permissionTaken && bookDao.countByRootUri(treeUri.toString()) == 0) {
+                releaseUriPermission(treeUri)
+            }
+            throw PersistablePermissionException()
         }
 
         val root = treeUri.toString()
@@ -189,7 +200,13 @@ class BookRepository @Inject constructor(
         val plan = RescanPlanner.plan(bookId, existing, scanned.chapters)
         val removedIds = plan.removed.map { it.id }
         val affected = if (removedIds.isEmpty()) 0 else bookmarkDao.countForChapters(removedIds)
-        return RescanPreview(bookId, plan, affected)
+        return RescanPreview(
+            bookId = bookId,
+            plan = plan,
+            affectedBookmarkCount = affected,
+            baseChapterFingerprint = chapterFingerprint(existing),
+            scannedCoverPath = scanned.coverPath,
+        )
     }
 
     suspend fun applyRescan(
@@ -199,8 +216,33 @@ class BookRepository @Inject constructor(
         acceptedAmbiguous: Map<String, Long> = emptyMap(),
         rejectedWeak: Set<Long> = emptySet(),
         rejectedAmbiguous: Set<String> = emptySet(),
+        expectedBaseFingerprint: String? = null,
+        scannedCoverPath: String? = null,
     ): RescanApplyResult {
-        return applyRescanInternal(bookId, plan, acceptedWeak, acceptedAmbiguous, rejectedWeak, rejectedAmbiguous)
+        require(plan.bookId == bookId) { "扫描计划与书籍不匹配" }
+        require(
+            plan.finalChaptersPreview.distinctBy { "${it.uri}\u0000${it.relativePath}" }.size ==
+                plan.finalChaptersPreview.size,
+        ) { "扫描结果包含重复章节" }
+        val current = chapterDao.getChapters(bookId).map { it.toModel() }
+        if (expectedBaseFingerprint != null && chapterFingerprint(current) != expectedBaseFingerprint) {
+            throw StaleRescanPreviewException()
+        }
+        val existingBook = bookDao.getBook(bookId) ?: error("书籍不存在")
+        val replacement = scannedCoverPath?.takeIf { it != existingBook.coverPath }?.let {
+            existingBook.copy(coverPath = it)
+        }
+        return applyRescanInternal(
+            bookId,
+            plan,
+            acceptedWeak,
+            acceptedAmbiguous,
+            rejectedWeak,
+            rejectedAmbiguous,
+            replacement,
+        ).also { result ->
+            if (result.book.coverPath != existingBook.coverPath) deleteLocalCoverIfOwned(existingBook.coverPath)
+        }
     }
 
     private suspend fun applyRescanInternal(
@@ -260,8 +302,11 @@ class BookRepository @Inject constructor(
 
             // 3) Update matched rows (content) with temporary still-negative or update fields first
             val finalIndexByOldId = mutableMapOf<Long, Int>()
+            val oldIdByScannedKey = strong.entries.associate { (oldId, scanned) ->
+                scannedIdentity(scanned) to oldId
+            }
             scannedOrder.forEachIndexed { newIndex, sc ->
-                val oldId = strong.entries.firstOrNull { it.value.uri == sc.uri }?.key
+                val oldId = oldIdByScannedKey[scannedIdentity(sc)]
                 if (oldId != null) {
                     finalIndexByOldId[oldId] = newIndex
                 }
@@ -288,13 +333,10 @@ class BookRepository @Inject constructor(
             }
 
             // 4) Insert added with final indices
-            val addedIdByUri = mutableMapOf<String, Long>()
             scannedOrder.forEachIndexed { newIndex, sc ->
-                val matchedOld = strong.entries.firstOrNull {
-                    it.value.uri == sc.uri
-                }?.key
+                val matchedOld = oldIdByScannedKey[scannedIdentity(sc)]
                 if (matchedOld == null) {
-                    val id = chapterDao.insert(
+                    chapterDao.insert(
                         ChapterEntity(
                             bookId = bookId,
                             title = sc.title,
@@ -309,7 +351,6 @@ class BookRepository @Inject constructor(
                             stableKey = sc.stableKey,
                         ),
                     )
-                    addedIdByUri[sc.uri] = id
                 }
             }
 
@@ -374,6 +415,7 @@ class BookRepository @Inject constructor(
         acceptedAmbiguous: Map<String, Long> = emptyMap(),
         rejectedWeak: Set<Long> = emptySet(),
         rejectedAmbiguous: Set<String> = emptySet(),
+        expectedBaseFingerprint: String? = null,
     ): Book {
         val existing = bookDao.getBook(bookId) ?: error("书籍不存在")
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -383,11 +425,23 @@ class BookRepository @Inject constructor(
             context.contentResolver.takePersistableUriPermission(treeUri, flags)
             permissionTaken = true
         } catch (_: SecurityException) {
+            if (!alreadyHeld) throw PersistablePermissionException()
+        }
+        if (!alreadyHeld && !isUriPermissionHeld(treeUri)) {
+            if (permissionTaken && bookDao.countByRootUri(treeUri.toString()) == 0) {
+                releaseUriPermission(treeUri)
+            }
+            throw PersistablePermissionException()
         }
 
         val oldRoot = existing.rootUri
         val newRoot = treeUri.toString()
         val oldChapters = chapterDao.getChapters(bookId).map { it.toModel() }
+        if (expectedBaseFingerprint != null && chapterFingerprint(oldChapters) != expectedBaseFingerprint) {
+            val count = bookDao.countByRootUri(newRoot)
+            if (permissionTaken && !alreadyHeld && count == 0) releaseUriPermission(treeUri)
+            throw StaleRescanPreviewException()
+        }
 
         return try {
             val scanned = folderScanner.scanTree(treeUri, onProgress)
@@ -408,12 +462,23 @@ class BookRepository @Inject constructor(
             ) {
                 val removedIds = plan.removed.map { it.id }
                 val affected = if (removedIds.isEmpty()) 0 else bookmarkDao.countForChapters(removedIds)
-                throw ReauthDecisionRequiredException(RescanPreview(bookId, plan, affected))
+                throw ReauthDecisionRequiredException(
+                    RescanPreview(
+                        bookId = bookId,
+                        plan = plan,
+                        affectedBookmarkCount = affected,
+                        baseChapterFingerprint = chapterFingerprint(oldChapters),
+                        scannedCoverPath = scanned.coverPath,
+                    ),
+                )
+            }
+            val replacementCover = scanned.coverPath ?: existing.coverPath?.takeUnless {
+                oldRoot != scanned.rootUri && it.startsWith("content:")
             }
             val replacement = existing.copy(
                 rootUri = scanned.rootUri,
                 needsReauth = false,
-                coverPath = scanned.coverPath ?: existing.coverPath,
+                coverPath = replacementCover,
             )
             val result = applyRescanInternal(
                 bookId = bookId,
@@ -427,6 +492,7 @@ class BookRepository @Inject constructor(
             if (oldRoot != scanned.rootUri) {
                 maybeReleaseRootUri(oldRoot, excludeBookId = bookId)
             }
+            if (result.book.coverPath != existing.coverPath) deleteLocalCoverIfOwned(existing.coverPath)
             result.book
         } catch (e: Exception) {
             val count = bookDao.countByRootUri(newRoot)
@@ -458,13 +524,38 @@ class BookRepository @Inject constructor(
     suspend fun saveProgress(bookId: Long, chapterId: Long, positionMs: Long) {
         val pos = positionMs.coerceAtLeast(0L)
         val index = offsetIndexCache[bookId] ?: rebuildOffsetIndex(bookId)
-        val listened = index.listenedDurationMs(chapterId, pos)
-        bookDao.updateProgress(
+        val listened = index.linearPositionMs(chapterId, pos)
+        val updated = bookDao.updateProgress(
             bookId = bookId,
             chapterId = chapterId,
             positionMs = pos,
             listenedDurationMs = listened,
         )
+        if (updated == 0) {
+            // A rescan/removal may have invalidated an item that was already queued
+            // by PlaybackService. Never resurrect a deleted/cross-book chapter.
+            invalidateOffsetIndex(bookId)
+        } else if (pos > 0L) {
+            chapterDao.markInProgress(chapterId)
+        }
+    }
+
+    suspend fun setChapterCompleted(chapterId: Long, completed: Boolean) {
+        chapterDao.setCompleted(chapterId, completed)
+    }
+
+    suspend fun setAllChaptersCompleted(bookId: Long, completed: Boolean) {
+        chapterDao.setAllCompleted(bookId, completed)
+    }
+
+    suspend fun updateBookMetadata(bookId: Long, title: String, author: String?) {
+        val cleanTitle = title.trim()
+        require(cleanTitle.isNotEmpty()) { "书名不能为空" }
+        bookDao.updateMetadata(bookId, cleanTitle, author?.trim()?.takeIf { it.isNotEmpty() })
+    }
+
+    suspend fun updateChapterTitle(chapterId: Long, title: String?) {
+        chapterDao.updateCustomTitle(chapterId, title?.trim()?.takeIf { it.isNotEmpty() })
     }
 
     suspend fun setBookPlaybackSpeed(bookId: Long, speed: Float?) {
@@ -527,6 +618,18 @@ class BookRepository @Inject constructor(
         offsetIndexCache.remove(bookId)
     }
 
+    private fun chapterFingerprint(chapters: List<Chapter>): String {
+        val payload = chapters.sortedBy { it.id }.joinToString("\n") {
+            "${it.id}|${it.uri}|${it.relativePath}|${it.fileSize}|${it.durationMs}|${it.stableKey.orEmpty()}"
+        }
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(payload.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun scannedIdentity(chapter: ScannedChapter): String =
+        "${chapter.uri}\u0000${chapter.relativePath}"
+
     private fun isUriPermissionHeld(uri: Uri): Boolean {
         val target = uri.toString()
         return context.contentResolver.persistedUriPermissions.any {
@@ -557,7 +660,7 @@ class BookRepository @Inject constructor(
         try {
             val coversDir = context.filesDir.resolve("covers").canonicalFile
             val file = java.io.File(coverPath).canonicalFile
-            if (file.path.startsWith(coversDir.path) && file.isFile) {
+            if (file.toPath().startsWith(coversDir.toPath()) && file.isFile) {
                 file.delete()
             }
         } catch (_: Exception) {
@@ -568,7 +671,7 @@ class BookRepository @Inject constructor(
 /** Local helper to avoid circular imports in transaction. */
 private object ProgressCalculatorSafe {
     fun listened(chapters: List<Chapter>, currentChapterId: Long?, positionMs: Long): Long {
-        return com.tingxia.app.data.model.ProgressCalculator.listenedDurationMs(
+        return com.tingxia.app.data.model.ProgressCalculator.linearPositionMs(
             chapters, currentChapterId, positionMs,
         )
     }

@@ -70,6 +70,32 @@ class ProgressWriterOrderingTest {
     }
 
     @Test
+    fun flushWithCurrent_isBarrierWithoutClosingWriter() = runTest {
+        val saved = CopyOnWriteArrayList<Save>()
+        val writer = ProgressWriter(
+            scope = this,
+            save = { b, c, p ->
+                delay(10)
+                saved += Save(b, c, p)
+            },
+            writerDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+        writer.enqueue(1, 1, 100)
+        assertTrue(writer.flushWithCurrent(1, 1, 200, timeoutMs = 5_000))
+        writer.enqueue(1, 2, 0)
+        assertTrue(writer.closeWithFinal(1, 2, 10, timeoutMs = 5_000))
+        assertEquals(
+            listOf(
+                Save(1, 1, 100),
+                Save(1, 1, 200),
+                Save(1, 2, 0),
+                Save(1, 2, 10),
+            ),
+            saved.toList(),
+        )
+    }
+
+    @Test
     fun closeWithFinal_retriesUntilSuccess() = runTest {
         val saved = CopyOnWriteArrayList<Save>()
         val attempts = AtomicInteger(0)

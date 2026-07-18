@@ -14,7 +14,8 @@ data class Book(
     val lastPlayedAt: Long,
     val currentChapterId: Long?,
     val currentPositionMs: Long,
-    val listenedDurationMs: Long,
+    /** Linear offset in the ordered book, not an actual listening-time statistic. */
+    val linearPositionMs: Long,
     val createdAt: Long,
     val needsReauth: Boolean,
     val playbackSpeed: Float? = null,
@@ -24,7 +25,7 @@ data class Book(
     val progressFraction: Float
         get() {
             if (totalDurationMs <= 0L) return 0f
-            return (listenedDurationMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+            return (linearPositionMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
         }
 
     val displaySpeed: Float?
@@ -64,7 +65,7 @@ data class Bookmark(
 )
 
 object ProgressCalculator {
-    fun listenedDurationMs(
+    fun linearPositionMs(
         chapters: List<Chapter>,
         currentChapterId: Long?,
         currentPositionMs: Long,
@@ -92,9 +93,13 @@ object ProgressCalculator {
         totalDurationMs: Long = chapters.sumOf { it.durationMs.coerceAtLeast(0L) },
     ): Float {
         if (totalDurationMs <= 0L) return 0f
-        val listened = listenedDurationMs(chapters, currentChapterId, currentPositionMs)
-        return (listened.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+        val linearPosition = linearPositionMs(chapters, currentChapterId, currentPositionMs)
+        return (linearPosition.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
     }
+
+    @Deprecated("This is a linear book position, not actual listening time", ReplaceWith("linearPositionMs(chapters, currentChapterId, currentPositionMs)"))
+    fun listenedDurationMs(chapters: List<Chapter>, currentChapterId: Long?, currentPositionMs: Long): Long =
+        linearPositionMs(chapters, currentChapterId, currentPositionMs)
 }
 
 fun BookEntity.toModel() = Book(
@@ -107,7 +112,7 @@ fun BookEntity.toModel() = Book(
     lastPlayedAt = lastPlayedAt,
     currentChapterId = currentChapterId,
     currentPositionMs = currentPositionMs,
-    listenedDurationMs = listenedDurationMs,
+    linearPositionMs = listenedDurationMs,
     createdAt = createdAt,
     needsReauth = needsReauth,
     playbackSpeed = playbackSpeed,

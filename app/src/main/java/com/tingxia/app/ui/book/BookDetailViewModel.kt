@@ -12,6 +12,8 @@ import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.BookmarkRepository
 import com.tingxia.app.data.repo.RescanPreview
 import com.tingxia.app.data.repo.ReauthDecisionRequiredException
+import com.tingxia.app.player.LibraryMutationSnapshot
+import com.tingxia.app.player.PlayerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +28,7 @@ class BookDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val bookRepository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
+    private val playerController: PlayerController,
 ) : ViewModel() {
 
     private val bookId: Long = checkNotNull(savedStateHandle["bookId"])
@@ -73,8 +76,13 @@ class BookDetailViewModel @Inject constructor(
 
     fun removeBook(onDone: () -> Unit) {
         viewModelScope.launch {
-            bookRepository.removeBook(bookId)
-            onDone()
+            try {
+                playerController.prepareLibraryMutation(bookId, clearPlaylist = true)
+                bookRepository.removeBook(bookId)
+                onDone()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "移除书籍失败"
+            }
         }
     }
 
@@ -162,11 +170,13 @@ class BookDetailViewModel @Inject constructor(
             plan.ambiguous.all { ambiguousDecisions.containsKey(it.scanned.uri) }
     }
 
-    fun confirmRescan(onApplied: (bookId: Long, chapterId: Long?, positionMs: Long) -> Unit = { _, _, _ -> }) {
+    fun confirmRescan() {
         val preview = _rescanPreview.value ?: return
         if (!canConfirmRescan()) return
         viewModelScope.launch {
+            var mutation = LibraryMutationSnapshot()
             try {
+                mutation = playerController.prepareLibraryMutation(bookId)
                 val acceptedWeak = preview.plan.weakMatches.filterKeys { weakDecisions[it] == true }
                 val rejectedWeak = preview.plan.weakMatches.keys.filterTo(mutableSetOf()) { weakDecisions[it] == false }
                 val acceptedAmbiguous = ambiguousDecisions.mapNotNull { (uri, id) -> id?.let { uri to it } }.toMap()
@@ -180,6 +190,7 @@ class BookDetailViewModel @Inject constructor(
                         acceptedAmbiguous = acceptedAmbiguous,
                         rejectedWeak = rejectedWeak,
                         rejectedAmbiguous = rejectedAmbiguous,
+                        expectedBaseFingerprint = preview.baseChapterFingerprint,
                     )
                     com.tingxia.app.data.repo.RescanApplyResult(
                         book = updated,
@@ -196,13 +207,23 @@ class BookDetailViewModel @Inject constructor(
                         acceptedAmbiguous = acceptedAmbiguous,
                         rejectedWeak = rejectedWeak,
                         rejectedAmbiguous = rejectedAmbiguous,
+                        expectedBaseFingerprint = preview.baseChapterFingerprint,
+                        scannedCoverPath = preview.scannedCoverPath,
                     )
                 }
                 _rescanPreview.value = null
                 pendingReauthUri = null
                 _message.value = "已更新：+${preview.plan.addedCount} / -${preview.plan.removedCount} / ~${preview.plan.renamedCount}"
-                onApplied(bookId, result.currentChapterId, result.currentPositionMs)
+                if (mutation.wasActive) {
+                    playerController.refreshPlaylistAfterRescan(
+                        bookId = bookId,
+                        chapterId = result.currentChapterId,
+                        positionMs = result.currentPositionMs,
+                        wasPlaying = mutation.wasPlaying,
+                    )
+                }
             } catch (e: Exception) {
+                if (mutation.wasActive && mutation.wasPlaying) playerController.play()
                 _error.value = e.message ?: "应用扫描结果失败"
             }
         }
@@ -217,7 +238,57 @@ class BookDetailViewModel @Inject constructor(
     }
 
     fun setAutoPlayNext(enabled: Boolean) {
-        viewModelScope.launch { bookRepository.setAutoPlayNext(bookId, enabled) }
+        viewModelScope.launch {
+            try {
+                playerController.setAutoPlayNext(bookId, enabled)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新连播设置失败"
+            }
+        }
+    }
+
+    fun setChapterCompleted(chapterId: Long, completed: Boolean) {
+        viewModelScope.launch {
+            try {
+                bookRepository.setChapterCompleted(chapterId, completed)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新章节状态失败"
+            }
+        }
+    }
+
+    fun setAllChaptersCompleted(completed: Boolean) {
+        viewModelScope.launch {
+            try {
+                bookRepository.setAllChaptersCompleted(bookId, completed)
+                _message.value = if (completed) "已将全书标记为完成" else "已清除全书完成状态"
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新全书状态失败"
+            }
+        }
+    }
+
+    fun updateBookMetadata(title: String, author: String?) {
+        viewModelScope.launch {
+            try {
+                bookRepository.updateBookMetadata(bookId, title, author)
+                playerController.refreshQueueMetadata(bookId)
+                _message.value = "书籍信息已更新"
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新书籍信息失败"
+            }
+        }
+    }
+
+    fun updateChapterTitle(chapterId: Long, title: String?) {
+        viewModelScope.launch {
+            try {
+                bookRepository.updateChapterTitle(chapterId, title)
+                playerController.refreshQueueMetadata(bookId)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新章节标题失败"
+            }
+        }
     }
 
     fun clearError() { _error.value = null }

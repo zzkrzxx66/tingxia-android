@@ -1,14 +1,22 @@
 package com.tingxia.app.data.importer
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -37,6 +45,7 @@ data class ScannedBook(
 data class ScanProgress(
     val scannedFiles: Int,
     val currentName: String,
+    val totalFiles: Int = 0,
 )
 
 @Singleton
@@ -50,7 +59,7 @@ class FolderScanner @Inject constructor(
     ): ScannedBook = withContext(Dispatchers.IO) {
         val folderName = queryDisplayName(treeUri) ?: "未命名书籍"
         val audioFiles = mutableListOf<AudioFile>()
-        var coverUri: String? = null
+        var coverCandidate: CoverCandidate? = null
 
         val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val visitedDirectories = mutableSetOf(rootDocId)
@@ -61,7 +70,17 @@ class FolderScanner @Inject constructor(
             when {
                 lower == "cover.jpg" || lower == "cover.jpeg" || lower == "cover.png" ||
                     lower == "cover.webp" -> {
-                    if (coverUri == null) coverUri = uri.toString()
+                    val candidate = CoverCandidate(
+                        uri = uri.toString(),
+                        depth = relativePath.count { it == '/' },
+                        path = relativePath.lowercase(Locale.ROOT),
+                    )
+                    val current = coverCandidate
+                    if (current == null || candidate.depth < current.depth ||
+                        (candidate.depth == current.depth && candidate.path < current.path)
+                    ) {
+                        coverCandidate = candidate
+                    }
                 }
                 isAudio(name, mime) -> audioFiles += AudioFile(
                     name = name,
@@ -76,30 +95,41 @@ class FolderScanner @Inject constructor(
 
         audioFiles.sortWith { a, b -> naturalCompare(a.relativePath, b.relativePath) }
 
-        val chapters = audioFiles.mapIndexed { index, file ->
-            coroutineContext.ensureActive()
-            onProgress(ScanProgress(index + 1, file.relativePath))
-            val duration = metadataReader.readDurationMs(file.uri)
-            val stableKey = ChapterIdentity.stableKey(file.relativePath, file.fileSize, duration)
-            ScannedChapter(
-                title = stripExtension(file.name),
-                uri = file.uri.toString(),
-                documentId = file.documentId,
-                relativePath = file.relativePath,
-                fileName = file.name,
-                fileSize = file.fileSize,
-                mimeType = file.mimeType,
-                durationMs = duration,
-                index = index,
-                stableKey = stableKey,
-            )
+        val completed = AtomicInteger(0)
+        val semaphore = Semaphore(METADATA_CONCURRENCY)
+        val chapters = coroutineScope {
+            audioFiles.mapIndexed { index, file ->
+                async {
+                    semaphore.withPermit {
+                        coroutineContext.ensureActive()
+                        val duration = metadataReader.readDurationMs(file.uri)
+                        synchronized(completed) {
+                            val done = completed.incrementAndGet()
+                            onProgress(ScanProgress(done, file.relativePath, audioFiles.size))
+                        }
+                        val stableKey = ChapterIdentity.stableKey(file.relativePath, file.fileSize, duration)
+                        ScannedChapter(
+                            title = stripExtension(file.name),
+                            uri = file.uri.toString(),
+                            documentId = file.documentId,
+                            relativePath = file.relativePath,
+                            fileName = file.name,
+                            fileSize = file.fileSize,
+                            mimeType = file.mimeType,
+                            durationMs = duration,
+                            index = index,
+                            stableKey = stableKey,
+                        )
+                    }
+                }
+            }.awaitAll()
         }
 
         if (chapters.isEmpty()) {
             error("该文件夹中未找到支持的音频文件")
         }
 
-        val cover = coverUri ?: metadataReader.extractEmbeddedCover(chapters.first().uri)
+        val cover = coverCandidate?.uri ?: metadataReader.extractEmbeddedCover(chapters.first().uri)
 
         ScannedBook(
             title = folderName,
@@ -118,6 +148,8 @@ class FolderScanner @Inject constructor(
         val mimeType: String?,
         val fileSize: Long,
     )
+
+    private data class CoverCandidate(val uri: String, val depth: Int, val path: String)
 
     private fun traverse(
         treeUri: Uri,
@@ -181,6 +213,7 @@ class FolderScanner @Inject constructor(
 
     companion object {
         private const val MAX_SCAN_DEPTH = 64
+        private const val METADATA_CONCURRENCY = 3
         private val AUDIO_EXT = setOf(
             "mp3", "m4a", "m4b", "aac", "flac", "ogg", "oga", "wav", "opus"
         )
@@ -210,7 +243,10 @@ class FolderScanner @Inject constructor(
                 }
                 if (cmp != 0) return cmp
             }
-            return ra.size.compareTo(rb.size)
+            val tokenCount = ra.size.compareTo(rb.size)
+            if (tokenCount != 0) return tokenCount
+            val folded = a.compareTo(b, ignoreCase = true)
+            return if (folded != 0) folded else a.compareTo(b)
         }
 
         private fun tokenize(s: String): List<Any> {
@@ -260,10 +296,30 @@ class MetadataReader @Inject constructor(
         return try {
             retriever.setDataSource(context, uri)
             val art = retriever.embeddedPicture ?: return null
+            if (art.size > MAX_EMBEDDED_COVER_BYTES) return null
             val dir = context.filesDir.resolve("covers").apply { mkdirs() }
-            val file = dir.resolve("cover_${uriString.hashCode().toUInt()}.jpg")
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(uriString.toByteArray(Charsets.UTF_8))
+                .take(10)
+                .joinToString("") { "%02x".format(it) }
+            val file = dir.resolve("cover_$digest.jpg")
             if (!file.exists()) {
-                file.writeBytes(art)
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(art, 0, art.size, bounds)
+                var sample = 1
+                while (bounds.outWidth / sample > MAX_COVER_EDGE || bounds.outHeight / sample > MAX_COVER_EDGE) {
+                    sample *= 2
+                }
+                val bitmap = BitmapFactory.decodeByteArray(
+                    art,
+                    0,
+                    art.size,
+                    BitmapFactory.Options().apply { inSampleSize = sample },
+                ) ?: return null
+                file.outputStream().buffered().use { output ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, output)
+                }
+                bitmap.recycle()
             }
             file.absolutePath
         } catch (_: Exception) {
@@ -274,5 +330,10 @@ class MetadataReader @Inject constructor(
             } catch (_: Exception) {
             }
         }
+    }
+
+    private companion object {
+        const val MAX_EMBEDDED_COVER_BYTES = 20 * 1024 * 1024
+        const val MAX_COVER_EDGE = 1_200
     }
 }

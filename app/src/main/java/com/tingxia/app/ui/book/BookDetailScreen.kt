@@ -23,6 +23,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -33,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -67,7 +71,6 @@ fun BookDetailScreen(
     onPlayChapter: (Long) -> Unit,
     onContinue: () -> Unit,
     onPlayBookmark: (chapterId: Long, positionMs: Long) -> Unit = { _, _ -> },
-    onRescanApplied: (bookId: Long, chapterId: Long?, positionMs: Long) -> Unit = { _, _, _ -> },
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val book by viewModel.book.collectAsStateWithLifecycle()
@@ -83,6 +86,11 @@ fun BookDetailScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
     var confirmRemove by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var editBook by remember { mutableStateOf(false) }
+    var editTitle by remember { mutableStateOf("") }
+    var editAuthor by remember { mutableStateOf("") }
+    var editChapter by remember { mutableStateOf<Chapter?>(null) }
+    var editChapterTitle by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(error) {
@@ -130,6 +138,15 @@ fun BookDetailScreen(
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
+                            text = { Text("编辑书籍信息") },
+                            onClick = {
+                                menu = false
+                                editTitle = book?.title.orEmpty()
+                                editAuthor = book?.author.orEmpty()
+                                editBook = true
+                            },
+                        )
+                        DropdownMenuItem(
                             text = { Text("重新扫描目录") },
                             onClick = {
                                 menu = false
@@ -150,6 +167,14 @@ fun BookDetailScreen(
                             onClick = {
                                 menu = false
                                 confirmRemove = true
+                            },
+                        )
+                        val allCompleted = chapters.isNotEmpty() && chapters.all { it.completionState == 2 }
+                        DropdownMenuItem(
+                            text = { Text(if (allCompleted) "清除全书完成状态" else "全书标记为已完成") },
+                            onClick = {
+                                menu = false
+                                viewModel.setAllChaptersCompleted(!allCompleted)
                             },
                         )
                     }
@@ -199,6 +224,11 @@ fun BookDetailScreen(
                             LinearProgressIndicator(
                                 progress = { book?.progressFraction ?: 0f },
                                 modifier = Modifier.fillMaxWidth().height(4.dp),
+                            )
+                            Text(
+                                "剩余 ${formatDuration(((book?.totalDurationMs ?: 0L) - (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         Spacer(Modifier.height(12.dp))
@@ -256,6 +286,13 @@ fun BookDetailScreen(
                     isCurrent = chapter.id == book?.currentChapterId,
                     enabled = book?.needsReauth != true,
                     onClick = { onPlayChapter(chapter.id) },
+                    onToggleCompleted = {
+                        viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
+                    },
+                    onEditTitle = {
+                        editChapter = chapter
+                        editChapterTitle = chapter.displayTitle
+                    },
                 )
             }
             if (bookmarks.isNotEmpty()) {
@@ -324,9 +361,7 @@ fun BookDetailScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.confirmRescan { id, ch, pos ->
-                            onRescanApplied(id, ch, pos)
-                        }
+                        viewModel.confirmRescan()
                     },
                     enabled = viewModel.canConfirmRescan(),
                 ) { Text("应用") }
@@ -355,6 +390,68 @@ fun BookDetailScreen(
             },
         )
     }
+
+
+    if (editBook) {
+        AlertDialog(
+            onDismissRequest = { editBook = false },
+            title = { Text("编辑书籍信息") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        label = { Text("书名") },
+                        singleLine = true,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = editAuthor,
+                        onValueChange = { editAuthor = it },
+                        label = { Text("作者（可选）") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = editTitle.isNotBlank(),
+                    onClick = {
+                        viewModel.updateBookMetadata(editTitle, editAuthor)
+                        editBook = false
+                    },
+                ) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { editBook = false }) { Text("取消") } },
+        )
+    }
+
+    editChapter?.let { chapter ->
+        AlertDialog(
+            onDismissRequest = { editChapter = null },
+            title = { Text("编辑章节标题") },
+            text = {
+                OutlinedTextField(
+                    value = editChapterTitle,
+                    onValueChange = { editChapterTitle = it },
+                    label = { Text("章节标题") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.updateChapterTitle(chapter.id, editChapterTitle)
+                    editChapter = null
+                }) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.updateChapterTitle(chapter.id, null)
+                    editChapter = null
+                }) { Text("恢复文件名") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -363,6 +460,8 @@ private fun ChapterRow(
     isCurrent: Boolean,
     enabled: Boolean = true,
     onClick: () -> Unit,
+    onToggleCompleted: () -> Unit,
+    onEditTitle: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -402,6 +501,17 @@ private fun ChapterRow(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
+            )
+        }
+        IconButton(onClick = onEditTitle) {
+            Icon(Icons.Default.Edit, contentDescription = "编辑章节标题")
+        }
+        IconButton(onClick = onToggleCompleted) {
+            Icon(
+                if (chapter.completionState == 2) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                contentDescription = if (chapter.completionState == 2) "标记为未完成" else "标记为已完成",
+                tint = if (chapter.completionState == 2) MaterialTheme.colorScheme.secondary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

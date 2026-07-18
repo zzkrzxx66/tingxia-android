@@ -1,5 +1,10 @@
 package com.tingxia.app.ui.navigation
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,15 +13,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -24,6 +35,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.tingxia.app.ui.book.BookDetailScreen
+import com.tingxia.app.R
 import com.tingxia.app.ui.player.FullPlayerScreen
 import com.tingxia.app.ui.player.MiniPlayerBar
 import com.tingxia.app.ui.player.PlayerViewModel
@@ -50,6 +62,31 @@ fun TingXiaNavHost(
     val currentRoute = backStack?.destination?.route
     val showMini = playerState.bookId != null && currentRoute != Routes.PLAYER
     val snackbar = remember { SnackbarHostState() }
+    val notificationDeniedMessage = stringResource(R.string.notification_permission_denied)
+    val context = LocalContext.current
+    var pendingPlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val action = pendingPlayback
+        pendingPlayback = null
+        action?.invoke()
+        if (!granted) {
+            // Playback is still allowed, but Android may hide the media notification.
+            playerViewModel.showMessage(notificationDeniedMessage)
+        }
+    }
+    val startPlayback: ((() -> Unit) -> Unit) = { action ->
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingPlayback = action
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            action()
+        }
+    }
 
     DisposableEffect(Unit) {
         playerViewModel.connect()
@@ -58,8 +95,12 @@ fun TingXiaNavHost(
 
     LaunchedEffect(playerState.lastError) {
         playerState.lastError?.let {
-            snackbar.showSnackbar(it)
+            val result = snackbar.showSnackbar(
+                message = it,
+                actionLabel = if (playerState.needsReauth) null else "跳过本章",
+            )
             playerViewModel.clearError()
+            if (result == SnackbarResult.ActionPerformed) playerViewModel.nextChapter()
         }
     }
     LaunchedEffect(toast) {
@@ -102,8 +143,10 @@ fun TingXiaNavHost(
                             onOpenBook = { id -> navController.navigate(Routes.book(id)) },
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             onContinue = { bookId ->
-                                playerViewModel.playBook(bookId) { ok ->
-                                    if (ok) navController.navigate(Routes.PLAYER)
+                                startPlayback {
+                                    playerViewModel.playBook(bookId) { ok ->
+                                        if (ok) navController.navigate(Routes.PLAYER)
+                                    }
                                 }
                             },
                         )
@@ -117,27 +160,25 @@ fun TingXiaNavHost(
                             bookId = bookId,
                             onBack = { navController.popBackStack() },
                             onPlayChapter = { chapterId ->
-                                playerViewModel.playBook(bookId, chapterId) { ok ->
-                                    if (ok) navController.navigate(Routes.PLAYER)
+                                startPlayback {
+                                    playerViewModel.playBook(bookId, chapterId) { ok ->
+                                        if (ok) navController.navigate(Routes.PLAYER)
+                                    }
                                 }
                             },
                             onContinue = {
-                                playerViewModel.playBook(bookId) { ok ->
-                                    if (ok) navController.navigate(Routes.PLAYER)
+                                startPlayback {
+                                    playerViewModel.playBook(bookId) { ok ->
+                                        if (ok) navController.navigate(Routes.PLAYER)
+                                    }
                                 }
                             },
                             onPlayBookmark = { chapterId, positionMs ->
-                                playerViewModel.playBook(bookId, chapterId, positionMs) { ok ->
-                                    if (ok) navController.navigate(Routes.PLAYER)
+                                startPlayback {
+                                    playerViewModel.playBook(bookId, chapterId, positionMs) { ok ->
+                                        if (ok) navController.navigate(Routes.PLAYER)
+                                    }
                                 }
-                            },
-                            onRescanApplied = { id, chapterId, positionMs ->
-                                playerViewModel.refreshAfterRescan(
-                                    bookId = id,
-                                    chapterId = chapterId,
-                                    positionMs = positionMs,
-                                    wasPlaying = playerState.isPlaying && playerState.bookId == id,
-                                )
                             },
                         )
                     }
@@ -151,8 +192,10 @@ fun TingXiaNavHost(
                             onPrev = { playerViewModel.previousChapter() },
                             onNext = { playerViewModel.nextChapter() },
                             onSpeed = { playerViewModel.setSpeed(it) },
+                            onUseGlobalSpeed = { playerViewModel.useGlobalSpeed() },
                             onSleep = { playerViewModel.setSleepMinutes(it) },
                             onSleepEndOfChapter = { playerViewModel.setSleepEndOfChapter() },
+                            onExtendSleep = { playerViewModel.extendSleep() },
                             onAddBookmark = { playerViewModel.addBookmark() },
                         )
                     }

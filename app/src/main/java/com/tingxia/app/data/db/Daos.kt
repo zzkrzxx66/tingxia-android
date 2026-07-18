@@ -19,7 +19,11 @@ interface BookDao {
           AND (
             :filter = 'ALL'
             OR (:filter = 'NOT_STARTED' AND lastPlayedAt = 0)
-            OR (:filter = 'IN_PROGRESS' AND lastPlayedAt > 0)
+            OR (:filter = 'IN_PROGRESS' AND lastPlayedAt > 0
+                AND EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id AND c.completionState != 2))
+            OR (:filter = 'COMPLETED'
+                AND EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id)
+                AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id AND c.completionState != 2))
             OR (:filter = 'NEEDS_REAUTH' AND needsReauth = 1)
           )
         ORDER BY
@@ -68,6 +72,10 @@ interface BookDao {
             listenedDurationMs = :listenedDurationMs,
             lastPlayedAt = :playedAt
         WHERE id = :bookId
+          AND EXISTS (
+            SELECT 1 FROM chapters
+            WHERE chapters.id = :chapterId AND chapters.bookId = :bookId
+          )
         """
     )
     suspend fun updateProgress(
@@ -76,7 +84,7 @@ interface BookDao {
         positionMs: Long,
         listenedDurationMs: Long = 0L,
         playedAt: Long = System.currentTimeMillis(),
-    )
+    ): Int
 
     @Query("UPDATE books SET needsReauth = :needsReauth WHERE id = :bookId")
     suspend fun setNeedsReauth(bookId: Long, needsReauth: Boolean)
@@ -95,6 +103,9 @@ interface BookDao {
 
     @Query("UPDATE books SET autoPlayNext = :autoPlayNext WHERE id = :bookId")
     suspend fun updateAutoPlayNext(bookId: Long, autoPlayNext: Boolean)
+
+    @Query("UPDATE books SET title = :title, author = :author WHERE id = :bookId")
+    suspend fun updateMetadata(bookId: Long, title: String, author: String?)
 
     @Query(
         """
@@ -163,6 +174,32 @@ interface ChapterDao {
 
     @Query("SELECT COUNT(*) FROM bookmarks WHERE chapterId IN (:chapterIds)")
     suspend fun countBookmarksForChapters(chapterIds: List<Long>): Int
+
+    @Query("UPDATE chapters SET completionState = 1 WHERE id = :chapterId AND completionState = 0")
+    suspend fun markInProgress(chapterId: Long)
+
+    @Query(
+        """
+        UPDATE chapters SET
+            completionState = CASE WHEN :completed THEN 2 ELSE 0 END,
+            completedAt = CASE WHEN :completed THEN :completedAt ELSE NULL END
+        WHERE id = :chapterId
+        """
+    )
+    suspend fun setCompleted(chapterId: Long, completed: Boolean, completedAt: Long = System.currentTimeMillis())
+
+    @Query(
+        """
+        UPDATE chapters SET
+            completionState = CASE WHEN :completed THEN 2 ELSE 0 END,
+            completedAt = CASE WHEN :completed THEN :completedAt ELSE NULL END
+        WHERE bookId = :bookId
+        """
+    )
+    suspend fun setAllCompleted(bookId: Long, completed: Boolean, completedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE chapters SET customTitle = :customTitle WHERE id = :chapterId")
+    suspend fun updateCustomTitle(chapterId: Long, customTitle: String?)
 }
 
 @Dao
