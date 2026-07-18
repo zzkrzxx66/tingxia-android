@@ -55,6 +55,16 @@ interface BookDao {
     )
     fun observeRecentBook(): Flow<BookEntity?>
 
+    @Query(
+        """
+        SELECT * FROM books
+        WHERE lastPlayedAt > 0
+        ORDER BY lastPlayedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getRecentBook(): BookEntity?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertBook(book: BookEntity): Long
 
@@ -106,6 +116,9 @@ interface BookDao {
 
     @Query("UPDATE books SET title = :title, author = :author WHERE id = :bookId")
     suspend fun updateMetadata(bookId: Long, title: String, author: String?)
+
+    @Query("UPDATE books SET coverPath = :coverPath WHERE id = :bookId")
+    suspend fun updateCover(bookId: Long, coverPath: String?)
 
     @Query(
         """

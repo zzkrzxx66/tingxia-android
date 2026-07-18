@@ -15,9 +15,14 @@ This allows cover-install of debug builds without uninstalling.
 
 Provide via GitHub Secrets / local env:
 
-- `TINGXIA_RELEASE_STORE_FILE`
+- `TINGXIA_RELEASE_KEYSTORE_BASE64` (GitHub Actions only)
 - `TINGXIA_RELEASE_STORE_PASSWORD`
 - `TINGXIA_RELEASE_KEY_ALIAS`
 - `TINGXIA_RELEASE_KEY_PASSWORD`
+
+For a local build, set `TINGXIA_RELEASE_STORE_FILE` to the keystore path and
+the remaining three environment variables to its credentials. A `v*` tag runs
+the release workflow, verifies the APK signature, and publishes APK/AAB plus
+SHA-256 checksums.
 
 If those are absent, `release` builds are left **unsigned** (no debug-key fallback).

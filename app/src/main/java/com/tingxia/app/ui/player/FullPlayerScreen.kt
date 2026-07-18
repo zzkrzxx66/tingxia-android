@@ -105,7 +105,7 @@ fun FullPlayerScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -130,7 +130,7 @@ fun FullPlayerScreen(
             )
             Spacer(Modifier.height(28.dp))
             Text(
-                text = state.chapterTitle.orEmpty().ifEmpty { "未在播放" },
+                text = state.chapterTitle.orEmpty().ifEmpty { stringResource(R.string.nothing_playing) },
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -138,7 +138,11 @@ fun FullPlayerScreen(
             )
             if (state.chapterCount > 0) {
                 Text(
-                    text = "第 ${state.chapterIndex + 1} / ${state.chapterCount} 章",
+                    text = stringResource(
+                        R.string.chapter_progress,
+                        state.chapterIndex + 1,
+                        state.chapterCount,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -182,10 +186,10 @@ fun FullPlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onPrev, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "上一章", modifier = Modifier.size(36.dp))
+                    Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(R.string.previous_chapter), modifier = Modifier.size(36.dp))
                 }
                 IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.Replay30, contentDescription = "后退 30 秒", modifier = Modifier.size(32.dp))
+                    Icon(Icons.Default.Replay30, contentDescription = stringResource(R.string.rewind_30_seconds), modifier = Modifier.size(32.dp))
                 }
                 FilledIconButton(
                     onClick = onToggle,
@@ -193,15 +197,17 @@ fun FullPlayerScreen(
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "暂停" else "播放",
+                        contentDescription = stringResource(
+                            if (state.isPlaying) R.string.pause else R.string.play,
+                        ),
                         modifier = Modifier.size(40.dp),
                     )
                 }
                 IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.Forward30, contentDescription = "前进 30 秒", modifier = Modifier.size(32.dp))
+                    Icon(Icons.Default.Forward30, contentDescription = stringResource(R.string.forward_30_seconds), modifier = Modifier.size(32.dp))
                 }
                 IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "下一章", modifier = Modifier.size(36.dp))
+                    Icon(Icons.Default.SkipNext, contentDescription = stringResource(R.string.next_chapter), modifier = Modifier.size(36.dp))
                 }
             }
 
@@ -233,8 +239,8 @@ fun FullPlayerScreen(
             ) {
                 AssistChip(
                     onClick = onAddBookmark,
-                    label = { Text("书签") },
-                    leadingIcon = { Icon(Icons.Default.BookmarkAdd, contentDescription = "书签") },
+                    label = { Text(stringResource(R.string.bookmark)) },
+                    leadingIcon = { Icon(Icons.Default.BookmarkAdd, contentDescription = stringResource(R.string.bookmark)) },
                 )
                 Box {
                     AssistChip(
@@ -276,8 +282,9 @@ fun FullPlayerScreen(
                             val s = ((ms % 60_000) / 1000).toInt()
                             "%d:%02d".format(m, s)
                         }
-                        state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter -> "本章结束"
-                        else -> "睡眠"
+                        state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter ->
+                            stringResource(R.string.end_of_chapter)
+                        else -> stringResource(R.string.sleep)
                     }
                     AssistChip(
                         onClick = { sleepMenu = true },
@@ -295,7 +302,7 @@ fun FullPlayerScreen(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("本章结束") },
+                            text = { Text(stringResource(R.string.end_of_chapter)) },
                             onClick = {
                                 onSleepEndOfChapter()
                                 sleepMenu = false
@@ -303,7 +310,7 @@ fun FullPlayerScreen(
                         )
                         if (state.sleepRemainingMs != null) {
                             DropdownMenuItem(
-                                text = { Text("延长 15 分钟") },
+                                text = { Text(stringResource(R.string.extend_15_minutes)) },
                                 onClick = {
                                     onExtendSleep()
                                     sleepMenu = false
@@ -311,7 +318,7 @@ fun FullPlayerScreen(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("自定义…") },
+                            text = { Text(stringResource(R.string.custom_duration)) },
                             onClick = {
                                 sleepMenu = false
                                 customSleepDialog = true
@@ -329,15 +336,15 @@ fun FullPlayerScreen(
         val valid = minutes != null && minutes in 1..1_440
         AlertDialog(
             onDismissRequest = { customSleepDialog = false },
-            title = { Text("自定义睡眠定时") },
+            title = { Text(stringResource(R.string.custom_sleep_timer)) },
             text = {
                 OutlinedTextField(
                     value = customSleepMinutes,
                     onValueChange = { value ->
                         if (value.length <= 4 && value.all(Char::isDigit)) customSleepMinutes = value
                     },
-                    label = { Text("分钟") },
-                    supportingText = { Text("可设置 1–1440 分钟") },
+                    label = { Text(stringResource(R.string.minutes)) },
+                    supportingText = { Text(stringResource(R.string.sleep_minutes_range)) },
                     isError = customSleepMinutes.isNotEmpty() && !valid,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -350,10 +357,10 @@ fun FullPlayerScreen(
                         onSleep(minutes!!)
                         customSleepDialog = false
                     },
-                ) { Text("开始") }
+                ) { Text(stringResource(R.string.start)) }
             },
             dismissButton = {
-                TextButton(onClick = { customSleepDialog = false }) { Text("取消") }
+                TextButton(onClick = { customSleepDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }

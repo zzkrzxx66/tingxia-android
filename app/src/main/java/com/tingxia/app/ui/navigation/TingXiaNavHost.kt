@@ -63,6 +63,7 @@ fun TingXiaNavHost(
     val showMini = playerState.bookId != null && currentRoute != Routes.PLAYER
     val snackbar = remember { SnackbarHostState() }
     val notificationDeniedMessage = stringResource(R.string.notification_permission_denied)
+    val skipChapterLabel = stringResource(R.string.skip_chapter)
     val context = LocalContext.current
     var pendingPlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(
@@ -97,7 +98,7 @@ fun TingXiaNavHost(
         playerState.lastError?.let {
             val result = snackbar.showSnackbar(
                 message = it,
-                actionLabel = if (playerState.needsReauth) null else "跳过本章",
+                actionLabel = if (playerState.errorCanSkip) skipChapterLabel else null,
             )
             playerViewModel.clearError()
             if (result == SnackbarResult.ActionPerformed) playerViewModel.nextChapter()

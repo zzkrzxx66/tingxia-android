@@ -26,6 +26,7 @@ import com.tingxia.app.MainActivity
 import com.tingxia.app.R
 import com.tingxia.app.TingXiaApp
 import com.tingxia.app.data.repo.BookRepository
+import com.tingxia.app.data.repo.UserPreferencesRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +36,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -48,9 +49,11 @@ import javax.inject.Inject
 class PlaybackService : MediaSessionService() {
 
     @Inject lateinit var bookRepository: BookRepository
+    @Inject lateinit var preferences: UserPreferencesRepository
 
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val progressScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var sleepJob: Job? = null
     private var tickerJob: Job? = null
     private var progressWriter: ProgressWriter? = null
@@ -75,7 +78,7 @@ class PlaybackService : MediaSessionService() {
                 .build(),
         )
         progressWriter = ProgressWriter(
-            scope = serviceScope,
+            scope = progressScope,
             save = { bookId, chapterId, positionMs ->
                 bookRepository.saveProgress(bookId, chapterId, positionMs)
             },
@@ -191,6 +194,48 @@ class PlaybackService : MediaSessionService() {
                 }
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
+
+            override fun onPlaybackResumption(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+            ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+                val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+                serviceScope.launch {
+                    try {
+                        val resume = withContext(Dispatchers.IO) {
+                            val book = bookRepository.getRecentBook()
+                                ?: error("没有可恢复的播放记录")
+                            if (!bookRepository.checkBookAccess(book.id)) {
+                                error("最近播放书籍的目录权限已失效")
+                            }
+                            val chapters = bookRepository.getChapters(book.id)
+                            val plan = createPlaybackResumePlan(
+                                book = book,
+                                chapters = chapters,
+                                defaultSpeed = preferences.defaultSpeed.first(),
+                            ) ?: error("最近播放书籍没有可用章节")
+                            Triple(book, chapters, plan)
+                        }
+                        val (book, chapters, plan) = resume
+                        lastBookId = book.id
+                        lastChapterId = chapters[plan.startIndex].id
+                        lastPositionMs = plan.startPositionMs
+                        currentAutoPlayNext = book.autoPlayNext
+                        session.player.setPlaybackSpeed(plan.speed)
+                        updatePauseAtEnd(session.player)
+                        future.set(
+                            MediaSession.MediaItemsWithStartPosition(
+                                chapters.map { it.toMediaItem(book, chapters.size) },
+                                plan.startIndex,
+                                plan.startPositionMs,
+                            ),
+                        )
+                    } catch (error: Exception) {
+                        future.setException(error)
+                    }
+                }
+                return future
+            }
         }
 
         mediaSession = MediaSession.Builder(this, player)
@@ -214,7 +259,7 @@ class PlaybackService : MediaSessionService() {
         tickerJob?.cancel()
         tickerJob = serviceScope.launch {
             while (isActive) {
-                delay(10_000)
+                delay(5_000)
                 captureAndEnqueueCurrent(player)
             }
         }
@@ -239,6 +284,14 @@ class PlaybackService : MediaSessionService() {
                     publishRuntimeState()
                 }
                 serviceScope.launch { handleEnter(player, mediaItem) }
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                serviceScope.launch { captureAndEnqueueCurrent(player) }
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -277,6 +330,22 @@ class PlaybackService : MediaSessionService() {
                             bookRepository.markNeedsReauth(bookId, true)
                         } catch (_: Exception) {
                         }
+                    }
+                }
+                serviceScope.launch {
+                    val policy = withContext(Dispatchers.IO) {
+                        preferences.playbackErrorPolicy.first()
+                    }
+                    if (
+                        shouldSkipPlaybackError(
+                            policy = policy,
+                            isPermissionError = isPermission,
+                            hasNextChapter = player.hasNextMediaItem(),
+                        )
+                    ) {
+                        player.seekToNextMediaItem()
+                        player.prepare()
+                        player.play()
                     }
                 }
             }
@@ -501,7 +570,7 @@ class PlaybackService : MediaSessionService() {
         tickerJob?.cancel()
         sleepJob?.cancel()
         fadeJob?.cancel()
-        closeWriterWithFinal(mediaSession?.player)
+        closeWriterWithFinalAsync(mediaSession?.player)
         serviceScope.cancel()
         mediaSession?.run {
             player.release()
@@ -512,6 +581,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun closeWriterWithFinal(player: Player?) {
+        closeWriterWithFinalAsync(player)
+    }
+
+    private fun closeWriterWithFinalAsync(player: Player?) {
         // Capture latest ids on current thread (player looper or last snapshot).
         val b: Long?
         val ch: Long?
@@ -529,17 +602,19 @@ class PlaybackService : MediaSessionService() {
         val writer = progressWriter
         progressWriter = null
         if (writer == null) return
-        try {
-            val saved = runBlocking {
-                // Final write goes through the queue AFTER any pending items → no stale overwrite.
-                writer.closeWithFinal(b, ch, pos, timeoutMs = 1_500)
+        progressScope.launch {
+            try {
+                // The writer has its own IO lifecycle, so service teardown never blocks main.
+                val saved = writer.closeWithFinal(b, ch, pos, timeoutMs = 1_500)
+                if (!saved && b != null && ch != null) {
+                    Log.w(TAG, "Final progress save did not complete for book=$b chapter=$ch")
+                }
+            } catch (_: Exception) {
+                writer.cancel()
+                Log.w(TAG, "Final progress save failed during service teardown")
+            } finally {
+                progressScope.cancel()
             }
-            if (!saved && b != null && ch != null) {
-                Log.w(TAG, "Final progress save did not complete for book=$b chapter=$ch")
-            }
-        } catch (_: Exception) {
-            writer.cancel()
-            Log.w(TAG, "Final progress save failed during service teardown")
         }
     }
 

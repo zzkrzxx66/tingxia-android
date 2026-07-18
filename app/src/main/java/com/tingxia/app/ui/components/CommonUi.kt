@@ -21,7 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
+import com.tingxia.app.R
 import com.tingxia.app.ui.theme.CoverPalette
 import java.io.File
 
@@ -76,7 +78,7 @@ fun BookCover(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = title.take(1).ifEmpty { "听" },
+                    text = title.take(1).ifEmpty { stringResource(R.string.cover_fallback_character) },
                     color = Color.White.copy(alpha = 0.92f),
                     fontSize = if (size != null && size < 80.dp) 20.sp else 34.sp,
                     fontWeight = FontWeight.Medium,

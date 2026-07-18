@@ -58,6 +58,7 @@ data class PlayerUiState(
     val coverPath: String? = null,
     val needsReauth: Boolean = false,
     val lastError: String? = null,
+    val errorCanSkip: Boolean = false,
 )
 
 data class LibraryMutationSnapshot(
@@ -120,15 +121,29 @@ class PlayerController @Inject constructor(
                     needsReauth = true,
                     isPlaying = false,
                     lastError = "目录权限失效，请重新授权",
+                    errorCanSkip = false,
                 )
                 scope.launch(Dispatchers.IO) {
                     bookRepository.markNeedsReauth(bookId, true)
                 }
             } else {
-                _state.value = _state.value.copy(
-                    isPlaying = false,
-                    lastError = error.message ?: "播放失败",
-                )
+                val hasNextChapter = controller?.hasNextMediaItem() == true
+                scope.launch {
+                    val autoSkip = shouldSkipPlaybackError(
+                        policy = preferences.playbackErrorPolicy.first(),
+                        isPermissionError = false,
+                        hasNextChapter = hasNextChapter,
+                    )
+                    _state.value = _state.value.copy(
+                        isPlaying = if (autoSkip) _state.value.isPlaying else false,
+                        lastError = if (autoSkip) {
+                            "章节播放失败，已自动跳过"
+                        } else {
+                            error.message ?: "播放失败"
+                        },
+                        errorCanSkip = !autoSkip && hasNextChapter,
+                    )
+                }
             }
         }
     }
@@ -229,6 +244,7 @@ class PlayerController @Inject constructor(
             usesBookSpeedOverride = book.playbackSpeed != null,
             needsReauth = false,
             lastError = null,
+            errorCanSkip = false,
         )
         updateFromMediaItem(c.currentMediaItem)
         return true
@@ -438,7 +454,7 @@ class PlayerController @Inject constructor(
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(lastError = null)
+        _state.value = _state.value.copy(lastError = null, errorCanSkip = false)
     }
 
     private fun startSleepTicker(endElapsedMs: Long) {

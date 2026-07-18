@@ -14,9 +14,11 @@
 - 递归扫描本地目录，受控并发读取章节元数据
 - 增量重扫与重新授权，保留章节身份、进度、书签和自定义标题
 - 后台播放、锁屏/蓝牙控制、断点续听和逐书倍速
+- 进程回收后从系统媒体中心恢复最近播放队列
 - 睡眠定时、本章结束暂停、渐弱停止
 - 书架搜索/排序/完成筛选，章节完成状态与批量标记
 - 书籍信息、章节标题和书签备注管理
+- 自定义封面与后台播放错误处理策略
 - 浅色、深色、跟随系统主题
 
 完整方案见 [方案.md](./方案.md)。
@@ -38,6 +40,7 @@ Kotlin · Jetpack Compose · Hilt · Room · Media3 (ExoPlayer) · DataStore · 
 
 GitHub Actions：推送后自动 `assembleDebug` 并上传 APK Artifact。
 CI 同时运行 JVM 测试、Lint、Release/R8 构建，并在 API 26/35 模拟器验证 Room 迁移与数据库约束。
+推送 `v*` tag 后，Release 工作流使用仓库 Secrets 构建并发布正式签名 APK/AAB。
 
 ## 模块结构
 

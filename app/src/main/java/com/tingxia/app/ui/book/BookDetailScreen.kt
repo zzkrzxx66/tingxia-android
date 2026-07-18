@@ -56,8 +56,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tingxia.app.R
 import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.ui.components.BookCover
@@ -91,6 +93,8 @@ fun BookDetailScreen(
     var editAuthor by remember { mutableStateOf("") }
     var editChapter by remember { mutableStateOf<Chapter?>(null) }
     var editChapterTitle by remember { mutableStateOf("") }
+    var editBookmark by remember { mutableStateOf<Bookmark?>(null) }
+    var editBookmarkNote by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(error) {
@@ -111,6 +115,11 @@ fun BookDetailScreen(
     ) { uri: Uri? ->
         if (uri != null) viewModel.reauthFolder(uri)
     }
+    val coverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.updateBookCover(uri)
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -129,16 +138,16 @@ fun BookDetailScreen(
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
-                            text = { Text("编辑书籍信息") },
+                            text = { Text(stringResource(R.string.edit_book_info)) },
                             onClick = {
                                 menu = false
                                 editTitle = book?.title.orEmpty()
@@ -147,7 +156,23 @@ fun BookDetailScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("重新扫描目录") },
+                            text = { Text(stringResource(R.string.choose_cover)) },
+                            onClick = {
+                                menu = false
+                                coverPicker.launch("image/*")
+                            },
+                        )
+                        if (!book?.coverPath.isNullOrBlank()) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.remove_cover)) },
+                                onClick = {
+                                    menu = false
+                                    viewModel.updateBookCover(null)
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.rescan_folder)) },
                             onClick = {
                                 menu = false
                                 viewModel.startRescan()
@@ -155,7 +180,7 @@ fun BookDetailScreen(
                             enabled = !rescanning && book?.needsReauth != true,
                         )
                         DropdownMenuItem(
-                            text = { Text("重新授权目录") },
+                            text = { Text(stringResource(R.string.reauthorize_folder)) },
                             onClick = {
                                 menu = false
                                 reauthTree.launch(null)
@@ -163,7 +188,7 @@ fun BookDetailScreen(
                             enabled = !reauthing,
                         )
                         DropdownMenuItem(
-                            text = { Text("从书架移除") },
+                            text = { Text(stringResource(R.string.remove_from_shelf)) },
                             onClick = {
                                 menu = false
                                 confirmRemove = true
@@ -171,7 +196,14 @@ fun BookDetailScreen(
                         )
                         val allCompleted = chapters.isNotEmpty() && chapters.all { it.completionState == 2 }
                         DropdownMenuItem(
-                            text = { Text(if (allCompleted) "清除全书完成状态" else "全书标记为已完成") },
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (allCompleted) R.string.clear_book_completion
+                                        else R.string.mark_book_completed,
+                                    ),
+                                )
+                            },
                             onClick = {
                                 menu = false
                                 viewModel.setAllChaptersCompleted(!allCompleted)
@@ -215,7 +247,11 @@ fun BookDetailScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "${chapters.size} 章 · ${formatDuration(book?.totalDurationMs ?: 0)}",
+                            stringResource(
+                                R.string.book_chapter_duration,
+                                chapters.size,
+                                formatDuration(book?.totalDurationMs ?: 0),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -226,7 +262,10 @@ fun BookDetailScreen(
                                 modifier = Modifier.fillMaxWidth().height(4.dp),
                             )
                             Text(
-                                "剩余 ${formatDuration(((book?.totalDurationMs ?: 0L) - (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L))}",
+                                stringResource(
+                                    R.string.remaining_time,
+                                    formatDuration(((book?.totalDurationMs ?: 0L) - (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L)),
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -237,7 +276,7 @@ fun BookDetailScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text("自动播放下一章", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.auto_play_next), style = MaterialTheme.typography.bodyMedium)
                             Switch(
                                 checked = book?.autoPlayNext ?: true,
                                 onCheckedChange = viewModel::setAutoPlayNext,
@@ -252,14 +291,19 @@ fun BookDetailScreen(
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
-                            Text(if ((book?.lastPlayedAt ?: 0) > 0) "继续播放" else "开始播放")
+                            Text(
+                                stringResource(
+                                    if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
+                                    else R.string.start_playback,
+                                ),
+                            )
                         }
                     }
                 }
                 if (book?.needsReauth == true) {
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "目录权限失效，请重新授权后才能播放",
+                        stringResource(R.string.folder_permission_lost),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -269,15 +313,19 @@ fun BookDetailScreen(
                         enabled = !reauthing,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (reauthing) "正在重新授权…" else "重新授权目录")
+                        Text(
+                            stringResource(
+                                if (reauthing) R.string.reauthorizing else R.string.reauthorize_folder,
+                            ),
+                        )
                     }
                 }
                 if (rescanning) {
                     Spacer(Modifier.height(12.dp))
-                    Text("正在扫描… ${rescanProgress?.currentName.orEmpty()}")
+                    Text(stringResource(R.string.scanning_item, rescanProgress?.currentName.orEmpty()))
                 }
                 Spacer(Modifier.height(20.dp))
-                Text("章节", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.chapters), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(8.dp))
             }
             items(chapters, key = { it.id }) { chapter ->
@@ -298,7 +346,7 @@ fun BookDetailScreen(
             if (bookmarks.isNotEmpty()) {
                 item {
                     Spacer(Modifier.height(16.dp))
-                    Text("书签", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.height(8.dp))
                 }
                 items(bookmarks, key = { "bm-${it.id}" }) { bm ->
@@ -306,6 +354,10 @@ fun BookDetailScreen(
                         bookmark = bm,
                         onClick = { onPlayBookmark(bm.chapterId, bm.positionMs) },
                         onDelete = { viewModel.deleteBookmark(bm.id) },
+                        onEdit = {
+                            editBookmark = bm
+                            editBookmarkNote = bm.note.orEmpty()
+                        },
                     )
                 }
             }
@@ -315,44 +367,67 @@ fun BookDetailScreen(
     rescanPreview?.let { preview ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissRescanPreview() },
-            title = { Text("扫描结果") },
+            title = { Text(stringResource(R.string.scan_results)) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    Text("新增 ${preview.plan.addedCount} 章")
-                    Text("删除 ${preview.plan.removedCount} 章")
-                    Text("变更 ${preview.plan.renamedCount} 章")
+                    Text(stringResource(R.string.scan_added, preview.plan.addedCount))
+                    Text(stringResource(R.string.scan_removed, preview.plan.removedCount))
+                    Text(stringResource(R.string.scan_changed, preview.plan.renamedCount))
                     preview.plan.weakMatches.forEach { (oldId, scanned) ->
                         Spacer(Modifier.height(8.dp))
-                        Text("弱匹配：${scanned.fileName}", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.weak_match, scanned.fileName), fontWeight = FontWeight.SemiBold)
                         Row {
                             TextButton(onClick = { viewModel.decideWeak(oldId, true) }) {
-                                Text(if (viewModel.weakAccepted(oldId)) "✓ 保留原章节" else "保留原章节")
+                                Text(
+                                    stringResource(
+                                        if (viewModel.weakAccepted(oldId)) R.string.keep_original_selected
+                                        else R.string.keep_original,
+                                    ),
+                                )
                             }
                             TextButton(onClick = { viewModel.decideWeak(oldId, false) }) {
-                                Text(if (viewModel.isWeakDecided(oldId) && !viewModel.weakAccepted(oldId)) "✓ 视为新增" else "视为新增")
+                                Text(
+                                    stringResource(
+                                        if (viewModel.isWeakDecided(oldId) && !viewModel.weakAccepted(oldId)) {
+                                            R.string.treat_as_new_selected
+                                        } else {
+                                            R.string.treat_as_new
+                                        },
+                                    ),
+                                )
                             }
                         }
                     }
                     preview.plan.ambiguous.forEach { ambiguous ->
                         Spacer(Modifier.height(8.dp))
-                        Text("无法确认：${ambiguous.scanned.fileName}", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.unable_to_confirm, ambiguous.scanned.fileName), fontWeight = FontWeight.SemiBold)
                         ambiguous.candidates.forEach { candidate ->
                             TextButton(onClick = {
                                 viewModel.decideAmbiguous(ambiguous.scanned.uri, candidate.oldChapter.id)
                             }) {
                                 val chosen = viewModel.ambiguousChoice(ambiguous.scanned.uri) == candidate.oldChapter.id
-                                Text((if (chosen) "✓ " else "") + "对应 ${candidate.oldChapter.displayTitle}")
+                                Text(
+                                    stringResource(
+                                        if (chosen) R.string.match_chapter_selected else R.string.match_chapter,
+                                        candidate.oldChapter.displayTitle,
+                                    ),
+                                )
                             }
                         }
                         TextButton(onClick = { viewModel.decideAmbiguous(ambiguous.scanned.uri, null) }) {
                             val rejected = viewModel.isAmbiguousDecided(ambiguous.scanned.uri) &&
                                 viewModel.ambiguousChoice(ambiguous.scanned.uri) == null
-                            Text((if (rejected) "✓ " else "") + "视为新增章节")
+                            Text(
+                                stringResource(
+                                    if (rejected) R.string.treat_as_new_chapter_selected
+                                    else R.string.treat_as_new_chapter,
+                                ),
+                            )
                         }
                     }
                     if (preview.affectedBookmarkCount > 0) {
                         Text(
-                            "将删除 ${preview.affectedBookmarkCount} 个关联书签",
+                            stringResource(R.string.delete_related_bookmarks, preview.affectedBookmarkCount),
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -364,10 +439,10 @@ fun BookDetailScreen(
                         viewModel.confirmRescan()
                     },
                     enabled = viewModel.canConfirmRescan(),
-                ) { Text("应用") }
+                ) { Text(stringResource(R.string.apply)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissRescanPreview() }) { Text("取消") }
+                TextButton(onClick = { viewModel.dismissRescanPreview() }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -375,18 +450,18 @@ fun BookDetailScreen(
     if (confirmRemove) {
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
-            title = { Text("从书架移除") },
-            text = { Text("仅从书架移除，不会删除手机上的原文件。") },
+            title = { Text(stringResource(R.string.remove_from_shelf)) },
+            text = { Text(stringResource(R.string.remove_from_shelf_summary)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         confirmRemove = false
                         viewModel.removeBook { onBack() }
                     },
-                ) { Text("移除") }
+                ) { Text(stringResource(R.string.remove)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmRemove = false }) { Text("取消") }
+                TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -395,20 +470,20 @@ fun BookDetailScreen(
     if (editBook) {
         AlertDialog(
             onDismissRequest = { editBook = false },
-            title = { Text("编辑书籍信息") },
+            title = { Text(stringResource(R.string.edit_book_info)) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = editTitle,
                         onValueChange = { editTitle = it },
-                        label = { Text("书名") },
+                        label = { Text(stringResource(R.string.book_title)) },
                         singleLine = true,
                     )
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = editAuthor,
                         onValueChange = { editAuthor = it },
-                        label = { Text("作者（可选）") },
+                        label = { Text(stringResource(R.string.author_optional)) },
                         singleLine = true,
                     )
                 }
@@ -420,21 +495,21 @@ fun BookDetailScreen(
                         viewModel.updateBookMetadata(editTitle, editAuthor)
                         editBook = false
                     },
-                ) { Text("保存") }
+                ) { Text(stringResource(R.string.save)) }
             },
-            dismissButton = { TextButton(onClick = { editBook = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { editBook = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
     editChapter?.let { chapter ->
         AlertDialog(
             onDismissRequest = { editChapter = null },
-            title = { Text("编辑章节标题") },
+            title = { Text(stringResource(R.string.edit_chapter_title)) },
             text = {
                 OutlinedTextField(
                     value = editChapterTitle,
                     onValueChange = { editChapterTitle = it },
-                    label = { Text("章节标题") },
+                    label = { Text(stringResource(R.string.chapter_title)) },
                     singleLine = true,
                 )
             },
@@ -442,13 +517,39 @@ fun BookDetailScreen(
                 TextButton(onClick = {
                     viewModel.updateChapterTitle(chapter.id, editChapterTitle)
                     editChapter = null
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.save)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     viewModel.updateChapterTitle(chapter.id, null)
                     editChapter = null
-                }) { Text("恢复文件名") }
+                }) { Text(stringResource(R.string.restore_filename)) }
+            },
+        )
+    }
+
+
+    editBookmark?.let { bookmark ->
+        AlertDialog(
+            onDismissRequest = { editBookmark = null },
+            title = { Text(stringResource(R.string.edit_bookmark_note)) },
+            text = {
+                OutlinedTextField(
+                    value = editBookmarkNote,
+                    onValueChange = { editBookmarkNote = it },
+                    label = { Text(stringResource(R.string.note_optional)) },
+                    minLines = 2,
+                    maxLines = 5,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.updateBookmarkNote(bookmark.id, editBookmarkNote)
+                    editBookmark = null
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editBookmark = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -504,12 +605,14 @@ private fun ChapterRow(
             )
         }
         IconButton(onClick = onEditTitle) {
-            Icon(Icons.Default.Edit, contentDescription = "编辑章节标题")
+            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_chapter_title))
         }
         IconButton(onClick = onToggleCompleted) {
             Icon(
                 if (chapter.completionState == 2) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                contentDescription = if (chapter.completionState == 2) "标记为未完成" else "标记为已完成",
+                contentDescription = stringResource(
+                    if (chapter.completionState == 2) R.string.mark_incomplete else R.string.mark_completed,
+                ),
                 tint = if (chapter.completionState == 2) MaterialTheme.colorScheme.secondary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -522,6 +625,7 @@ private fun BookmarkRow(
     bookmark: Bookmark,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -531,9 +635,11 @@ private fun BookmarkRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            val chapterLabel = bookmark.chapterIndex?.let { "第 ${it + 1} 章" } ?: "章节"
+            val chapterLabel = bookmark.chapterIndex?.let {
+                stringResource(R.string.chapter_number, it + 1)
+            } ?: stringResource(R.string.chapter)
             Text(
-                "$chapterLabel · ${formatDuration(bookmark.positionMs)}",
+                stringResource(R.string.bookmark_position, chapterLabel, formatDuration(bookmark.positionMs)),
                 style = MaterialTheme.typography.bodyLarge,
             )
             bookmark.note?.takeIf { it.isNotBlank() }?.let {
@@ -549,8 +655,11 @@ private fun BookmarkRow(
                 )
             }
         }
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_bookmark_note))
+        }
         IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "删除书签")
+            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_bookmark))
         }
     }
 }

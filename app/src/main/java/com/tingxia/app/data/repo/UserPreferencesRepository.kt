@@ -23,6 +23,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+enum class PlaybackErrorPolicy { STOP, SKIP }
+
 @Singleton
 class UserPreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -37,6 +39,7 @@ class UserPreferencesRepository @Inject constructor(
         val DEFAULT_SPEED = floatPreferencesKey("default_speed")
         val SHELF_SORT = stringPreferencesKey("shelf_sort")
         val SHELF_FILTER = stringPreferencesKey("shelf_filter")
+        val PLAYBACK_ERROR_POLICY = stringPreferencesKey("playback_error_policy")
     }
 
     val themeMode: Flow<ThemeMode> = preferencesFlow.map { prefs ->
@@ -63,6 +66,14 @@ class UserPreferencesRepository @Inject constructor(
             .getOrDefault(ShelfFilter.ALL)
     }
 
+    val playbackErrorPolicy: Flow<PlaybackErrorPolicy> = preferencesFlow.map { prefs ->
+        runCatching {
+            PlaybackErrorPolicy.valueOf(
+                prefs[Keys.PLAYBACK_ERROR_POLICY] ?: PlaybackErrorPolicy.STOP.name,
+            )
+        }.getOrDefault(PlaybackErrorPolicy.STOP)
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit {
             it[Keys.THEME_MODE] = mode.name
@@ -80,5 +91,9 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setShelfFilter(filter: ShelfFilter) {
         context.dataStore.edit { it[Keys.SHELF_FILTER] = filter.name }
+    }
+
+    suspend fun setPlaybackErrorPolicy(policy: PlaybackErrorPolicy) {
+        context.dataStore.edit { it[Keys.PLAYBACK_ERROR_POLICY] = policy.name }
     }
 }

@@ -26,6 +26,9 @@ import com.tingxia.app.data.policy.SafPermissionPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -85,6 +88,8 @@ class BookRepository @Inject constructor(
         chapterDao.observeChapters(bookId).map { list -> list.map { it.toModel() } }
 
     suspend fun getBook(id: Long): Book? = bookDao.getBook(id)?.toModel()
+
+    suspend fun getRecentBook(): Book? = bookDao.getRecentBook()?.toModel()
 
     suspend fun getChapters(bookId: Long): List<Chapter> =
         chapterDao.getChapters(bookId).map { it.toModel() }
@@ -229,7 +234,10 @@ class BookRepository @Inject constructor(
             throw StaleRescanPreviewException()
         }
         val existingBook = bookDao.getBook(bookId) ?: error("书籍不存在")
-        val replacement = scannedCoverPath?.takeIf { it != existingBook.coverPath }?.let {
+        val replacement = scannedCoverPath
+            ?.takeUnless { isManualCover(existingBook.coverPath) }
+            ?.takeIf { it != existingBook.coverPath }
+            ?.let {
             existingBook.copy(coverPath = it)
         }
         return applyRescanInternal(
@@ -472,8 +480,12 @@ class BookRepository @Inject constructor(
                     ),
                 )
             }
-            val replacementCover = scanned.coverPath ?: existing.coverPath?.takeUnless {
-                oldRoot != scanned.rootUri && it.startsWith("content:")
+            val replacementCover = if (isManualCover(existing.coverPath)) {
+                existing.coverPath
+            } else {
+                scanned.coverPath ?: existing.coverPath?.takeUnless {
+                    oldRoot != scanned.rootUri && it.startsWith("content:")
+                }
             }
             val replacement = existing.copy(
                 rootUri = scanned.rootUri,
@@ -552,6 +564,41 @@ class BookRepository @Inject constructor(
         val cleanTitle = title.trim()
         require(cleanTitle.isNotEmpty()) { "书名不能为空" }
         bookDao.updateMetadata(bookId, cleanTitle, author?.trim()?.takeIf { it.isNotEmpty() })
+    }
+
+    suspend fun updateBookCover(bookId: Long, source: Uri?) {
+        val book = bookDao.getBook(bookId) ?: return
+        val oldCover = book.coverPath
+        val newCover = if (source == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                val coversDir = context.filesDir.resolve("covers").apply { mkdirs() }
+                val target = coversDir.resolve("manual_cover_${bookId}_${System.currentTimeMillis()}.img")
+                try {
+                    context.contentResolver.openInputStream(source)?.use { input ->
+                        FileOutputStream(target).use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var total = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                require(total <= MAX_MANUAL_COVER_BYTES) { "封面图片不能超过 15 MB" }
+                                output.write(buffer, 0, count)
+                            }
+                            require(total > 0L) { "无法读取封面图片" }
+                        }
+                    } ?: error("无法读取封面图片")
+                    target.absolutePath
+                } catch (error: Exception) {
+                    target.delete()
+                    throw error
+                }
+            }
+        }
+        bookDao.updateCover(bookId, newCover)
+        if (oldCover != newCover) deleteLocalCoverIfOwned(oldCover)
     }
 
     suspend fun updateChapterTitle(chapterId: Long, title: String?) {
@@ -665,6 +712,13 @@ class BookRepository @Inject constructor(
             }
         } catch (_: Exception) {
         }
+    }
+
+    private fun isManualCover(coverPath: String?): Boolean =
+        coverPath?.let { java.io.File(it).name.startsWith("manual_cover_") } == true
+
+    private companion object {
+        const val MAX_MANUAL_COVER_BYTES = 15L * 1024L * 1024L
     }
 }
 

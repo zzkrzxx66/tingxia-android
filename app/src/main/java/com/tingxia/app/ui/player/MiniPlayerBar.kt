@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.tingxia.app.R
 import com.tingxia.app.player.PlayerUiState
 import com.tingxia.app.ui.components.BookCover
 
@@ -93,7 +95,9 @@ fun MiniPlayerBar(
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "暂停" else "播放",
+                        contentDescription = stringResource(
+                            if (state.isPlaying) R.string.pause else R.string.play,
+                        ),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(28.dp),
                     )

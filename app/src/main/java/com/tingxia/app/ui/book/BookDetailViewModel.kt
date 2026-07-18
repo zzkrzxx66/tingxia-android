@@ -237,6 +237,18 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch { bookmarkRepository.updateNote(id, note) }
     }
 
+    fun updateBookCover(uri: Uri?) {
+        viewModelScope.launch {
+            try {
+                bookRepository.updateBookCover(bookId, uri)
+                playerController.refreshQueueMetadata(bookId)
+                _message.value = if (uri == null) "已移除自定义封面" else "封面已更新"
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新封面失败"
+            }
+        }
+    }
+
     fun setAutoPlayNext(enabled: Boolean) {
         viewModelScope.launch {
             try {

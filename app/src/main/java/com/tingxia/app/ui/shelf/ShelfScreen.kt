@@ -60,8 +60,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tingxia.app.R
 import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
@@ -109,11 +111,11 @@ fun ShelfScreen(
                 title = {
                     Column {
                         Text(
-                            "听匣",
+                            stringResource(R.string.app_name),
                             style = MaterialTheme.typography.titleLarge,
                         )
                         Text(
-                            "本地有声书",
+                            stringResource(R.string.local_audiobooks),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -125,18 +127,18 @@ fun ShelfScreen(
                 ),
                 actions = {
                     IconButton(onClick = { showSearch = !showSearch }) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索")
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                     }
                     Box {
                         IconButton(onClick = { sortMenu = true }) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.sort))
                         }
                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                             listOf(
-                                ShelfSort.RECENT to "最近播放",
-                                ShelfSort.IMPORTED to "最近导入",
-                                ShelfSort.TITLE to "书名",
-                                ShelfSort.PROGRESS to "进度",
+                                ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
+                                ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
+                                ShelfSort.TITLE to stringResource(R.string.book_title),
+                                ShelfSort.PROGRESS to stringResource(R.string.progress),
                             ).forEach { (value, label) ->
                                 DropdownMenuItem(
                                     text = {
@@ -159,15 +161,15 @@ fun ShelfScreen(
                     }
                     Box {
                         IconButton(onClick = { filterMenu = true }) {
-                            Icon(Icons.Default.FilterList, contentDescription = "筛选")
+                            Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.filter))
                         }
                         DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
                             listOf(
-                                ShelfFilter.ALL to "全部",
-                                ShelfFilter.NOT_STARTED to "未开始",
-                                ShelfFilter.IN_PROGRESS to "收听中",
-                                ShelfFilter.COMPLETED to "已完成",
-                                ShelfFilter.NEEDS_REAUTH to "需重新授权",
+                                ShelfFilter.ALL to stringResource(R.string.filter_all),
+                                ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
+                                ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
+                                ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
+                                ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
                             ).forEach { (value, label) ->
                                 DropdownMenuItem(
                                     text = {
@@ -189,7 +191,7 @@ fun ShelfScreen(
                         }
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                     }
                 },
             )
@@ -201,7 +203,7 @@ fun ShelfScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = MaterialTheme.shapes.medium,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "导入文件夹")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_folder))
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -220,7 +222,7 @@ fun ShelfScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                             singleLine = true,
-                            placeholder = { Text("搜索书名或作者") },
+                            placeholder = { Text(stringResource(R.string.search_books_hint)) },
                             shape = MaterialTheme.shapes.medium,
                             colors = OutlinedTextFieldDefaults.colors(
                                 unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
@@ -287,7 +289,7 @@ fun ShelfScreen(
                             )
                             Spacer(Modifier.width(14.dp))
                             Column {
-                                Text("正在导入", style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.importing), style = MaterialTheme.typography.titleSmall)
                                 importProgress?.let {
                                     Text(
                                         buildString {
@@ -320,15 +322,17 @@ private fun EmptyShelf(filtered: Boolean) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            if (filtered) "没有找到相关书籍" else "书架还是空的",
+            stringResource(
+                if (filtered) R.string.no_matching_books else R.string.empty_shelf,
+            ),
             style = MaterialTheme.typography.headlineSmall,
         )
         Spacer(Modifier.height(10.dp))
         Text(
             if (filtered) {
-                "试试换个关键词，或清除筛选"
+                stringResource(R.string.adjust_search_or_filter)
             } else {
-                "右下角添加一个包含音频的文件夹"
+                stringResource(R.string.empty_shelf_hint)
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -357,7 +361,7 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "继续收听",
+                    stringResource(R.string.continue_listening),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                 )
@@ -422,7 +426,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 ) {
                     Icon(
                         Icons.Default.Warning,
-                        contentDescription = "需重新授权",
+                        contentDescription = stringResource(R.string.needs_reauthorization),
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier
                             .padding(4.dp)

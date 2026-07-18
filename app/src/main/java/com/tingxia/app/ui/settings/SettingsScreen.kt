@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.BuildConfig
 import com.tingxia.app.R
 import com.tingxia.app.data.repo.ThemeMode
+import com.tingxia.app.data.repo.PlaybackErrorPolicy
 import com.tingxia.app.player.PlaybackSpeeds
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,6 +51,7 @@ fun SettingsScreen(
 ) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val speed by viewModel.defaultSpeed.collectAsStateWithLifecycle()
+    val errorPolicy by viewModel.playbackErrorPolicy.collectAsStateWithLifecycle()
     var speedExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -123,6 +125,28 @@ fun SettingsScreen(
                             },
                         )
                     }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Text(stringResource(R.string.playback_error_policy), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                stringResource(R.string.playback_error_policy_summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                listOf(
+                    PlaybackErrorPolicy.STOP to stringResource(R.string.playback_error_stop),
+                    PlaybackErrorPolicy.SKIP to stringResource(R.string.playback_error_skip),
+                ).forEach { (policy, label) ->
+                    FilterChip(
+                        selected = errorPolicy == policy,
+                        onClick = { viewModel.setPlaybackErrorPolicy(policy) },
+                        label = { Text(label) },
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
                 }
             }
 
