@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDao {
+    @Query("SELECT * FROM books ORDER BY id ASC")
+    suspend fun getAll(): List<BookEntity>
+
     @Query("SELECT * FROM books ORDER BY lastPlayedAt DESC, createdAt DESC")
     fun observeBooks(): Flow<List<BookEntity>>
 
@@ -44,6 +47,9 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE id = :id")
     suspend fun getBook(id: Long): BookEntity?
+
+    @Query("SELECT * FROM books WHERE rootUri = :rootUri LIMIT 1")
+    suspend fun getBookByRootUri(rootUri: String): BookEntity?
 
     @Query(
         """
@@ -153,6 +159,9 @@ interface BookDao {
 @Dao
 interface ChapterDao {
     @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY `index` ASC")
+    suspend fun getForBook(bookId: Long): List<ChapterEntity>
+
+    @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY `index` ASC")
     fun observeChapters(bookId: Long): Flow<List<ChapterEntity>>
 
     @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY `index` ASC")
@@ -188,6 +197,9 @@ interface ChapterDao {
     @Query("SELECT COUNT(*) FROM bookmarks WHERE chapterId IN (:chapterIds)")
     suspend fun countBookmarksForChapters(chapterIds: List<Long>): Int
 
+    @Query("SELECT COUNT(*) FROM chapters WHERE uri = :uri AND bookId != :excludeBookId")
+    suspend fun countByUriExcludingBook(uri: String, excludeBookId: Long): Int
+
     @Query("UPDATE chapters SET completionState = 1 WHERE id = :chapterId AND completionState = 0")
     suspend fun markInProgress(chapterId: Long)
 
@@ -217,6 +229,9 @@ interface ChapterDao {
 
 @Dao
 interface BookmarkDao {
+    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId ORDER BY createdAt ASC, id ASC")
+    suspend fun getForBook(bookId: Long): List<BookmarkEntity>
+
     @Query(
         """
         SELECT * FROM bookmarks
@@ -247,6 +262,9 @@ interface BookmarkDao {
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
+    suspend fun deleteForBook(bookId: Long)
 
     @Query("SELECT COUNT(*) FROM bookmarks WHERE chapterId IN (:chapterIds)")
     suspend fun countForChapters(chapterIds: List<Long>): Int

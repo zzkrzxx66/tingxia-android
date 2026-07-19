@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -53,6 +54,58 @@ class FolderScanner @Inject constructor(
     @ApplicationContext private val context: Context,
     private val metadataReader: MetadataReader,
 ) {
+    suspend fun scanFiles(
+        uris: List<Uri>,
+        onProgress: (ScanProgress) -> Unit = {},
+    ): ScannedBook = withContext(Dispatchers.IO) {
+        require(uris.isNotEmpty()) { "请选择至少一个音频文件" }
+        val files = uris.distinct().mapNotNull(::queryAudioFile)
+            .filter { isAudio(it.name, it.mimeType) }
+            .sortedWith { a, b -> naturalCompare(a.name, b.name) }
+        require(files.isNotEmpty()) { "未找到支持的音频文件" }
+        val completed = AtomicInteger(0)
+        val semaphore = Semaphore(METADATA_CONCURRENCY)
+        val chapters = coroutineScope {
+            files.mapIndexed { index, file ->
+                async {
+                    semaphore.withPermit {
+                        val duration = metadataReader.readDurationMs(file.uri)
+                        val done = completed.incrementAndGet()
+                        onProgress(ScanProgress(done, file.name, files.size))
+                        ScannedChapter(
+                            title = stripExtension(file.name),
+                            uri = file.uri.toString(),
+                            documentId = file.documentId,
+                            relativePath = file.name,
+                            fileName = file.name,
+                            fileSize = file.fileSize,
+                            mimeType = file.mimeType,
+                            durationMs = duration,
+                            index = index,
+                            stableKey = ChapterIdentity.stableKey(file.name, file.fileSize, duration),
+                        )
+                    }
+                }
+            }.awaitAll()
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(files.joinToString("\n") { it.uri.toString() }.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        val title = if (files.size == 1) {
+            stripExtension(files.first().name)
+        } else {
+            commonTitle(files.map { stripExtension(it.name) })
+                .ifBlank { "导入的音频（${files.size} 个文件）" }
+        }
+        ScannedBook(
+            title = title,
+            rootUri = "multi://files/$digest",
+            coverPath = metadataReader.extractEmbeddedCover(chapters.first().uri),
+            chapters = chapters,
+            totalDurationMs = chapters.sumOf { it.durationMs },
+        )
+    }
+
     suspend fun scanTree(
         treeUri: Uri,
         onProgress: (ScanProgress) -> Unit = {},
@@ -150,6 +203,49 @@ class FolderScanner @Inject constructor(
     )
 
     private data class CoverCandidate(val uri: String, val depth: Int, val path: String)
+
+    private fun queryAudioFile(uri: Uri): AudioFile? {
+        val projection = arrayOf(
+            OpenableColumns.DISPLAY_NAME,
+            OpenableColumns.SIZE,
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+        )
+        return try {
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val name = nameIndex.takeIf { it >= 0 && !cursor.isNull(it) }?.let(cursor::getString)
+                    ?: uri.lastPathSegment ?: return@use null
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val mimeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                AudioFile(
+                    name = name,
+                    uri = uri,
+                    documentId = idIndex.takeIf { it >= 0 && !cursor.isNull(it) }?.let(cursor::getString),
+                    relativePath = name,
+                    mimeType = mimeIndex.takeIf { it >= 0 && !cursor.isNull(it) }?.let(cursor::getString)
+                        ?: context.contentResolver.getType(uri),
+                    fileSize = sizeIndex.takeIf { it >= 0 && !cursor.isNull(it) }?.let(cursor::getLong) ?: 0L,
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun commonTitle(titles: List<String>): String {
+        if (titles.isEmpty()) return ""
+        var prefix = titles.first()
+        titles.drop(1).forEach { title ->
+            val max = minOf(prefix.length, title.length)
+            var index = 0
+            while (index < max && prefix[index].equals(title[index], ignoreCase = true)) index++
+            prefix = prefix.take(index)
+        }
+        return prefix.trim().trimEnd('-', '_', '.', ' ', '第', '章').trim()
+    }
 
     private fun traverse(
         treeUri: Uri,

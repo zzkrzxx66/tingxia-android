@@ -90,6 +90,7 @@ fun ShelfScreen(
     var sortMenu by remember { mutableStateOf(false) }
     var filterMenu by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
+    var importMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(error) {
         error?.let {
@@ -102,6 +103,11 @@ fun ShelfScreen(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
         if (uri != null) viewModel.importFolder(uri)
+    }
+    val openFiles = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris: List<Uri> ->
+        viewModel.importFiles(uris)
     }
 
     Scaffold(
@@ -197,13 +203,34 @@ fun ShelfScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { openTree.launch(null) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_folder))
+            Box {
+                FloatingActionButton(
+                    onClick = { importMenu = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_audio))
+                }
+                DropdownMenu(
+                    expanded = importMenu,
+                    onDismissRequest = { importMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.import_folder)) },
+                        onClick = {
+                            importMenu = false
+                            openTree.launch(null)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.import_multiple_audio)) },
+                        onClick = {
+                            importMenu = false
+                            openFiles.launch(arrayOf("audio/*", "application/octet-stream"))
+                        },
+                    )
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },

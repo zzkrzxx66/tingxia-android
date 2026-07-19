@@ -15,6 +15,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,6 +25,14 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class PlaybackErrorPolicy { STOP, SKIP }
+
+data class PreferencesSnapshot(
+    val themeMode: ThemeMode,
+    val defaultSpeed: Float,
+    val shelfSort: ShelfSort,
+    val shelfFilter: ShelfFilter,
+    val playbackErrorPolicy: PlaybackErrorPolicy,
+)
 
 @Singleton
 class UserPreferencesRepository @Inject constructor(
@@ -95,5 +104,24 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setPlaybackErrorPolicy(policy: PlaybackErrorPolicy) {
         context.dataStore.edit { it[Keys.PLAYBACK_ERROR_POLICY] = policy.name }
+    }
+
+    suspend fun snapshot(): PreferencesSnapshot = PreferencesSnapshot(
+        themeMode = themeMode.first(),
+        defaultSpeed = defaultSpeed.first(),
+        shelfSort = shelfSort.first(),
+        shelfFilter = shelfFilter.first(),
+        playbackErrorPolicy = playbackErrorPolicy.first(),
+    )
+
+    suspend fun restore(snapshot: PreferencesSnapshot) {
+        context.dataStore.edit {
+            it[Keys.THEME_MODE] = snapshot.themeMode.name
+            it[Keys.DEFAULT_SPEED] = snapshot.defaultSpeed
+            it[Keys.SHELF_SORT] = snapshot.shelfSort.name
+            it[Keys.SHELF_FILTER] = snapshot.shelfFilter.name
+            it[Keys.PLAYBACK_ERROR_POLICY] = snapshot.playbackErrorPolicy.name
+            it.remove(Keys.DARK_THEME)
+        }
     }
 }

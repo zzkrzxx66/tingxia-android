@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Add versioned JSON backup and restore for books, chapter metadata, progress,
+  completion state, bookmarks, and settings.
+- Add multi-select audio import through the system document picker without
+  copying source audio into app storage.
+- Keep restored books available for later SAF reauthorization when the source
+  folder is not currently accessible.
+
 ## 0.3.1
 
 - Restore the latest book queue, chapter, position, speed, and autoplay behavior

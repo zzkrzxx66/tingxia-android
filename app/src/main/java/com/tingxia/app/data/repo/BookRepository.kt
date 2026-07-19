@@ -188,6 +188,81 @@ class BookRepository @Inject constructor(
         }
     }
 
+    suspend fun importFiles(
+        uris: List<Uri>,
+        onProgress: (ScanProgress) -> Unit = {},
+    ): Book {
+        require(uris.isNotEmpty()) { "请选择至少一个音频文件" }
+        val distinctUris = uris.distinct()
+        val newlyTaken = mutableListOf<Uri>()
+        try {
+            distinctUris.forEach { uri ->
+                val held = isUriPermissionHeld(uri)
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                    if (!held) newlyTaken += uri
+                } catch (_: SecurityException) {
+                    if (!held) throw PersistablePermissionException()
+                }
+            }
+            val scanned = folderScanner.scanFiles(distinctUris, onProgress)
+            bookDao.findIdByRootUri(scanned.rootUri)?.let { existingId ->
+                return bookDao.getBook(existingId)!!.toModel()
+            }
+            return insertScannedBook(scanned)
+        } catch (error: Exception) {
+            newlyTaken.forEach { releaseUriPermission(it) }
+            throw error
+        }
+    }
+
+    private suspend fun insertScannedBook(scanned: com.tingxia.app.data.importer.ScannedBook): Book =
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            val bookId = bookDao.insertBook(
+                BookEntity(
+                    title = scanned.title,
+                    author = null,
+                    coverPath = scanned.coverPath,
+                    rootUri = scanned.rootUri,
+                    totalDurationMs = scanned.totalDurationMs,
+                    lastPlayedAt = 0L,
+                    currentChapterId = null,
+                    currentPositionMs = 0L,
+                    listenedDurationMs = 0L,
+                    needsReauth = false,
+                    playbackSpeed = null,
+                    autoPlayNext = true,
+                    lastScannedAt = now,
+                ),
+            )
+            val ids = chapterDao.insertAll(
+                scanned.chapters.map { ch ->
+                    ChapterEntity(
+                        bookId = bookId,
+                        title = ch.title,
+                        uri = ch.uri,
+                        index = ch.index,
+                        durationMs = ch.durationMs,
+                        fileName = ch.fileName,
+                        relativePath = ch.relativePath,
+                        fileSize = ch.fileSize,
+                        documentId = ch.documentId,
+                        mimeType = ch.mimeType,
+                        stableKey = ch.stableKey,
+                    )
+                },
+            )
+            if (ids.isNotEmpty()) {
+                bookDao.updateProgress(bookId, ids.first(), 0L, 0L, 0L)
+            }
+            invalidateOffsetIndex(bookId)
+            bookDao.getBook(bookId)!!.toModel()
+        }
+
     suspend fun previewRescan(
         bookId: Long,
         onProgress: (ScanProgress) -> Unit = {},
@@ -525,10 +600,20 @@ class BookRepository @Inject constructor(
         val book = bookDao.getBook(bookId) ?: return
         val root = book.rootUri
         val coverPath = book.coverPath
+        val fileUris = if (root.startsWith("multi://")) {
+            chapterDao.getChapters(bookId).map { it.uri }.distinct()
+        } else {
+            emptyList()
+        }
         bookDao.deleteBook(bookId)
         invalidateOffsetIndex(bookId)
-        if (bookDao.countByRootUri(root) == 0) {
+        if (!root.startsWith("multi://") && bookDao.countByRootUri(root) == 0) {
             releaseUriPermission(Uri.parse(root))
+        }
+        fileUris.forEach { uri ->
+            if (chapterDao.countByUriExcludingBook(uri, bookId) == 0) {
+                releaseUriPermission(Uri.parse(uri))
+            }
         }
         deleteLocalCoverIfOwned(coverPath)
     }
@@ -619,7 +704,11 @@ class BookRepository @Inject constructor(
 
     suspend fun checkBookAccess(bookId: Long): Boolean {
         val book = bookDao.getBook(bookId) ?: return false
-        val ok = canAccessUri(Uri.parse(book.rootUri))
+        val ok = if (book.rootUri.startsWith("multi://")) {
+            chapterDao.getChapters(bookId).all { canAccessUri(Uri.parse(it.uri)) }
+        } else {
+            canAccessUri(Uri.parse(book.rootUri))
+        }
         if (!ok && !book.needsReauth) {
             bookDao.setNeedsReauth(bookId, true)
         } else if (ok && book.needsReauth) {

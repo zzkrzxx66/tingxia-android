@@ -19,6 +19,7 @@
 - 书架搜索/排序/完成筛选，章节完成状态与批量标记
 - 书籍信息、章节标题和书签备注管理
 - 自定义封面与后台播放错误处理策略
+- JSON 备份/恢复书架数据，支持系统多选音频导入
 - 浅色、深色、跟随系统主题
 
 完整方案见 [方案.md](./方案.md)。
@@ -37,6 +38,8 @@ Kotlin · Jetpack Compose · Hilt · Room · Media3 (ExoPlayer) · DataStore · 
 ```
 
 产物：`app/build/outputs/apk/debug/app-debug.apk`
+
+备份文件只保存书架元数据、章节状态、进度、书签和设置，不包含音频源文件；恢复到没有目录权限的设备后，需要重新授权原目录。多文件导入使用系统持久化 URI，不复制音频文件。
 
 GitHub Actions：推送后自动 `assembleDebug` 并上传 APK Artifact。
 CI 同时运行 JVM 测试、Lint、Release/R8 构建，并在 API 26/35 模拟器验证 Room 迁移与数据库约束。

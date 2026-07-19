@@ -114,4 +114,10 @@
     <string name="play">播放</string>
     <string name="sleep">睡眠</string>
     <string name="cover_fallback_character">听</string>
+    <string name="backup_restore">备份与恢复</string>
+    <string name="backup_restore_summary">仅保存书架、进度、书签和设置，不复制音频文件。</string>
+    <string name="export_backup">导出备份</string>
+    <string name="import_backup">导入备份</string>
+    <string name="import_audio">导入音频</string>
+    <string name="import_multiple_audio">选择多个音频</string>
 </resources>

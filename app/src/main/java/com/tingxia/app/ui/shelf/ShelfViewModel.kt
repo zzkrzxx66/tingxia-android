@@ -89,6 +89,24 @@ class ShelfViewModel @Inject constructor(
         }
     }
 
+    fun importFiles(uris: List<Uri>) {
+        if (_importing.value || uris.isEmpty()) return
+        viewModelScope.launch {
+            _importing.value = true
+            _importProgress.value = null
+            try {
+                bookRepository.importFiles(uris) { progress ->
+                    _importProgress.value = progress
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "导入失败"
+            } finally {
+                _importing.value = false
+                _importProgress.value = null
+            }
+        }
+    }
+
     fun clearError() {
         _error.value = null
     }
