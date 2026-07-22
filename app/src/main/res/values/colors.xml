@@ -2,4 +2,14 @@
 <resources>
     <color name="ic_launcher_background">#141210</color>
     <color name="window_background_dark">#141210</color>
+    <color name="widget_surface">#FFFCF8</color>
+    <color name="widget_on_surface">#1C1917</color>
+    <color name="widget_on_surface_variant">#57534E</color>
+    <color name="widget_outline">#D9D1C5</color>
+    <color name="widget_progress_track">#E7E0D6</color>
+    <color name="widget_accent">#3F5D4A</color>
+    <color name="widget_control">#D9E6DC</color>
+    <color name="widget_on_control">#1A2E22</color>
+    <color name="widget_primary_control">#9A6B2F</color>
+    <color name="widget_on_primary_control">#FFFFFF</color>
 </resources>

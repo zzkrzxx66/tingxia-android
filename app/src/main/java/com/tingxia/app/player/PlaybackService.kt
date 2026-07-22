@@ -27,6 +27,7 @@ import com.tingxia.app.R
 import com.tingxia.app.TingXiaApp
 import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.UserPreferencesRepository
+import com.tingxia.app.widget.PlaybackWidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -271,6 +272,11 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (mediaItem == null) {
+                    PlaybackWidgetUpdater.clear(this@PlaybackService)
+                } else {
+                    PlaybackWidgetUpdater.update(this@PlaybackService, player)
+                }
                 val completedChapterId = lastChapterId
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && completedChapterId != null) {
                     serviceScope.launch(Dispatchers.IO) {
@@ -291,10 +297,12 @@ class PlaybackService : MediaSessionService() {
                 newPosition: Player.PositionInfo,
                 reason: Int,
             ) {
+                PlaybackWidgetUpdater.update(this@PlaybackService, player)
                 serviceScope.launch { captureAndEnqueueCurrent(player) }
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                PlaybackWidgetUpdater.update(this@PlaybackService, player)
                 if (!playWhenReady &&
                     reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
                 ) {
@@ -308,6 +316,9 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (player.currentMediaItem != null) {
+                    PlaybackWidgetUpdater.update(this@PlaybackService, player)
+                }
                 if (playbackState == Player.STATE_ENDED) {
                     lastChapterId?.let { completedChapterId ->
                         serviceScope.launch(Dispatchers.IO) {
@@ -377,6 +388,7 @@ class PlaybackService : MediaSessionService() {
             }
             ids?.let { Triple(it.first, it.second, pos) }
         } ?: return
+        PlaybackWidgetUpdater.update(this, player)
         progressWriter?.enqueue(snap.first, snap.second, snap.third)
     }
 

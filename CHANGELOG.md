@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- Add a resizable home-screen playback widget with current book, chapter,
+  chapter progress, and previous/play-pause/next controls.
+- Keep the widget synchronized with Media3 playback and cache the latest state
+  so it remains useful when the app UI is closed.
+- Resume the most recent book directly from the widget when no active queue is
+  loaded.
+
 ## 0.4.1
 
 - Add per-book intro and outro skipping for every chapter, configurable from

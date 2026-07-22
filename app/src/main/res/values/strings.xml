@@ -125,4 +125,11 @@
     <string name="import_backup">导入备份</string>
     <string name="import_audio">导入音频</string>
     <string name="import_multiple_audio">选择多个音频</string>
+    <string name="widget_name">听匣播放控制</string>
+    <string name="widget_description">显示当前有声书并控制章节播放</string>
+    <string name="widget_no_media">暂无播放内容</string>
+    <string name="widget_tap_to_resume">点击播放继续收听</string>
+    <string name="widget_ready">准备播放</string>
+    <string name="widget_chapter_progress">%1$d/%2$d 章</string>
+    <string name="widget_time_progress">%1$s / %2$s</string>
 </resources>
