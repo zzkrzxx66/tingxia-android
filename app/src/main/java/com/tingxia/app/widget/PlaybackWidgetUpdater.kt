@@ -70,50 +70,62 @@ object PlaybackWidgetUpdater {
         val ids = manager.getAppWidgetIds(component)
         if (ids.isEmpty()) return
 
-        val views = RemoteViews(context.packageName, R.layout.playback_widget).apply {
-            setTextViewText(
-                R.id.widget_book_title,
-                state.bookTitle.ifBlank { context.getString(R.string.app_name) },
+        ids.forEach { appWidgetId ->
+            val heightDp = manager.getAppWidgetOptions(appWidgetId).getInt(
+                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,
+                DEFAULT_EXPANDED_HEIGHT_DP,
             )
-            setTextViewText(
-                R.id.widget_chapter_title,
-                state.chapterTitle.ifBlank { context.getString(R.string.widget_no_media) },
-            )
-            setTextViewText(R.id.widget_status, statusText(context, state))
-            val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let(artworkCache::get)
-            if (artwork == null) {
-                setImageViewResource(R.id.widget_artwork, R.drawable.ic_widget_artwork_placeholder)
-            } else {
-                setImageViewBitmap(R.id.widget_artwork, artwork)
+            val views = RemoteViews(
+                context.packageName,
+                widgetLayoutForHeight(heightDp),
+            ).apply {
+                setTextViewText(
+                    R.id.widget_book_title,
+                    state.bookTitle.ifBlank { context.getString(R.string.app_name) },
+                )
+                setTextViewText(
+                    R.id.widget_chapter_title,
+                    state.chapterTitle.ifBlank { context.getString(R.string.widget_no_media) },
+                )
+                setTextViewText(R.id.widget_status, statusText(context, state))
+                val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let(artworkCache::get)
+                if (artwork == null) {
+                    setImageViewResource(
+                        R.id.widget_artwork,
+                        R.drawable.ic_widget_artwork_placeholder,
+                    )
+                } else {
+                    setImageViewBitmap(R.id.widget_artwork, artwork)
+                }
+                setViewVisibility(
+                    R.id.widget_progress,
+                    if (state.hasMedia && state.durationMs > 0L) View.VISIBLE else View.INVISIBLE,
+                )
+                setProgressBar(R.id.widget_progress, 1_000, state.progressPermille, false)
+                setImageViewResource(
+                    R.id.widget_play_pause,
+                    if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
+                )
+                setContentDescription(
+                    R.id.widget_play_pause,
+                    context.getString(if (state.isPlaying) R.string.pause else R.string.play),
+                )
+                setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
+                setOnClickPendingIntent(
+                    R.id.widget_previous,
+                    controlIntent(context, PlaybackWidgetProvider.ACTION_PREVIOUS, REQUEST_PREVIOUS),
+                )
+                setOnClickPendingIntent(
+                    R.id.widget_play_pause,
+                    controlIntent(context, PlaybackWidgetProvider.ACTION_TOGGLE, REQUEST_TOGGLE),
+                )
+                setOnClickPendingIntent(
+                    R.id.widget_next,
+                    controlIntent(context, PlaybackWidgetProvider.ACTION_NEXT, REQUEST_NEXT),
+                )
             }
-            setViewVisibility(
-                R.id.widget_progress,
-                if (state.hasMedia && state.durationMs > 0L) View.VISIBLE else View.INVISIBLE,
-            )
-            setProgressBar(R.id.widget_progress, 1_000, state.progressPermille, false)
-            setImageViewResource(
-                R.id.widget_play_pause,
-                if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
-            )
-            setContentDescription(
-                R.id.widget_play_pause,
-                context.getString(if (state.isPlaying) R.string.pause else R.string.play),
-            )
-            setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
-            setOnClickPendingIntent(
-                R.id.widget_previous,
-                controlIntent(context, PlaybackWidgetProvider.ACTION_PREVIOUS, REQUEST_PREVIOUS),
-            )
-            setOnClickPendingIntent(
-                R.id.widget_play_pause,
-                controlIntent(context, PlaybackWidgetProvider.ACTION_TOGGLE, REQUEST_TOGGLE),
-            )
-            setOnClickPendingIntent(
-                R.id.widget_next,
-                controlIntent(context, PlaybackWidgetProvider.ACTION_NEXT, REQUEST_NEXT),
-            )
+            manager.updateAppWidget(appWidgetId, views)
         }
-        manager.updateAppWidget(ids, views)
         requestArtwork(context, state)
     }
 
@@ -246,7 +258,15 @@ object PlaybackWidgetUpdater {
     private const val ARTWORK_DECODE_SIZE_PX = 192
     private const val ARTWORK_OUTPUT_SIZE_PX = 160
     private const val ARTWORK_CORNER_RADIUS_PX = 14f
+    private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
 }
+
+internal fun widgetLayoutForHeight(heightDp: Int): Int =
+    if (heightDp in 1 until 120) {
+        R.layout.playback_widget_compact
+    } else {
+        R.layout.playback_widget
+    }
 
 private object PlaybackWidgetStateStore {
     fun save(context: Context, state: PlaybackWidgetSnapshot) {

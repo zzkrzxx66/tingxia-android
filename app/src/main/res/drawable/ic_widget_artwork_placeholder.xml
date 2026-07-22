@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="60dp"
-    android:height="60dp"
-    android:viewportWidth="60"
-    android:viewportHeight="60">
+    android:width="80dp"
+    android:height="80dp"
+    android:viewportWidth="80"
+    android:viewportHeight="80">
     <path
-        android:fillColor="@color/widget_artwork_mark"
-        android:pathData="M15,16h30a4,4 0,0 1,4 4v22a4,4 0,0 1,-4 4H15a4,4 0,0 1,-4 -4V20a4,4 0,0 1,4 -4z" />
+        android:fillColor="@android:color/transparent"
+        android:pathData="M15,22C24,19 33,22 40,28V59C33,53 24,51 15,54ZM65,22C56,19 47,22 40,28V59C47,53 56,51 65,54Z"
+        android:strokeColor="@color/widget_artwork_mark"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3" />
     <path
-        android:fillColor="@color/widget_artwork_surface"
-        android:pathData="M22,25h16v4H22zM22,33h12v4H22z" />
-    <path
-        android:fillColor="@color/widget_artwork_mark_soft"
-        android:pathData="M43,24c4,3 6,7 6,12s-2,9 -6,12v-6c2,-2 3,-4 3,-6s-1,-5 -3,-6v-6z" />
+        android:fillColor="@android:color/transparent"
+        android:pathData="M24,31C28,31 32,33 35,35M24,39C28,39 32,41 35,43M56,31C52,31 48,33 45,35M56,39C52,39 48,41 45,43"
+        android:strokeColor="@color/widget_artwork_mark_soft"
+        android:strokeLineCap="round"
+        android:strokeWidth="2" />
 </vector>

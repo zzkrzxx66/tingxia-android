@@ -1,9 +1,18 @@
 package com.tingxia.app.widget
 
+import com.tingxia.app.R
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PlaybackWidgetSnapshotTest {
+    @Test
+    fun selectsWidgetLayoutForAvailableHeight() {
+        assertEquals(R.layout.playback_widget_compact, widgetLayoutForHeight(72))
+        assertEquals(R.layout.playback_widget_compact, widgetLayoutForHeight(119))
+        assertEquals(R.layout.playback_widget, widgetLayoutForHeight(120))
+        assertEquals(R.layout.playback_widget, widgetLayoutForHeight(0))
+    }
+
     @Test
     fun progressPermille_clampsPositionToDuration() {
         assertEquals(

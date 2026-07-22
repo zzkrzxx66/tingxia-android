@@ -2,17 +2,17 @@
 <resources>
     <color name="ic_launcher_background">#141210</color>
     <color name="window_background_dark">#141210</color>
-    <color name="widget_surface">#F7FAF8</color>
-    <color name="widget_on_surface">#18201C</color>
-    <color name="widget_on_surface_variant">#5D6862</color>
-    <color name="widget_outline">#CED8D1</color>
-    <color name="widget_progress_track">#DFE7E2</color>
-    <color name="widget_accent">#47715A</color>
-    <color name="widget_control">#E3ECE7</color>
-    <color name="widget_on_control">#274536</color>
-    <color name="widget_primary_control">#C58A3B</color>
+    <color name="widget_surface">#FFFBF7</color>
+    <color name="widget_on_surface">#211E1A</color>
+    <color name="widget_on_surface_variant">#756F67</color>
+    <color name="widget_outline">#E4DDD4</color>
+    <color name="widget_progress_track">#E8E1D8</color>
+    <color name="widget_accent">#3F5D4A</color>
+    <color name="widget_control">#EEE8DF</color>
+    <color name="widget_on_control">#34463B</color>
+    <color name="widget_primary_control">#3F5D4A</color>
     <color name="widget_on_primary_control">#FFFFFF</color>
-    <color name="widget_artwork_surface">#E3ECE7</color>
+    <color name="widget_artwork_surface">#EDE6DC</color>
     <color name="widget_artwork_mark">#3F5D4A</color>
-    <color name="widget_artwork_mark_soft">#C58A3B</color>
+    <color name="widget_artwork_mark_soft">#9A6B2F</color>
 </resources>

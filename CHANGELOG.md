@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.4
+
+- Rework the playback widget around a larger cover and clearer information,
+  progress, and transport-control hierarchy for two-row launcher placements.
+- Add an adaptive compact layout for one-row placements and switch layouts as
+  the widget is resized.
+- Align light and dark widget palettes with the app and replace the busy cover
+  placeholder with a restrained book mark.
+
 ## 0.4.3
 
 - Redesign the home-screen widget with real book artwork, stronger visual

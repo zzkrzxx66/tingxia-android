@@ -1,6 +1,7 @@
 package com.tingxia.app.widget
 
 import android.content.ComponentName
+import android.content.Context
 import android.widget.FrameLayout
 import android.widget.RemoteViews
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,13 +14,26 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class PlaybackWidgetLayoutTest {
     @Test
-    fun widgetLayout_inflatesWithRequiredControls() {
+    fun expandedWidgetLayout_inflatesWithRequiredControls() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val remoteViews = RemoteViews(context.packageName, R.layout.playback_widget)
+        assertWidgetLayout(context, R.layout.playback_widget)
+    }
+
+    @Test
+    fun compactWidgetLayout_inflatesWithRequiredControls() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertWidgetLayout(context, R.layout.playback_widget_compact)
+    }
+
+    private fun assertWidgetLayout(context: Context, layoutId: Int) {
+        val remoteViews = RemoteViews(context.packageName, layoutId)
 
         val root = remoteViews.apply(context, FrameLayout(context))
 
         assertNotNull(root.findViewById(R.id.widget_artwork))
+        assertNotNull(root.findViewById(R.id.widget_book_title))
+        assertNotNull(root.findViewById(R.id.widget_chapter_title))
+        assertNotNull(root.findViewById(R.id.widget_status))
         assertNotNull(root.findViewById(R.id.widget_previous))
         assertNotNull(root.findViewById(R.id.widget_play_pause))
         assertNotNull(root.findViewById(R.id.widget_next))

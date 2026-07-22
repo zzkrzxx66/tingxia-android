@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_surface">#171C19</color>
-    <color name="widget_on_surface">#F1F4F2</color>
-    <color name="widget_on_surface_variant">#AAB5AF</color>
-    <color name="widget_outline">#36413B</color>
-    <color name="widget_progress_track">#36413B</color>
-    <color name="widget_accent">#8EC0A1</color>
-    <color name="widget_control">#28342D</color>
-    <color name="widget_on_control">#D8E8DE</color>
-    <color name="widget_primary_control">#E0AA5A</color>
-    <color name="widget_on_primary_control">#201506</color>
-    <color name="widget_artwork_surface">#253129</color>
-    <color name="widget_artwork_mark">#8EC0A1</color>
-    <color name="widget_artwork_mark_soft">#E0AA5A</color>
+    <color name="widget_surface">#1E1B18</color>
+    <color name="widget_on_surface">#F5EFE6</color>
+    <color name="widget_on_surface_variant">#B9B0A4</color>
+    <color name="widget_outline">#39332C</color>
+    <color name="widget_progress_track">#39332C</color>
+    <color name="widget_accent">#B0CBB8</color>
+    <color name="widget_control">#2B2823</color>
+    <color name="widget_on_control">#D9E4DC</color>
+    <color name="widget_primary_control">#B7CDBB</color>
+    <color name="widget_on_primary_control">#1B241D</color>
+    <color name="widget_artwork_surface">#2A312C</color>
+    <color name="widget_artwork_mark">#B0CBB8</color>
+    <color name="widget_artwork_mark_soft">#C9A66A</color>
 </resources>
