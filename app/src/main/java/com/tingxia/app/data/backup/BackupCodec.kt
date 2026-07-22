@@ -61,6 +61,8 @@ object BackupCodec {
         field("playbackSpeed", book.playbackSpeed)
         field("autoPlayNext", book.autoPlayNext)
         field("lastScannedAt", book.lastScannedAt)
+        field("skipIntroMs", book.skipIntroMs)
+        field("skipOutroMs", book.skipOutroMs)
         field("coverUri", book.coverUri)
         field("chapters") { array(book.chapters) { chapter(it) } }
         field("bookmarks") { array(book.bookmarks) { bookmark(it) } }
@@ -79,6 +81,8 @@ object BackupCodec {
         playbackSpeed = map.numberOrNull("playbackSpeed")?.toFloat()?.coerceIn(0.25f, 4f),
         autoPlayNext = map.booleanOrDefault("autoPlayNext", true),
         lastScannedAt = map.longOrDefault("lastScannedAt", 0L).coerceAtLeast(0L),
+        skipIntroMs = map.longOrDefault("skipIntroMs", 0L).coerceIn(0L, 300_000L),
+        skipOutroMs = map.longOrDefault("skipOutroMs", 0L).coerceIn(0L, 300_000L),
         coverUri = map.stringOrNull("coverUri")?.takeIf { it.startsWith("content:") || it.startsWith("http") },
         chapters = map.array("chapters").map { chapter(it.asObject()) },
         bookmarks = map.array("bookmarks").map { bookmark(it.asObject()) },

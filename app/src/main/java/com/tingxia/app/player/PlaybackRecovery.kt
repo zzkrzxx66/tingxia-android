@@ -19,11 +19,8 @@ fun createPlaybackResumePlan(
     val startIndex = chapters.indexOfFirst { it.id == book.currentChapterId }
         .takeIf { it >= 0 } ?: 0
     val chapter = chapters[startIndex]
-    val position = if (chapter.durationMs > 0L) {
-        book.currentPositionMs.coerceIn(0L, chapter.durationMs)
-    } else {
-        book.currentPositionMs.coerceAtLeast(0L)
-    }
+    val clip = chapterClip(chapter.durationMs, book.skipIntroMs, book.skipOutroMs)
+    val position = clampToChapterClip(book.currentPositionMs, clip, chapter.durationMs)
     return PlaybackResumePlan(
         startIndex = startIndex,
         startPositionMs = position,

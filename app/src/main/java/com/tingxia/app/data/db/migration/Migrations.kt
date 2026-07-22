@@ -184,3 +184,11 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_chapterId` ON `bookmarks` (`chapterId`)")
     }
 }
+
+/** v4 → v5: per-book chapter intro/outro skipping. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN skipIntroMs INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE books ADD COLUMN skipOutroMs INTEGER NOT NULL DEFAULT 0")
+    }
+}

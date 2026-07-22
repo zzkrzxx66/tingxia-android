@@ -37,6 +37,8 @@ class BackupCodecTest {
                     playbackSpeed = 1.5f,
                     autoPlayNext = false,
                     lastScannedAt = 88L,
+                    skipIntroMs = 10_000L,
+                    skipOutroMs = 20_000L,
                     coverUri = "content://cover",
                     chapters = listOf(
                         BackupChapter(
@@ -68,6 +70,8 @@ class BackupCodecTest {
         assertEquals(source.exportedAt, restored.exportedAt)
         assertEquals(source.settings, restored.settings)
         assertEquals(source.books.single().title, restored.books.single().title)
+        assertEquals(10_000L, restored.books.single().skipIntroMs)
+        assertEquals(20_000L, restored.books.single().skipOutroMs)
         assertEquals(source.books.single().chapters.single().customTitle, restored.books.single().chapters.single().customTitle)
         assertEquals(source.books.single().bookmarks.single().note, restored.books.single().bookmarks.single().note)
         assertNull(restored.books.single().chapters.single().completedAt)
@@ -80,5 +84,44 @@ class BackupCodecTest {
         }.exceptionOrNull()
 
         assertTrue(thrown is IllegalArgumentException)
+    }
+
+    @Test
+    fun decode_legacyBackup_defaultsSkipOffsetsToZero() {
+        val json = """
+            {
+              "formatVersion": 1,
+              "exportedAt": 0,
+              "settings": {
+                "themeMode": "SYSTEM",
+                "defaultSpeed": 1.0,
+                "shelfSort": "RECENT",
+                "shelfFilter": "ALL",
+                "playbackErrorPolicy": "STOP"
+              },
+              "books": [{
+                "title": "旧备份",
+                "author": null,
+                "rootUri": "content://tree/legacy",
+                "totalDurationMs": 0,
+                "lastPlayedAt": 0,
+                "currentChapterKey": null,
+                "currentPositionMs": 0,
+                "listenedDurationMs": 0,
+                "createdAt": 0,
+                "playbackSpeed": null,
+                "autoPlayNext": true,
+                "lastScannedAt": 0,
+                "coverUri": null,
+                "chapters": [],
+                "bookmarks": []
+              }]
+            }
+        """.trimIndent()
+
+        val book = BackupCodec.decode(json).books.single()
+
+        assertEquals(0L, book.skipIntroMs)
+        assertEquals(0L, book.skipOutroMs)
     }
 }

@@ -698,6 +698,12 @@ class BookRepository @Inject constructor(
         bookDao.updateAutoPlayNext(bookId, autoPlayNext)
     }
 
+    suspend fun setSkipOffsets(bookId: Long, skipIntroMs: Long, skipOutroMs: Long) {
+        require(skipIntroMs in 0L..MAX_SKIP_OFFSET_MS) { "片头跳过时间必须在 0 到 300 秒之间" }
+        require(skipOutroMs in 0L..MAX_SKIP_OFFSET_MS) { "片尾跳过时间必须在 0 到 300 秒之间" }
+        bookDao.updateSkipOffsets(bookId, skipIntroMs, skipOutroMs)
+    }
+
     suspend fun markNeedsReauth(bookId: Long, needs: Boolean) {
         bookDao.setNeedsReauth(bookId, needs)
     }
@@ -808,6 +814,7 @@ class BookRepository @Inject constructor(
 
     private companion object {
         const val MAX_MANUAL_COVER_BYTES = 15L * 1024L * 1024L
+        const val MAX_SKIP_OFFSET_MS = 300_000L
     }
 }
 

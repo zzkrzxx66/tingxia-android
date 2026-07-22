@@ -25,6 +25,8 @@ data class BackupBook(
     val coverUri: String?,
     val chapters: List<BackupChapter>,
     val bookmarks: List<BackupBookmark>,
+    val skipIntroMs: Long = 0L,
+    val skipOutroMs: Long = 0L,
 )
 
 data class BackupChapter(

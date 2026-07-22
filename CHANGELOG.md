@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+- Add per-book intro and outro skipping for every chapter, configurable from
+  the book detail menu from 0 to 300 seconds.
+- Apply updated skip settings to the active queue immediately while preserving
+  the current chapter, playback position, speed, and play/pause state.
+- Preserve skip settings in backups and add a compatible Room migration for
+  existing libraries.
+
 ## 0.4.0
 
 - Add versioned JSON backup and restore for books, chapter metadata, progress,

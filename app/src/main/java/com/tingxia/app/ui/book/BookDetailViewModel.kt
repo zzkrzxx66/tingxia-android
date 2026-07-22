@@ -259,6 +259,17 @@ class BookDetailViewModel @Inject constructor(
         }
     }
 
+    fun setSkipOffsets(skipIntroMs: Long, skipOutroMs: Long) {
+        viewModelScope.launch {
+            try {
+                playerController.setSkipOffsets(bookId, skipIntroMs, skipOutroMs)
+                _message.value = "跳过设置已保存"
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新跳过设置失败"
+            }
+        }
+    }
+
     fun setChapterCompleted(chapterId: Long, completed: Boolean) {
         viewModelScope.launch {
             try {

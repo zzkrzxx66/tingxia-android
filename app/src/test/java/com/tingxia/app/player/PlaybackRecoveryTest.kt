@@ -44,6 +44,20 @@ class PlaybackRecoveryTest {
     }
 
     @Test
+    fun resumePlan_clampsPositionToClippedChapterDuration() {
+        val plan = createPlaybackResumePlan(
+            book = book(currentChapterId = 10, positionMs = 9_000, speed = null).copy(
+                skipIntroMs = 2_000L,
+                skipOutroMs = 3_000L,
+            ),
+            chapters = listOf(chapter(10, 0, 10_000)),
+            defaultSpeed = 1.0f,
+        )
+
+        assertEquals(5_000L, plan?.startPositionMs)
+    }
+
+    @Test
     fun skipPolicy_neverSkipsPermissionErrorsOrPastQueueEnd() {
         assertTrue(shouldSkipPlaybackError(PlaybackErrorPolicy.SKIP, false, true))
         assertFalse(shouldSkipPlaybackError(PlaybackErrorPolicy.SKIP, true, true))

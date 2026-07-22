@@ -223,8 +223,9 @@ class PlayerController @Inject constructor(
         val startIndex = chapters.indexOfFirst { it.id == startChapterId }.coerceAtLeast(0)
         val requestedPos = positionMs
             ?: if (chapterId == null || chapterId == book.currentChapterId) book.currentPositionMs else 0L
-        val duration = chapters[startIndex].durationMs
-        val startPos = if (duration > 0L) requestedPos.coerceIn(0L, duration) else requestedPos.coerceAtLeast(0L)
+        val startChapter = chapters[startIndex]
+        val startClip = chapterClip(startChapter.durationMs, book.skipIntroMs, book.skipOutroMs)
+        val startPos = clampToChapterClip(requestedPos, startClip, startChapter.durationMs)
 
         val items = chapters.map { it.toMediaItem(book, chapters.size) }
         val c = controller ?: return false
@@ -265,8 +266,9 @@ class PlayerController @Inject constructor(
         val c = controller ?: return
         val startId = chapterId ?: chapters.first().id
         val startIndex = chapters.indexOfFirst { it.id == startId }.coerceAtLeast(0)
-        val ch = chapters.getOrNull(startIndex)
-        val pos = if (ch != null && ch.durationMs > 0) positionMs.coerceIn(0, ch.durationMs) else positionMs
+        val ch = chapters[startIndex]
+        val clip = chapterClip(ch.durationMs, book.skipIntroMs, book.skipOutroMs)
+        val pos = clampToChapterClip(positionMs, clip, ch.durationMs)
         c.setMediaItems(chapters.map { it.toMediaItem(book, chapters.size) }, startIndex, pos)
         c.prepare()
         if (wasPlaying) c.play() else c.pause()
@@ -389,6 +391,41 @@ class PlayerController @Inject constructor(
             error("更新连播设置失败")
         }
         refreshQueueMetadata(bookId)
+    }
+
+    suspend fun setSkipOffsets(bookId: Long, skipIntroMs: Long, skipOutroMs: Long) {
+        bookRepository.setSkipOffsets(bookId, skipIntroMs, skipOutroMs)
+        if (_state.value.bookId != bookId) return
+
+        ensureConnected()
+        val c = controller ?: return
+        val book = bookRepository.getBook(bookId) ?: return
+        val chapters = bookRepository.getChapters(bookId)
+        if (chapters.isEmpty()) return
+
+        val currentChapterId = _state.value.chapterId
+        val startIndex = chapters.indexOfFirst { it.id == currentChapterId }
+            .takeIf { it >= 0 }
+            ?: c.currentMediaItemIndex.coerceIn(0, chapters.lastIndex)
+        val currentPosition = c.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = c.isPlaying
+        val speed = c.playbackParameters.speed
+        val clip = chapterClip(
+            durationMs = chapters[startIndex].durationMs,
+            skipIntroMs = book.skipIntroMs,
+            skipOutroMs = book.skipOutroMs,
+        )
+
+        c.setMediaItems(
+            chapters.map { it.toMediaItem(book, chapters.size) },
+            startIndex,
+            clampToChapterClip(currentPosition, clip, chapters[startIndex].durationMs),
+        )
+        c.setPlaybackSpeed(speed)
+        c.prepare()
+        if (wasPlaying) c.play() else c.pause()
+        _state.value = _state.value.copy(chapterCount = chapters.size)
+        updateFromMediaItem(c.currentMediaItem)
     }
 
     suspend fun refreshQueueMetadata(bookId: Long) {
@@ -617,6 +654,7 @@ private suspend fun ListenableFuture<androidx.media3.session.SessionResult>.awai
     }
 
 fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
+    val clip = chapterClip(durationMs, book.skipIntroMs, book.skipOutroMs)
     val extras = bundleOf(
         PlayerController.KEY_BOOK_ID to book.id,
         PlayerController.KEY_CHAPTER_ID to id,
@@ -638,9 +676,14 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         })
         .setExtras(extras)
         .build()
+    val clipping = MediaItem.ClippingConfiguration.Builder()
+        .setStartPositionMs(clip.startMs)
+        .apply { clip.endMs?.let(::setEndPositionMs) }
+        .build()
     return MediaItem.Builder()
         .setMediaId("${book.id}_$id")
         .setUri(uri)
         .setMediaMetadata(metadata)
+        .setClippingConfiguration(clipping)
         .build()
 }

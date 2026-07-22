@@ -21,6 +21,8 @@ data class Book(
     val playbackSpeed: Float? = null,
     val autoPlayNext: Boolean = true,
     val lastScannedAt: Long = 0L,
+    val skipIntroMs: Long = 0L,
+    val skipOutroMs: Long = 0L,
 ) {
     val progressFraction: Float
         get() {
@@ -118,6 +120,8 @@ fun BookEntity.toModel() = Book(
     playbackSpeed = playbackSpeed,
     autoPlayNext = autoPlayNext,
     lastScannedAt = lastScannedAt,
+    skipIntroMs = skipIntroMs,
+    skipOutroMs = skipOutroMs,
 )
 
 fun ChapterEntity.toModel() = Chapter(

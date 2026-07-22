@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.tingxia.app.data.db.migration.MIGRATION_1_2
 import com.tingxia.app.data.db.migration.MIGRATION_2_3
 import com.tingxia.app.data.db.migration.MIGRATION_3_4
+import com.tingxia.app.data.db.migration.MIGRATION_4_5
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -226,6 +227,34 @@ class MigrationTest {
             }
             query("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarks'").use { c ->
                 assertTrue(c.moveToFirst())
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate4To5_addsSkipOffsetsWithZeroDefaults() {
+        helper.createDatabase(testDb, 4).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt,
+                    needsReauth, playbackSpeed, autoPlayNext, lastScannedAt
+                ) VALUES (
+                    1, 't', NULL, NULL, 'content://tree/z', 1000, 1,
+                    NULL, 10, 10, 0, 0, NULL, 1, 0
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(testDb, 5, true, MIGRATION_4_5).apply {
+            query("SELECT skipIntroMs, skipOutroMs FROM books WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0L, c.getLong(0))
+                assertEquals(0L, c.getLong(1))
             }
             close()
         }

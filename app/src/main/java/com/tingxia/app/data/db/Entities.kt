@@ -25,6 +25,8 @@ data class BookEntity(
     val playbackSpeed: Float? = null,
     val autoPlayNext: Boolean = true,
     val lastScannedAt: Long = 0L,
+    val skipIntroMs: Long = 0L,
+    val skipOutroMs: Long = 0L,
 )
 
 @Entity(

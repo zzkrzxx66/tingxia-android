@@ -120,6 +120,9 @@ interface BookDao {
     @Query("UPDATE books SET autoPlayNext = :autoPlayNext WHERE id = :bookId")
     suspend fun updateAutoPlayNext(bookId: Long, autoPlayNext: Boolean)
 
+    @Query("UPDATE books SET skipIntroMs = :skipIntroMs, skipOutroMs = :skipOutroMs WHERE id = :bookId")
+    suspend fun updateSkipOffsets(bookId: Long, skipIntroMs: Long, skipOutroMs: Long)
+
     @Query("UPDATE books SET title = :title, author = :author WHERE id = :bookId")
     suspend fun updateMetadata(bookId: Long, title: String, author: String?)
 

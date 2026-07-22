@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -53,10 +54,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.R
@@ -95,6 +97,9 @@ fun BookDetailScreen(
     var editChapterTitle by remember { mutableStateOf("") }
     var editBookmark by remember { mutableStateOf<Bookmark?>(null) }
     var editBookmarkNote by remember { mutableStateOf("") }
+    var editSkipOffsets by remember { mutableStateOf(false) }
+    var skipIntroSeconds by remember { mutableStateOf("0") }
+    var skipOutroSeconds by remember { mutableStateOf("0") }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(error) {
@@ -153,6 +158,28 @@ fun BookDetailScreen(
                                 editTitle = book?.title.orEmpty()
                                 editAuthor = book?.author.orEmpty()
                                 editBook = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.skip_intro_outro))
+                                    Text(
+                                        stringResource(
+                                            R.string.skip_intro_outro_summary,
+                                            (book?.skipIntroMs ?: 0L) / 1_000L,
+                                            (book?.skipOutroMs ?: 0L) / 1_000L,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                menu = false
+                                skipIntroSeconds = ((book?.skipIntroMs ?: 0L) / 1_000L).toString()
+                                skipOutroSeconds = ((book?.skipOutroMs ?: 0L) / 1_000L).toString()
+                                editSkipOffsets = true
                             },
                         )
                         DropdownMenuItem(
@@ -498,6 +525,70 @@ fun BookDetailScreen(
                 ) { Text(stringResource(R.string.save)) }
             },
             dismissButton = { TextButton(onClick = { editBook = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (editSkipOffsets) {
+        val intro = skipIntroSeconds.toLongOrNull()
+        val outro = skipOutroSeconds.toLongOrNull()
+        val introValid = intro != null && intro in 0L..300L
+        val outroValid = outro != null && outro in 0L..300L
+        AlertDialog(
+            onDismissRequest = { editSkipOffsets = false },
+            title = { Text(stringResource(R.string.skip_intro_outro)) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = skipIntroSeconds,
+                        onValueChange = { value ->
+                            if (value.all(Char::isDigit)) skipIntroSeconds = value
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.skip_intro_seconds)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = skipIntroSeconds.isNotEmpty() && !introValid,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = skipOutroSeconds,
+                        onValueChange = { value ->
+                            if (value.all(Char::isDigit)) skipOutroSeconds = value
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.skip_outro_seconds)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = skipOutroSeconds.isNotEmpty() && !outroValid,
+                    )
+                    if ((!introValid && skipIntroSeconds.isNotEmpty()) ||
+                        (!outroValid && skipOutroSeconds.isNotEmpty())
+                    ) {
+                        Text(
+                            stringResource(R.string.skip_seconds_range),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = introValid && outroValid,
+                    onClick = {
+                        viewModel.setSkipOffsets(
+                            skipIntroMs = checkNotNull(intro) * 1_000L,
+                            skipOutroMs = checkNotNull(outro) * 1_000L,
+                        )
+                        editSkipOffsets = false
+                    },
+                ) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editSkipOffsets = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 
