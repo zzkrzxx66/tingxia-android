@@ -4,6 +4,7 @@ data class PlaybackWidgetSnapshot(
     val hasMedia: Boolean = false,
     val bookTitle: String = "",
     val chapterTitle: String = "",
+    val artworkUri: String = "",
     val chapterIndex: Int = 0,
     val chapterCount: Int = 0,
     val positionMs: Long = 0L,

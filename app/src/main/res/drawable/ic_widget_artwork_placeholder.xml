@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="60dp"
+    android:height="60dp"
+    android:viewportWidth="60"
+    android:viewportHeight="60">
+    <path
+        android:fillColor="@color/widget_artwork_mark"
+        android:pathData="M15,16h30a4,4 0,0 1,4 4v22a4,4 0,0 1,-4 4H15a4,4 0,0 1,-4 -4V20a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="@color/widget_artwork_surface"
+        android:pathData="M22,25h16v4H22zM22,33h12v4H22z" />
+    <path
+        android:fillColor="@color/widget_artwork_mark_soft"
+        android:pathData="M43,24c4,3 6,7 6,12s-2,9 -6,12v-6c2,-2 3,-4 3,-6s-1,-5 -3,-6v-6z" />
+</vector>

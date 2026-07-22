@@ -19,6 +19,7 @@ class PlaybackWidgetLayoutTest {
 
         val root = remoteViews.apply(context, FrameLayout(context))
 
+        assertNotNull(root.findViewById(R.id.widget_artwork))
         assertNotNull(root.findViewById(R.id.widget_previous))
         assertNotNull(root.findViewById(R.id.widget_play_pause))
         assertNotNull(root.findViewById(R.id.widget_next))

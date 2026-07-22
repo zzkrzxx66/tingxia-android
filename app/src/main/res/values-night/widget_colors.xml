@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_surface">#1C1A17</color>
-    <color name="widget_on_surface">#E8E2D9</color>
-    <color name="widget_on_surface_variant">#A8A29A</color>
-    <color name="widget_outline">#3F3A34</color>
-    <color name="widget_progress_track">#3F3A34</color>
-    <color name="widget_accent">#D4A35C</color>
-    <color name="widget_control">#2A3B32</color>
-    <color name="widget_on_control">#C7DDD0</color>
-    <color name="widget_primary_control">#D4A35C</color>
-    <color name="widget_on_primary_control">#1F1506</color>
+    <color name="widget_surface">#171C19</color>
+    <color name="widget_on_surface">#F1F4F2</color>
+    <color name="widget_on_surface_variant">#AAB5AF</color>
+    <color name="widget_outline">#36413B</color>
+    <color name="widget_progress_track">#36413B</color>
+    <color name="widget_accent">#8EC0A1</color>
+    <color name="widget_control">#28342D</color>
+    <color name="widget_on_control">#D8E8DE</color>
+    <color name="widget_primary_control">#E0AA5A</color>
+    <color name="widget_on_primary_control">#201506</color>
+    <color name="widget_artwork_surface">#253129</color>
+    <color name="widget_artwork_mark">#8EC0A1</color>
+    <color name="widget_artwork_mark_soft">#E0AA5A</color>
 </resources>

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3
+
+- Redesign the home-screen widget with real book artwork, stronger visual
+  hierarchy, custom media controls, and refined light and dark palettes.
+- Decode widget artwork off the main thread with bounded memory and bitmap
+  caching, preserving playback responsiveness for large cover images.
+
 ## 0.4.2
 
 - Add a resizable home-screen playback widget with current book, chapter,

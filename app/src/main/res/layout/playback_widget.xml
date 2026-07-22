@@ -4,115 +4,112 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
     android:padding="10dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="38dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <ImageView
-            android:layout_width="38dp"
-            android:layout_height="38dp"
-            android:contentDescription="@string/app_name"
-            android:scaleType="centerInside"
-            android:src="@mipmap/ic_launcher" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="10dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/widget_book_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:fontFamily="sans"
-                android:maxLines="1"
-                android:text="@string/app_name"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_chapter_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:fontFamily="sans"
-                android:maxLines="1"
-                android:text="@string/widget_no_media"
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <ProgressBar
-        android:id="@+id/widget_progress"
-        style="@android:style/Widget.ProgressBar.Horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="3dp"
-        android:layout_marginTop="6dp"
-        android:indeterminate="false"
-        android:progressBackgroundTint="@color/widget_progress_track"
-        android:progressTint="@color/widget_accent" />
+    <ImageView
+        android:id="@+id/widget_artwork"
+        android:layout_width="58dp"
+        android:layout_height="58dp"
+        android:background="@drawable/widget_artwork_background"
+        android:contentDescription="@string/widget_artwork"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_widget_artwork_placeholder" />
 
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:layout_marginTop="4dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
         <TextView
-            android:id="@+id/widget_status"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="6dp"
-            android:layout_weight="1"
+            android:id="@+id/widget_book_title"
+            android:layout_width="match_parent"
+            android:layout_height="20dp"
             android:ellipsize="end"
             android:fontFamily="sans"
+            android:gravity="center_vertical"
             android:maxLines="1"
-            android:text="@string/widget_tap_to_resume"
+            android:text="@string/app_name"
+            android:textColor="@color/widget_on_surface"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_chapter_title"
+            android:layout_width="match_parent"
+            android:layout_height="18dp"
+            android:ellipsize="end"
+            android:fontFamily="sans"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:text="@string/widget_no_media"
             android:textColor="@color/widget_on_surface_variant"
-            android:textSize="11sp" />
+            android:textSize="12sp" />
 
-        <ImageButton
-            android:id="@+id/widget_previous"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@drawable/widget_control_background"
-            android:contentDescription="@string/previous_chapter"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_media_previous"
-            android:tint="@color/widget_on_control" />
+        <ProgressBar
+            android:id="@+id/widget_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="6dp"
+            android:indeterminate="false"
+            android:progressBackgroundTint="@color/widget_progress_track"
+            android:progressTint="@color/widget_accent" />
 
-        <ImageButton
-            android:id="@+id/widget_play_pause"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/widget_primary_control_background"
-            android:contentDescription="@string/play"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_media_play"
-            android:tint="@color/widget_on_primary_control" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/widget_next"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/widget_control_background"
-            android:contentDescription="@string/next_chapter"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_media_next"
-            android:tint="@color/widget_on_control" />
+            <TextView
+                android:id="@+id/widget_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans"
+                android:maxLines="1"
+                android:text="@string/widget_tap_to_resume"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="11sp" />
+
+            <ImageButton
+                android:id="@+id/widget_previous"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/widget_control_background"
+                android:contentDescription="@string/previous_chapter"
+                android:padding="7dp"
+                android:src="@drawable/ic_widget_previous"
+                android:tint="@color/widget_on_control" />
+
+            <ImageButton
+                android:id="@+id/widget_play_pause"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/widget_primary_control_background"
+                android:contentDescription="@string/play"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_play"
+                android:tint="@color/widget_on_primary_control" />
+
+            <ImageButton
+                android:id="@+id/widget_next"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/widget_control_background"
+                android:contentDescription="@string/next_chapter"
+                android:padding="7dp"
+                android:src="@drawable/ic_widget_next"
+                android:tint="@color/widget_on_control" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>
