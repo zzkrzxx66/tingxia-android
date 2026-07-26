@@ -23,9 +23,6 @@
     <string name="playback_error_policy_summary">目录权限失效时始终停止并提示重新授权</string>
     <string name="playback_error_stop">停止播放</string>
     <string name="playback_error_skip">自动跳过</string>
-    <string name="search">搜索</string>
-    <string name="sort">排序</string>
-    <string name="filter">筛选</string>
     <string name="import_folder">导入文件夹</string>
     <string name="search_books_hint">搜索书名或作者</string>
     <string name="importing">正在导入</string>
@@ -35,7 +32,6 @@
     <string name="rewind_30_seconds">后退 30 秒</string>
     <string name="forward_30_seconds">前进 30 秒</string>
     <string name="bookmark">书签</string>
-    <string name="bookmarks">书签</string>
     <string name="end_of_chapter">本章结束</string>
     <string name="extend_15_minutes">延长 15 分钟</string>
     <string name="custom_duration">自定义…</string>
@@ -65,12 +61,16 @@
     <string name="book_chapter_duration">%1$d 章 · %2$s</string>
     <string name="remaining_time">剩余 %1$s</string>
     <string name="auto_play_next">自动播放下一章</string>
+    <string name="auto_play_next_summary">当前章节结束后继续播放</string>
+    <string name="listening_progress">收听进度</string>
+    <string name="chapters_with_count">章节 %1$d</string>
+    <string name="bookmarks_with_count">书签 %1$d</string>
+    <string name="no_bookmarks">还没有书签</string>
     <string name="continue_playback">继续播放</string>
     <string name="start_playback">开始播放</string>
     <string name="folder_permission_lost">目录权限失效，请重新授权后才能播放</string>
     <string name="reauthorizing">正在重新授权…</string>
     <string name="scanning_item">正在扫描… %1$s</string>
-    <string name="chapters">章节</string>
     <string name="chapter">章节</string>
     <string name="scan_results">扫描结果</string>
     <string name="scan_added">新增 %1$d 章</string>
@@ -101,7 +101,10 @@
     <string name="bookmark_position">%1$s · %2$s</string>
     <string name="delete_bookmark">删除书签</string>
     <string name="skip_chapter">跳过本章</string>
-    <string name="local_audiobooks">本地有声书</string>
+    <string name="shelf_book_count">%1$d 本有声书</string>
+    <string name="my_shelf">我的书架</string>
+    <string name="book_count">%1$d 本</string>
+    <string name="clear_search">清除搜索</string>
     <string name="sort_recent_playback">最近播放</string>
     <string name="sort_recent_import">最近导入</string>
     <string name="progress">进度</string>
@@ -115,6 +118,9 @@
     <string name="empty_shelf_hint">右下角添加一个包含音频的文件夹</string>
     <string name="continue_listening">继续收听</string>
     <string name="nothing_playing">未在播放</string>
+    <string name="now_playing">正在播放</string>
+    <string name="rewind_15_seconds_short">−15 秒</string>
+    <string name="forward_15_seconds_short">+15 秒</string>
     <string name="chapter_progress">第 %1$d / %2$d 章</string>
     <string name="pause">暂停</string>
     <string name="play">播放</string>

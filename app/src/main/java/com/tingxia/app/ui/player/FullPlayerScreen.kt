@@ -1,10 +1,10 @@
 package com.tingxia.app.ui.player
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.background
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,8 +26,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -98,9 +98,10 @@ fun FullPlayerScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = state.bookTitle.orEmpty(),
+                        text = stringResource(R.string.now_playing),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 },
                 navigationIcon = {
@@ -108,6 +109,9 @@ fun FullPlayerScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
             )
         }
     ) { innerPadding ->
@@ -119,16 +123,27 @@ fun FullPlayerScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(16.dp))
-            BookCover(
-                title = state.bookTitle.orEmpty(),
-                coverPath = state.coverPath,
-                modifier = Modifier
-                    .fillMaxWidth(0.75f)
-                    .padding(8.dp),
-                corner = 16.dp,
+            Spacer(Modifier.height(8.dp))
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val coverSize = minOf(maxWidth * 0.72f, 280.dp)
+                BookCover(
+                    title = state.bookTitle.orEmpty(),
+                    coverPath = state.coverPath,
+                    size = coverSize,
+                    corner = 8.dp,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = state.bookTitle.orEmpty(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = state.chapterTitle.orEmpty().ifEmpty { stringResource(R.string.nothing_playing) },
                 style = MaterialTheme.typography.headlineSmall,
@@ -147,7 +162,7 @@ fun FullPlayerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
 
             Slider(
                 value = if (duration > 0f) position.coerceIn(0f, duration) else 0f,
@@ -161,6 +176,10 @@ fun FullPlayerScreen(
                 },
                 valueRange = 0f..(duration.takeIf { it > 0f } ?: 1f),
                 modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -178,87 +197,89 @@ fun FullPlayerScreen(
                 )
             }
             if (state.skipIntroMs > 0L || state.skipOutroMs > 0L) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(
-                        R.string.skip_active_summary,
-                        state.skipIntroMs / 1_000L,
-                        state.skipOutroMs / 1_000L,
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.ContentCut,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(Modifier.size(5.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.skip_active_summary,
+                            state.skipIntroMs / 1_000L,
+                            state.skipOutroMs / 1_000L,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = { onSeekBy(-SeekOffsets.SHORT_MS) }) {
+                    Text(stringResource(R.string.rewind_15_seconds_short))
+                }
+                TextButton(onClick = { onSeekBy(SeekOffsets.SHORT_MS) }) {
+                    Text(stringResource(R.string.forward_15_seconds_short))
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onPrev, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(R.string.previous_chapter), modifier = Modifier.size(36.dp))
+                IconButton(onClick = onPrev, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(R.string.previous_chapter), modifier = Modifier.size(28.dp))
                 }
-                IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.Replay30, contentDescription = stringResource(R.string.rewind_30_seconds), modifier = Modifier.size(32.dp))
+                IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(52.dp)) {
+                    Icon(Icons.Default.Replay30, contentDescription = stringResource(R.string.rewind_30_seconds), modifier = Modifier.size(30.dp))
                 }
                 FilledIconButton(
                     onClick = onToggle,
-                    modifier = Modifier.size(72.dp),
+                    modifier = Modifier.size(68.dp),
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = stringResource(
                             if (state.isPlaying) R.string.pause else R.string.play,
                         ),
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(38.dp),
                     )
                 }
-                IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.Forward30, contentDescription = stringResource(R.string.forward_30_seconds), modifier = Modifier.size(32.dp))
+                IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(52.dp)) {
+                    Icon(Icons.Default.Forward30, contentDescription = stringResource(R.string.forward_30_seconds), modifier = Modifier.size(30.dp))
                 }
-                IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.SkipNext, contentDescription = stringResource(R.string.next_chapter), modifier = Modifier.size(36.dp))
+                IconButton(onClick = onNext, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.SkipNext, contentDescription = stringResource(R.string.next_chapter), modifier = Modifier.size(28.dp))
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(24.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                IconButton(onClick = { onSeekBy(-SeekOffsets.SHORT_MS) }) {
-                    Text(
-                        text = "-15s",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                IconButton(onClick = { onSeekBy(SeekOffsets.SHORT_MS) }) {
-                    Text(
-                        text = "+15s",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-            ) {
-                AssistChip(
+                PlayerToolButton(
                     onClick = onAddBookmark,
-                    label = { Text(stringResource(R.string.bookmark)) },
-                    leadingIcon = { Icon(Icons.Default.BookmarkAdd, contentDescription = stringResource(R.string.bookmark)) },
+                    icon = { Icon(Icons.Default.BookmarkAdd, contentDescription = null) },
+                    label = stringResource(R.string.bookmark),
+                    modifier = Modifier.weight(1f),
                 )
-                Box {
-                    AssistChip(
+                Box(modifier = Modifier.weight(1f)) {
+                    PlayerToolButton(
                         onClick = { speedMenu = true },
-                        label = { Text(PlaybackSpeeds.label(state.speed)) },
-                        leadingIcon = { Icon(Icons.Default.Speed, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Speed, contentDescription = null) },
+                        label = PlaybackSpeeds.label(state.speed),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     DropdownMenu(expanded = speedMenu, onDismissRequest = { speedMenu = false }) {
                         DropdownMenuItem(
@@ -286,7 +307,7 @@ fun FullPlayerScreen(
                         }
                     }
                 }
-                Box {
+                Box(modifier = Modifier.weight(1f)) {
                     val sleepLabel = when {
                         state.sleepRemainingMs != null -> {
                             val ms = state.sleepRemainingMs!!
@@ -298,10 +319,11 @@ fun FullPlayerScreen(
                             stringResource(R.string.end_of_chapter)
                         else -> stringResource(R.string.sleep)
                     }
-                    AssistChip(
+                    PlayerToolButton(
                         onClick = { sleepMenu = true },
-                        label = { Text(sleepLabel) },
-                        leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                        label = sleepLabel,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
                         SleepOptions.MINUTES.forEach { m ->
@@ -375,5 +397,35 @@ fun FullPlayerScreen(
                 TextButton(onClick = { customSleepDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+}
+
+@Composable
+private fun PlayerToolButton(
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(62.dp),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            icon()
+            Spacer(Modifier.height(3.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }

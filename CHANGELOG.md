@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- Redesign the shelf, book detail, full player, mini player, and settings around
+  a quieter local-audiobook interface with clearer visual hierarchy.
+- Introduce a neutral light/dark theme with forest controls, restrained copper
+  accents, compact shapes, and consistent typography.
+- Make search permanently available, surface active filters and sorting, and
+  improve book, progress, chapter, and bookmark scanning at a glance.
+- Refine playback controls for one-handed use and organize book chapters,
+  bookmarks, settings, and feedback into clearer interaction patterns.
+
 ## 0.4.5
 
 - Fix live position mapping when a book's intro/outro skip values change: the

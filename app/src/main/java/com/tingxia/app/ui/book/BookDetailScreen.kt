@@ -3,6 +3,7 @@ package com.tingxia.app.ui.book
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.CheckCircle
@@ -36,12 +38,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -49,6 +55,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -100,6 +107,7 @@ fun BookDetailScreen(
     var editSkipOffsets by remember { mutableStateOf(false) }
     var skipIntroSeconds by remember { mutableStateOf("0") }
     var skipOutroSeconds by remember { mutableStateOf("0") }
+    var selectedTab by remember { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(error) {
@@ -250,12 +258,12 @@ fun BookDetailScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     BookCover(
                         title = book?.title.orEmpty(),
                         coverPath = book?.coverPath,
-                        size = 118.dp,
-                        corner = 16.dp,
+                        size = 126.dp,
+                        corner = 8.dp,
                     )
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -272,7 +280,7 @@ fun BookDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(10.dp))
                         Text(
                             stringResource(
                                 R.string.book_chapter_duration,
@@ -282,69 +290,103 @@ fun BookDetailScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if ((book?.lastPlayedAt ?: 0) > 0) {
-                            Spacer(Modifier.height(8.dp))
-                            LinearProgressIndicator(
-                                progress = { book?.progressFraction ?: 0f },
-                                modifier = Modifier.fillMaxWidth().height(4.dp),
-                            )
-                            Text(
-                                stringResource(
-                                    R.string.remaining_time,
-                                    formatDuration(((book?.totalDurationMs ?: 0L) - (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L)),
+                    }
+                }
+                if ((book?.lastPlayedAt ?: 0) > 0) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            stringResource(R.string.listening_progress),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            stringResource(
+                                R.string.remaining_time,
+                                formatDuration(
+                                    ((book?.totalDurationMs ?: 0L) -
+                                        (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L),
                                 ),
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { book?.progressFraction ?: 0f },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onContinue,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    enabled = book?.needsReauth != true && !reauthing && !rescanning,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(
+                            if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
+                            else R.string.start_playback,
+                        ),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = MaterialTheme.shapes.medium,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.auto_play_next), style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                stringResource(R.string.auto_play_next_summary),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(stringResource(R.string.auto_play_next), style = MaterialTheme.typography.bodyMedium)
-                            Switch(
-                                checked = book?.autoPlayNext ?: true,
-                                onCheckedChange = viewModel::setAutoPlayNext,
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = onContinue,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = book?.needsReauth != true && !reauthing && !rescanning,
-                            shape = MaterialTheme.shapes.medium,
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                stringResource(
-                                    if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
-                                    else R.string.start_playback,
-                                ),
-                            )
-                        }
+                        Switch(
+                            checked = book?.autoPlayNext ?: true,
+                            onCheckedChange = viewModel::setAutoPlayNext,
+                        )
                     }
                 }
                 if (book?.needsReauth == true) {
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        stringResource(R.string.folder_permission_lost),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = { reauthTree.launch(null) },
-                        enabled = !reauthing,
-                        modifier = Modifier.fillMaxWidth(),
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.medium,
                     ) {
-                        Text(
-                            stringResource(
-                                if (reauthing) R.string.reauthorizing else R.string.reauthorize_folder,
-                            ),
-                        )
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                stringResource(R.string.folder_permission_lost),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { reauthTree.launch(null) },
+                                enabled = !reauthing,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    stringResource(
+                                        if (reauthing) R.string.reauthorizing else R.string.reauthorize_folder,
+                                    ),
+                                )
+                            }
+                        }
                     }
                 }
                 if (rescanning) {
@@ -352,30 +394,60 @@ fun BookDetailScreen(
                     Text(stringResource(R.string.scanning_item, rescanProgress?.currentName.orEmpty()))
                 }
                 Spacer(Modifier.height(20.dp))
-                Text(stringResource(R.string.chapters), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(8.dp))
-            }
-            items(chapters, key = { it.id }) { chapter ->
-                ChapterRow(
-                    chapter = chapter,
-                    isCurrent = chapter.id == book?.currentChapterId,
-                    enabled = book?.needsReauth != true,
-                    onClick = { onPlayChapter(chapter.id) },
-                    onToggleCompleted = {
-                        viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
-                    },
-                    onEditTitle = {
-                        editChapter = chapter
-                        editChapterTitle = chapter.displayTitle
-                    },
-                )
-            }
-            if (bookmarks.isNotEmpty()) {
-                item {
-                    Spacer(Modifier.height(16.dp))
-                    Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.height(8.dp))
+                SecondaryTabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = MaterialTheme.colorScheme.background,
+                    divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text(stringResource(R.string.chapters_with_count, chapters.size)) },
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text(stringResource(R.string.bookmarks_with_count, bookmarks.size)) },
+                    )
                 }
+                Spacer(Modifier.height(4.dp))
+            }
+            if (selectedTab == 0) {
+                items(chapters, key = { it.id }) { chapter ->
+                    ChapterRow(
+                        chapter = chapter,
+                        isCurrent = chapter.id == book?.currentChapterId,
+                        enabled = book?.needsReauth != true,
+                        onClick = { onPlayChapter(chapter.id) },
+                        onToggleCompleted = {
+                            viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
+                        },
+                        onEditTitle = {
+                            editChapter = chapter
+                            editChapterTitle = chapter.displayTitle
+                        },
+                    )
+                }
+            } else if (bookmarks.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 42.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            Icons.Default.BookmarkBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(30.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            stringResource(R.string.no_bookmarks),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
                 items(bookmarks, key = { "bm-${it.id}" }) { bm ->
                     BookmarkRow(
                         bookmark = bm,
@@ -655,59 +727,70 @@ private fun ChapterRow(
     onToggleCompleted: () -> Unit,
     onEditTitle: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "%02d".format(chapter.index + 1),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (isCurrent) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-            modifier = Modifier.width(34.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                chapter.displayTitle,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isCurrent) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (chapter.durationMs > 0) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.extraSmall,
+                modifier = Modifier.size(34.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = "%02d".format(chapter.index + 1),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    formatDuration(chapter.durationMs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    chapter.displayTitle,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (chapter.durationMs > 0) {
+                    Text(
+                        formatDuration(chapter.durationMs),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            IconButton(onClick = onEditTitle, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_chapter_title), modifier = Modifier.size(19.dp))
+            }
+            IconButton(onClick = onToggleCompleted, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    if (chapter.completionState == 2) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                    contentDescription = stringResource(
+                        if (chapter.completionState == 2) R.string.mark_incomplete else R.string.mark_completed,
+                    ),
+                    tint = if (chapter.completionState == 2) MaterialTheme.colorScheme.secondary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(21.dp),
                 )
             }
         }
-        if (isCurrent) {
-            Icon(
-                Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-        IconButton(onClick = onEditTitle) {
-            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_chapter_title))
-        }
-        IconButton(onClick = onToggleCompleted) {
-            Icon(
-                if (chapter.completionState == 2) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                contentDescription = stringResource(
-                    if (chapter.completionState == 2) R.string.mark_incomplete else R.string.mark_completed,
-                ),
-                tint = if (chapter.completionState == 2) MaterialTheme.colorScheme.secondary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 50.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        )
     }
 }
 
@@ -718,39 +801,52 @@ private fun BookmarkRow(
     onDelete: () -> Unit,
     onEdit: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            val chapterLabel = bookmark.chapterIndex?.let {
-                stringResource(R.string.chapter_number, it + 1)
-            } ?: stringResource(R.string.chapter)
-            Text(
-                stringResource(R.string.bookmark_position, chapterLabel, formatDuration(bookmark.positionMs)),
-                style = MaterialTheme.typography.bodyLarge,
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.BookmarkBorder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(22.dp),
             )
-            bookmark.note?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall)
-            }
-            bookmark.chapterTitle?.let {
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                val chapterLabel = bookmark.chapterIndex?.let {
+                    stringResource(R.string.chapter_number, it + 1)
+                } ?: stringResource(R.string.chapter)
                 Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    stringResource(R.string.bookmark_position, chapterLabel, formatDuration(bookmark.positionMs)),
+                    style = MaterialTheme.typography.bodyLarge,
                 )
+                bookmark.note?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                bookmark.chapterTitle?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_bookmark_note), modifier = Modifier.size(19.dp))
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_bookmark), modifier = Modifier.size(19.dp))
             }
         }
-        IconButton(onClick = onEdit) {
-            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_bookmark_note))
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_bookmark))
-        }
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 34.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        )
     }
 }

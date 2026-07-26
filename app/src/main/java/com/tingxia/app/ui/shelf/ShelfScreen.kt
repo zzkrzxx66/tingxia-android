@@ -3,7 +3,7 @@ package com.tingxia.app.ui.shelf
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,26 +22,28 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -89,7 +91,6 @@ fun ShelfScreen(
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
     var filterMenu by remember { mutableStateOf(false) }
-    var showSearch by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(error) {
@@ -121,7 +122,7 @@ fun ShelfScreen(
                             style = MaterialTheme.typography.titleLarge,
                         )
                         Text(
-                            stringResource(R.string.local_audiobooks),
+                            stringResource(R.string.shelf_book_count, books.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -132,70 +133,6 @@ fun ShelfScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
-                    IconButton(onClick = { showSearch = !showSearch }) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
-                    }
-                    Box {
-                        IconButton(onClick = { sortMenu = true }) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.sort))
-                        }
-                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                            listOf(
-                                ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
-                                ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
-                                ShelfSort.TITLE to stringResource(R.string.book_title),
-                                ShelfSort.PROGRESS to stringResource(R.string.progress),
-                            ).forEach { (value, label) ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            label,
-                                            color = if (sort == value) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurface
-                                            },
-                                        )
-                                    },
-                                    onClick = {
-                                        viewModel.setSort(value)
-                                        sortMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    Box {
-                        IconButton(onClick = { filterMenu = true }) {
-                            Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.filter))
-                        }
-                        DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
-                            listOf(
-                                ShelfFilter.ALL to stringResource(R.string.filter_all),
-                                ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
-                                ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
-                                ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
-                                ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
-                            ).forEach { (value, label) ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            label,
-                                            color = if (filter == value) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurface
-                                            },
-                                        )
-                                    },
-                                    onClick = {
-                                        viewModel.setFilter(value)
-                                        filterMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                     }
@@ -241,23 +178,105 @@ fun ShelfScreen(
                     .padding(innerPadding),
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (showSearch) {
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = viewModel::setQuery,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            singleLine = true,
-                            placeholder = { Text(stringResource(R.string.search_books_hint)) },
-                            shape = MaterialTheme.shapes.medium,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            ),
-                        )
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = viewModel::setQuery,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        singleLine = true,
+                        placeholder = { Text(stringResource(R.string.search_books_hint)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null)
+                        },
+                        trailingIcon = if (query.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { viewModel.setQuery("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_search))
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = { filterMenu = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.small,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            ) {
+                                Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    filterLabel(filter),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
+                                listOf(
+                                    ShelfFilter.ALL to stringResource(R.string.filter_all),
+                                    ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
+                                    ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
+                                    ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
+                                    ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
+                                ).forEach { (value, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            viewModel.setFilter(value)
+                                            filterMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = { sortMenu = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.small,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    sortLabel(sort),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                listOf(
+                                    ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
+                                    ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
+                                    ShelfSort.TITLE to stringResource(R.string.book_title),
+                                    ShelfSort.PROGRESS to stringResource(R.string.progress),
+                                ).forEach { (value, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            viewModel.setSort(value)
+                                            sortMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     if (books.isEmpty() && !importing) {
@@ -270,7 +289,7 @@ fun ShelfScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 8.dp,
+                                top = 4.dp,
                                 bottom = 96.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -281,6 +300,27 @@ fun ShelfScreen(
                                 if (r.lastPlayedAt > 0 && query.isBlank() && filter == ShelfFilter.ALL) {
                                     item(span = { GridItemSpan(maxLineSpan) }) {
                                         ContinueCard(book = r, onClick = { onContinue(r.id) })
+                                    }
+                                }
+                            }
+                            if (books.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp, bottom = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.my_shelf),
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                        Spacer(Modifier.weight(1f))
+                                        Text(
+                                            stringResource(R.string.book_count, books.size),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
                                 }
                             }
@@ -348,6 +388,13 @@ private fun EmptyShelf(filtered: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        Icon(
+            Icons.AutoMirrored.Filled.LibraryBooks,
+            contentDescription = null,
+            modifier = Modifier.size(38.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(14.dp))
         Text(
             stringResource(
                 if (filtered) R.string.no_matching_books else R.string.empty_shelf,
@@ -371,36 +418,47 @@ private fun EmptyShelf(filtered: Boolean) {
 private fun ContinueCard(book: Book, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BookCover(
                 title = book.title,
                 coverPath = book.coverPath,
-                size = 68.dp,
-                corner = 12.dp,
+                size = 82.dp,
+                corner = 8.dp,
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.continue_listening),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                    color = MaterialTheme.colorScheme.secondary,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     book.title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(10.dp))
+                if (book.totalDurationMs > 0L) {
+                    Text(
+                        stringResource(
+                            R.string.remaining_time,
+                            formatDuration((book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier
@@ -408,22 +466,19 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
                         .height(3.dp)
                         .clip(MaterialTheme.shapes.extraSmall),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }
             Spacer(Modifier.width(8.dp))
-            Surface(
+            FilledIconButton(
+                onClick = onClick,
+                modifier = Modifier.size(44.dp),
                 shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(40.dp),
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = stringResource(R.string.continue_playback),
+                )
             }
         }
     }
@@ -433,7 +488,7 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
 private fun BookGridItem(book: Book, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .clip(MaterialTheme.shapes.medium)
+            .clip(MaterialTheme.shapes.small)
             .clickable(onClick = onClick),
     ) {
         Box {
@@ -441,7 +496,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 title = book.title,
                 coverPath = book.coverPath,
                 modifier = Modifier.fillMaxWidth(),
-                corner = 14.dp,
+                corner = 8.dp,
             )
             if (book.needsReauth) {
                 Surface(
@@ -471,13 +526,13 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
             minLines = 2,
         )
         Spacer(Modifier.height(2.dp))
-        if (book.totalDurationMs > 0) {
-            Text(
-                formatDuration(book.totalDurationMs),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            book.author?.takeIf { it.isNotBlank() } ?: formatDuration(book.totalDurationMs),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
@@ -491,4 +546,21 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
             )
         }
     }
+}
+
+@Composable
+private fun filterLabel(filter: ShelfFilter): String = when (filter) {
+    ShelfFilter.ALL -> stringResource(R.string.filter_all)
+    ShelfFilter.NOT_STARTED -> stringResource(R.string.filter_not_started)
+    ShelfFilter.IN_PROGRESS -> stringResource(R.string.filter_in_progress)
+    ShelfFilter.COMPLETED -> stringResource(R.string.filter_completed)
+    ShelfFilter.NEEDS_REAUTH -> stringResource(R.string.needs_reauthorization)
+}
+
+@Composable
+private fun sortLabel(sort: ShelfSort): String = when (sort) {
+    ShelfSort.RECENT -> stringResource(R.string.sort_recent_playback)
+    ShelfSort.IMPORTED -> stringResource(R.string.sort_recent_import)
+    ShelfSort.TITLE -> stringResource(R.string.book_title)
+    ShelfSort.PROGRESS -> stringResource(R.string.progress)
 }

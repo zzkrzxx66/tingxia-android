@@ -15,85 +15,78 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 
-/**
- * TingXia visual language:
- * warm paper / ink, low saturation, quiet hierarchy.
- * Avoid neon gradients, glass stacks, and "AI product" purple-blue.
- */
+/** Quiet listening surfaces with forest controls and sparing copper accents. */
+private val Ink = Color(0xFF17201B)
+private val InkMuted = Color(0xFF5B665F)
+private val Canvas = Color(0xFFF4F7F5)
+private val Paper = Color(0xFFFFFFFF)
+private val Mist = Color(0xFFE7ECE9)
+private val Forest = Color(0xFF315E4B)
+private val ForestDeep = Color(0xFF1E4636)
+private val ForestSoft = Color(0xFFDCEAE2)
+private val Copper = Color(0xFFA96335)
 
-// Light — paper & ink
-private val Ink = Color(0xFF1C1917)
-private val InkMuted = Color(0xFF57534E)
-private val Paper = Color(0xFFF7F3EE)
-private val PaperElevated = Color(0xFFFFFCF8)
-private val Clay = Color(0xFFE7E0D6)
-private val Ochre = Color(0xFF9A6B2F)
-private val OchreDeep = Color(0xFF7A5220)
-private val OchreSoft = Color(0xFFF0E2CC)
-private val Forest = Color(0xFF3F5D4A)
-
-// Dark — charcoal & warm amber
-private val Night = Color(0xFF141210)
-private val NightElevated = Color(0xFF1C1A17)
-private val NightVariant = Color(0xFF2A2622)
-private val Bone = Color(0xFFE8E2D9)
-private val BoneMuted = Color(0xFFA8A29A)
-private val Amber = Color(0xFFD4A35C)
-private val AmberDim = Color(0xFF3D2E16)
-private val AmberOn = Color(0xFF1F1506)
+private val Night = Color(0xFF101412)
+private val NightElevated = Color(0xFF181D1A)
+private val NightVariant = Color(0xFF252C28)
+private val Bone = Color(0xFFE8EEE9)
+private val BoneMuted = Color(0xFFA9B3AC)
+private val Mint = Color(0xFFA9D0BC)
+private val MintDim = Color(0xFF28483A)
+private val CopperLight = Color(0xFFE4A46E)
 
 private val LightColors = lightColorScheme(
-    primary = Ochre,
+    primary = Forest,
     onPrimary = Color.White,
-    primaryContainer = OchreSoft,
-    onPrimaryContainer = OchreDeep,
-    secondary = Forest,
+    primaryContainer = ForestSoft,
+    onPrimaryContainer = ForestDeep,
+    secondary = Copper,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD9E6DC),
-    onSecondaryContainer = Color(0xFF1A2E22),
-    tertiary = Color(0xFF7C5A4A),
+    secondaryContainer = Color(0xFFF4E3D7),
+    onSecondaryContainer = Color(0xFF532E17),
+    tertiary = Color(0xFF4D6875),
     onTertiary = Color.White,
-    background = Paper,
+    background = Canvas,
     onBackground = Ink,
-    surface = PaperElevated,
+    surface = Paper,
     onSurface = Ink,
-    surfaceVariant = Clay,
+    surfaceVariant = Mist,
     onSurfaceVariant = InkMuted,
-    surfaceTint = Ochre,
-    outline = Color(0xFFB0A89C),
-    outlineVariant = Color(0xFFD9D1C5),
+    surfaceTint = Forest,
+    outline = Color(0xFF9AA69F),
+    outlineVariant = Color(0xFFD4DCD7),
     error = Color(0xFFB3261E),
     onError = Color.White,
-    inverseSurface = Ink,
-    inverseOnSurface = Paper,
-    inversePrimary = Amber,
+    inverseSurface = Color(0xFF29312D),
+    inverseOnSurface = Color(0xFFF0F4F1),
+    inversePrimary = Mint,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Amber,
-    onPrimary = AmberOn,
-    primaryContainer = AmberDim,
-    onPrimaryContainer = Color(0xFFF0D9A8),
-    secondary = Color(0xFFA3C0B0),
-    onSecondary = Color(0xFF0F1F17),
-    secondaryContainer = Color(0xFF2A3B32),
-    onSecondaryContainer = Color(0xFFC7DDD0),
-    tertiary = Color(0xFFD2B3A4),
-    onTertiary = Color(0xFF2A1A12),
+    primary = Mint,
+    onPrimary = Color(0xFF10271D),
+    primaryContainer = MintDim,
+    onPrimaryContainer = Color(0xFFD5EADF),
+    secondary = CopperLight,
+    onSecondary = Color(0xFF3B1D0B),
+    secondaryContainer = Color(0xFF56351F),
+    onSecondaryContainer = Color(0xFFF7D6BE),
+    tertiary = Color(0xFFA8C8D7),
+    onTertiary = Color(0xFF17313C),
     background = Night,
     onBackground = Bone,
     surface = NightElevated,
     onSurface = Bone,
     surfaceVariant = NightVariant,
     onSurfaceVariant = BoneMuted,
-    surfaceTint = Amber,
-    outline = Color(0xFF6F675C),
-    outlineVariant = Color(0xFF3F3A34),
+    surfaceTint = Mint,
+    outline = Color(0xFF707B74),
+    outlineVariant = Color(0xFF38413C),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     inverseSurface = Bone,
     inverseOnSurface = Night,
-    inversePrimary = Ochre,
+    inversePrimary = Forest,
 )
 
 private val TingXiaTypography = Typography(
@@ -102,21 +95,21 @@ private val TingXiaTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 40.sp,
         lineHeight = 46.sp,
-        letterSpacing = (-0.5).sp,
+        letterSpacing = 0.sp,
     ),
     headlineSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
-        letterSpacing = (-0.2).sp,
+        letterSpacing = 0.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 26.sp,
-        letterSpacing = (-0.15).sp,
+        letterSpacing = 0.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -130,70 +123,70 @@ private val TingXiaTypography = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.1.sp,
+        letterSpacing = 0.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.15.sp,
+        letterSpacing = 0.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.15.sp,
+        letterSpacing = 0.sp,
     ),
     bodySmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.2.sp,
+        letterSpacing = 0.sp,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.1.sp,
+        letterSpacing = 0.sp,
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.3.sp,
+        letterSpacing = 0.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 14.sp,
-        letterSpacing = 0.3.sp,
+        letterSpacing = 0.sp,
     ),
 )
 
 private val TingXiaShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(8.dp),
+    extraLarge = RoundedCornerShape(8.dp),
 )
 
-/** Soft cover fallbacks — muted earth tones, no candy colors. */
+/** Muted cover fallbacks with enough hue variety to keep the shelf scannable. */
 val CoverPalette = listOf(
-    Color(0xFF6B5A4A),
-    Color(0xFF4A5A52),
-    Color(0xFF5A4A5C),
-    Color(0xFF4A5560),
-    Color(0xFF6A5040),
-    Color(0xFF3F4F4A),
-    Color(0xFF5C5240),
-    Color(0xFF4A4A58),
+    Color(0xFF315E4B),
+    Color(0xFF526C78),
+    Color(0xFF745866),
+    Color(0xFF75612F),
+    Color(0xFF74513E),
+    Color(0xFF3F6261),
+    Color(0xFF555B75),
+    Color(0xFF53613F),
 )
 
 @Composable

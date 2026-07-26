@@ -14,7 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -38,14 +39,15 @@ fun MiniPlayerBar(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .clickable(onClick = onOpen),
     ) {
         Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             val progress = if (state.durationMs > 0) {
                 (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
             } else {
@@ -55,21 +57,21 @@ fun MiniPlayerBar(
                 progress = { progress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp),
+                    .height(3.dp),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BookCover(
                     title = state.bookTitle.orEmpty(),
                     coverPath = state.coverPath,
-                    size = 44.dp,
-                    corner = 10.dp,
+                    size = 46.dp,
+                    corner = 6.dp,
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -87,19 +89,17 @@ fun MiniPlayerBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(
+                FilledIconButton(
                     onClick = onToggle,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(MaterialTheme.shapes.small),
+                    modifier = Modifier.size(42.dp),
+                    shape = MaterialTheme.shapes.small,
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = stringResource(
                             if (state.isPlaying) R.string.pause else R.string.play,
                         ),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(25.dp),
                     )
                 }
             }

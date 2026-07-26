@@ -5,7 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -65,24 +66,25 @@ fun BookCover(
             )
         } else {
             val base = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
-            val top = base.copy(alpha = 1f)
-            val bottom = Color(
-                red = (base.red * 0.72f).coerceIn(0f, 1f),
-                green = (base.green * 0.72f).coerceIn(0f, 1f),
-                blue = (base.blue * 0.72f).coerceIn(0f, 1f),
-            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(top, bottom))),
+                    .background(base),
                 contentAlignment = Alignment.Center,
             ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .width(if (size != null && size < 80.dp) 5.dp else 8.dp)
+                        .background(Color.Black.copy(alpha = 0.08f)),
+                )
                 Text(
                     text = title.take(1).ifEmpty { stringResource(R.string.cover_fallback_character) },
-                    color = Color.White.copy(alpha = 0.92f),
+                    color = Color.White.copy(alpha = 0.96f),
                     fontSize = if (size != null && size < 80.dp) 20.sp else 34.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.sp,
                 )
             }
         }
