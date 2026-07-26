@@ -55,4 +55,47 @@ class ChapterClippingTest {
         assertEquals(0L, clampToChapterClip(-1L, clip))
         assertEquals(5_000L, clampToChapterClip(9_000L, clip))
     }
+
+    @Test
+    fun coordinateConversion_roundTripsThroughSourceFile() {
+        val clip = chapterClip(durationMs = 10_000L, skipIntroMs = 2_000L, skipOutroMs = 3_000L)
+
+        assertEquals(4_500L, clipRelativeToAbsolute(2_500L, clip))
+        assertEquals(2_500L, absoluteToClipRelative(4_500L, clip, 10_000L))
+    }
+
+    @Test
+    fun absolutePositionBeforeClipStart_mapsToClipStart() {
+        val clip = chapterClip(durationMs = 10_000L, skipIntroMs = 2_000L, skipOutroMs = 3_000L)
+
+        assertEquals(0L, absoluteToClipRelative(500L, clip, 10_000L))
+    }
+
+    @Test
+    fun absolutePositionAfterClipEnd_mapsToClipEnd() {
+        val clip = chapterClip(durationMs = 10_000L, skipIntroMs = 2_000L, skipOutroMs = 3_000L)
+
+        assertEquals(5_000L, absoluteToClipRelative(9_500L, clip, 10_000L))
+    }
+
+    @Test
+    fun unknownDuration_conversionStillMapsIntroOffset() {
+        val clip = chapterClip(durationMs = 0L, skipIntroMs = 5_000L, skipOutroMs = 10_000L)
+
+        assertEquals(0L, absoluteToClipRelative(3_000L, clip))
+        assertEquals(4_000L, absoluteToClipRelative(9_000L, clip))
+        assertEquals(7_500L, clipRelativeToAbsolute(2_500L, clip))
+    }
+
+    @Test
+    fun growingIntro_keepsAbsolutePositionStable() {
+        // Listener sits at 40s into the file with a 10s intro clip; raising the
+        // intro to 30s must keep them at absolute 40s, not absolute 70s.
+        val oldClip = chapterClip(durationMs = 60_000L, skipIntroMs = 10_000L, skipOutroMs = 0L)
+        val newClip = chapterClip(durationMs = 60_000L, skipIntroMs = 30_000L, skipOutroMs = 0L)
+        val absolute = clipRelativeToAbsolute(30_000L, oldClip)
+
+        assertEquals(40_000L, absolute)
+        assertEquals(10_000L, absoluteToClipRelative(absolute, newClip, 60_000L))
+    }
 }

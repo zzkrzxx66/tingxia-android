@@ -29,4 +29,14 @@ fun clampToChapterClip(positionMs: Long, clip: ChapterClip, sourceDurationMs: Lo
         ?.let { positionMs.coerceIn(0L, it) }
         ?: positionMs.coerceAtLeast(0L)
 
-private const val MINIMUM_PLAYABLE_MS = 1_000L
+/**
+ * Player positions are relative to the active clip window; the source file is the
+ * only coordinate system shared across different skip settings.
+ */
+fun clipRelativeToAbsolute(positionMs: Long, clip: ChapterClip): Long =
+    clip.startMs + positionMs.coerceAtLeast(0L)
+
+fun absoluteToClipRelative(positionMs: Long, clip: ChapterClip, sourceDurationMs: Long = 0L): Long =
+    clampToChapterClip(positionMs - clip.startMs, clip, sourceDurationMs)
+
+const val MINIMUM_PLAYABLE_MS = 1_000L

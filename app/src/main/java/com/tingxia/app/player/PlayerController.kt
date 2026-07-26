@@ -56,6 +56,8 @@ data class PlayerUiState(
     val sleepRemainingMs: Long? = null,
     val sleepTargetChapterId: Long? = null,
     val coverPath: String? = null,
+    val skipIntroMs: Long = 0L,
+    val skipOutroMs: Long = 0L,
     val needsReauth: Boolean = false,
     val lastError: String? = null,
     val errorCanSkip: Boolean = false,
@@ -407,19 +409,25 @@ class PlayerController @Inject constructor(
         val startIndex = chapters.indexOfFirst { it.id == currentChapterId }
             .takeIf { it >= 0 }
             ?: c.currentMediaItemIndex.coerceIn(0, chapters.lastIndex)
-        val currentPosition = c.currentPosition.coerceAtLeast(0L)
+        val chapter = chapters[startIndex]
+        // currentPosition is relative to whatever clip the live queue was built with,
+        // so map it through source-file coordinates into the new clip window.
+        val liveClipStartMs = c.currentMediaItem?.clippingConfiguration?.startPositionMs ?: 0L
+        val absolutePositionMs = liveClipStartMs + c.currentPosition.coerceAtLeast(0L)
+        val newClip = chapterClip(chapter.durationMs, book.skipIntroMs, book.skipOutroMs)
+        val mappedPositionMs = absoluteToClipRelative(absolutePositionMs, newClip, chapter.durationMs)
+        // A grown outro must not drop the listener onto the clip end and instantly
+        // finish the chapter; keep at least the minimum playable tail.
+        val startPositionMs = newClip.playableDurationMs
+            ?.let { playable -> mappedPositionMs.coerceAtMost((playable - MINIMUM_PLAYABLE_MS).coerceAtLeast(0L)) }
+            ?: mappedPositionMs
         val wasPlaying = c.isPlaying
         val speed = c.playbackParameters.speed
-        val clip = chapterClip(
-            durationMs = chapters[startIndex].durationMs,
-            skipIntroMs = book.skipIntroMs,
-            skipOutroMs = book.skipOutroMs,
-        )
 
         c.setMediaItems(
             chapters.map { it.toMediaItem(book, chapters.size) },
             startIndex,
-            clampToChapterClip(currentPosition, clip, chapters[startIndex].durationMs),
+            startPositionMs,
         )
         c.setPlaybackSpeed(speed)
         c.prepare()
@@ -591,6 +599,8 @@ class PlayerController @Inject constructor(
         val count = extras?.getInt(KEY_CHAPTER_COUNT) ?: _state.value.chapterCount
         val usesBookSpeedOverride = extras?.getBoolean(KEY_BOOK_SPEED_OVERRIDE)
             ?: _state.value.usesBookSpeedOverride
+        val skipIntroMs = extras?.getLong(KEY_SKIP_INTRO_MS) ?: _state.value.skipIntroMs
+        val skipOutroMs = extras?.getLong(KEY_SKIP_OUTRO_MS) ?: _state.value.skipOutroMs
         _state.value = _state.value.copy(
             bookId = bookId ?: _state.value.bookId,
             bookTitle = item.mediaMetadata.albumTitle?.toString() ?: _state.value.bookTitle,
@@ -599,6 +609,8 @@ class PlayerController @Inject constructor(
             chapterIndex = index,
             chapterCount = count,
             usesBookSpeedOverride = usesBookSpeedOverride,
+            skipIntroMs = skipIntroMs,
+            skipOutroMs = skipOutroMs,
             coverPath = item.mediaMetadata.artworkUri?.toString() ?: _state.value.coverPath,
             durationMs = controller?.duration?.coerceAtLeast(0L) ?: _state.value.durationMs,
             positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
@@ -635,6 +647,8 @@ class PlayerController @Inject constructor(
         const val KEY_CHAPTER_COUNT = "chapter_count"
         const val KEY_AUTO_PLAY_NEXT = "auto_play_next"
         const val KEY_BOOK_SPEED_OVERRIDE = "book_speed_override"
+        const val KEY_SKIP_INTRO_MS = "skip_intro_ms"
+        const val KEY_SKIP_OUTRO_MS = "skip_outro_ms"
     }
 }
 
@@ -662,6 +676,8 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         PlayerController.KEY_CHAPTER_COUNT to chapterCount,
         PlayerController.KEY_AUTO_PLAY_NEXT to book.autoPlayNext,
         PlayerController.KEY_BOOK_SPEED_OVERRIDE to (book.playbackSpeed != null),
+        PlayerController.KEY_SKIP_INTRO_MS to book.skipIntroMs,
+        PlayerController.KEY_SKIP_OUTRO_MS to book.skipOutroMs,
     )
     val metadata = MediaMetadata.Builder()
         .setTitle(displayTitle)

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.5
+
+- Fix live position mapping when a book's intro/outro skip values change: the
+  player now converts the current position through source-file coordinates
+  instead of reusing the old clip-relative position, so adjusting skip settings
+  no longer jumps or rewinds the chapter unexpectedly.
+- Keep at least one playable second when a grown outro would otherwise land the
+  listener on the clip end and instantly finish the chapter.
+- Show an active skip summary in the full player so configured intro/outro
+  skipping is visible while listening.
+- Lock the skip pipeline in with real-player coverage: MediaItem clipping
+  configuration, the controller-to-session bundle round-trip, and audible
+  start/end boundaries played through ExoPlayer against a generated audio file.
+
 ## 0.4.4
 
 - Rework the playback widget around a larger cover and clearer information,

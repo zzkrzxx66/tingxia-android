@@ -54,6 +54,7 @@
     <string name="skip_intro_seconds">片头（秒）</string>
     <string name="skip_outro_seconds">片尾（秒）</string>
     <string name="skip_seconds_range">请输入 0–300 秒</string>
+    <string name="skip_active_summary">已跳过：片头 %1$d 秒 · 片尾 %2$d 秒</string>
     <string name="choose_cover">选择封面</string>
     <string name="remove_cover">移除封面</string>
     <string name="rescan_folder">重新扫描目录</string>

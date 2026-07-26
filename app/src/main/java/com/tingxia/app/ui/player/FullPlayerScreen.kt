@@ -177,6 +177,18 @@ fun FullPlayerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (state.skipIntroMs > 0L || state.skipOutroMs > 0L) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        R.string.skip_active_summary,
+                        state.skipIntroMs / 1_000L,
+                        state.skipOutroMs / 1_000L,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Spacer(Modifier.height(20.dp))
 
