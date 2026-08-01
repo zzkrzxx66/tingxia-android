@@ -171,9 +171,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = prepare_chapter(audio_book_id, item_id, tone_id)
             self.serve_file(path, send_body)
+        except (BrokenPipeError, ConnectionResetError):
+            # Media players routinely cancel probe/range requests after learning
+            # enough metadata. The response may already have started, so do not
+            # attempt to write a second JSON response to the closed socket.
+            return
         except (OSError, RuntimeError, ValueError, urllib.error.URLError, subprocess.SubprocessError) as exc:
             logging.warning("audio preparation failed for %s/%s: %s", audio_book_id, item_id, exc)
-            self.send_json_error(HTTPStatus.BAD_GATEWAY, "audio preparation failed")
+            message = "audio upstream unavailable" if "ILLEGAL_ACCESS" in str(exc) else "audio preparation failed"
+            try:
+                self.send_json_error(HTTPStatus.BAD_GATEWAY, message)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def serve_file(self, path: pathlib.Path, send_body: bool) -> None:
         size = path.stat().st_size
@@ -215,7 +224,10 @@ class Handler(BaseHTTPRequestHandler):
                     chunk = source.read(min(1024 * 1024, remaining))
                     if not chunk:
                         break
-                    self.wfile.write(chunk)
+                    try:
+                        self.wfile.write(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        return
                     remaining -= len(chunk)
 
 

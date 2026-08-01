@@ -315,7 +315,7 @@ class PlaybackService : MediaSessionService() {
                 }
             }
 
-            override fun onPlaybackStateChanged(playbackState: Int) {
+                override fun onPlaybackStateChanged(playbackState: Int) {
                 if (player.currentMediaItem != null) {
                     PlaybackWidgetUpdater.update(this@PlaybackService, player)
                 }
@@ -327,22 +327,27 @@ class PlaybackService : MediaSessionService() {
                     }
                     if (sleepMode is SleepTimerMode.EndOfChapter) clearSleep(restoreVolume = true)
                 }
-                if (playbackState == Player.STATE_READY && player.duration > 0L) {
-                    parseIds(player.currentMediaItem)?.let { (bookId, chapterId) ->
+                // Media3 Player must only be queried on its application thread.
+                // Capture both values before dispatching the database write to IO.
+                val readyDurationMs = player.duration
+                val readyIds = parseIds(player.currentMediaItem)
+                if (playbackState == Player.STATE_READY && readyDurationMs > 0L && readyIds != null) {
+                    val (bookId, chapterId) = readyIds
+                    if (bookId > 0L && chapterId > 0L) {
                         serviceScope.launch(Dispatchers.IO) {
-                            bookRepository.recordRemoteChapterDuration(bookId, chapterId, player.duration)
+                            bookRepository.recordRemoteChapterDuration(bookId, chapterId, readyDurationMs)
                         }
                     }
                 }
             }
 
-            override fun onPlayerError(error: PlaybackException) {
-                val bookId = lastBookId ?: return
+                override fun onPlayerError(error: PlaybackException) {
+                val bookId = lastBookId
                 val isPermission =
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                         error.cause is SecurityException
-                if (isPermission) {
+                if (isPermission && bookId != null && bookId > 0L) {
                     serviceScope.launch(Dispatchers.IO) {
                         try {
                             bookRepository.markNeedsReauth(bookId, true)
