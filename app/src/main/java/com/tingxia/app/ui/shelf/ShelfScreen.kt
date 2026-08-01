@@ -88,10 +88,16 @@ fun ShelfScreen(
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val fqSearch by viewModel.fqSearch.collectAsStateWithLifecycle()
+    val fqLoading by viewModel.fqLoading.collectAsStateWithLifecycle()
+    val fqTones by viewModel.fqTones.collectAsStateWithLifecycle()
+    val fqSelectedBook by viewModel.fqSelectedBook.collectAsStateWithLifecycle()
+    val fqImporting by viewModel.fqImporting.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
     var filterMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
+    var fqSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(error) {
         error?.let {
@@ -153,6 +159,13 @@ fun ShelfScreen(
                     expanded = importMenu,
                     onDismissRequest = { importMenu = false },
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("番茄真人有声") },
+                        onClick = {
+                            importMenu = false
+                            fqSheet = true
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.import_folder)) },
                         onClick = {
@@ -377,6 +390,28 @@ fun ShelfScreen(
             }
         },
     )
+    if (fqSheet) {
+        FqNovelSheet(
+            searchResults = fqSearch,
+            selectedBook = fqSelectedBook,
+            tones = fqTones,
+            loading = fqLoading,
+            importing = fqImporting,
+            onSearch = viewModel::searchFqNovel,
+            onSelectBook = viewModel::selectFqBook,
+            onBack = viewModel::clearFqSelection,
+            onImport = { book, tone ->
+                viewModel.importFqNovel(book, tone) { bookId ->
+                    fqSheet = false
+                    onOpenBook(bookId)
+                }
+            },
+            onDismiss = {
+                fqSheet = false
+                viewModel.clearFqSelection()
+            },
+        )
+    }
 }
 
 @Composable

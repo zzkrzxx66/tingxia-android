@@ -684,7 +684,7 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         .setAlbumTitle(book.title)
         .setArtist(book.author ?: book.title)
         .setArtworkUri(book.coverPath?.let { path ->
-            if (path.startsWith("content:") || path.startsWith("file:")) {
+            if (path.startsWith("content:") || path.startsWith("file:") || path.startsWith("http")) {
                 android.net.Uri.parse(path)
             } else {
                 android.net.Uri.fromFile(java.io.File(path))
@@ -696,9 +696,15 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         .setStartPositionMs(clip.startMs)
         .apply { clip.endMs?.let(::setEndPositionMs) }
         .build()
+    val mediaUri = if (book.isRemote && !book.remoteAudioBookId.isNullOrBlank() && !remoteItemId.isNullOrBlank()) {
+        val tone = book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0"
+        "https://fq.logix.cc.cd/audio/stream/${book.remoteAudioBookId}/${remoteItemId}?toneId=$tone"
+    } else {
+        uri
+    }
     return MediaItem.Builder()
         .setMediaId("${book.id}_$id")
-        .setUri(uri)
+        .setUri(mediaUri)
         .setMediaMetadata(metadata)
         .setClippingConfiguration(clipping)
         .build()

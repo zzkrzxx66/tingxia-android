@@ -1,0 +1,16 @@
+services:
+  fqnovel-stream:
+    build: .
+    container_name: fqnovel-stream
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      FQNOVEL_UPSTREAM: http://127.0.0.1:9999
+      AUDIO_CACHE_DIR: /var/cache/fqnovel-audio
+      STREAM_HOST: 127.0.0.1
+      STREAM_PORT: 9998
+    volumes:
+      - fqnovel_audio_cache:/var/cache/fqnovel-audio
+
+volumes:
+  fqnovel_audio_cache:

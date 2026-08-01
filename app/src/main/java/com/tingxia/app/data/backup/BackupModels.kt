@@ -27,6 +27,10 @@ data class BackupBook(
     val bookmarks: List<BackupBookmark>,
     val skipIntroMs: Long = 0L,
     val skipOutroMs: Long = 0L,
+    val sourceType: String = "LOCAL",
+    val remoteBookId: String? = null,
+    val remoteAudioBookId: String? = null,
+    val remoteToneId: String? = null,
 )
 
 data class BackupChapter(
@@ -43,6 +47,7 @@ data class BackupChapter(
     val customTitle: String?,
     val completionState: Int,
     val completedAt: Long?,
+    val remoteItemId: String? = null,
 )
 
 data class BackupBookmark(

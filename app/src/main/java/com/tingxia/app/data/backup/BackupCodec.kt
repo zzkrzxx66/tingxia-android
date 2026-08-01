@@ -64,6 +64,10 @@ object BackupCodec {
         field("skipIntroMs", book.skipIntroMs)
         field("skipOutroMs", book.skipOutroMs)
         field("coverUri", book.coverUri)
+        field("sourceType", book.sourceType)
+        field("remoteBookId", book.remoteBookId)
+        field("remoteAudioBookId", book.remoteAudioBookId)
+        field("remoteToneId", book.remoteToneId)
         field("chapters") { array(book.chapters) { chapter(it) } }
         field("bookmarks") { array(book.bookmarks) { bookmark(it) } }
     }
@@ -84,6 +88,10 @@ object BackupCodec {
         skipIntroMs = map.longOrDefault("skipIntroMs", 0L).coerceIn(0L, 300_000L),
         skipOutroMs = map.longOrDefault("skipOutroMs", 0L).coerceIn(0L, 300_000L),
         coverUri = map.stringOrNull("coverUri")?.takeIf { it.startsWith("content:") || it.startsWith("http") },
+        sourceType = map.stringOrDefault("sourceType", "LOCAL"),
+        remoteBookId = map.stringOrNull("remoteBookId"),
+        remoteAudioBookId = map.stringOrNull("remoteAudioBookId"),
+        remoteToneId = map.stringOrNull("remoteToneId"),
         chapters = map.array("chapters").map { chapter(it.asObject()) },
         bookmarks = map.array("bookmarks").map { bookmark(it.asObject()) },
     )
@@ -102,6 +110,7 @@ object BackupCodec {
         field("customTitle", chapter.customTitle)
         field("completionState", chapter.completionState.coerceIn(0, 2))
         field("completedAt", chapter.completedAt)
+        field("remoteItemId", chapter.remoteItemId)
     }
 
     private fun chapter(map: Map<String, Value>) = BackupChapter(
@@ -118,6 +127,7 @@ object BackupCodec {
         customTitle = map.stringOrNull("customTitle"),
         completionState = map.intOrDefault("completionState", 0).coerceIn(0, 2),
         completedAt = map.longOrNull("completedAt"),
+        remoteItemId = map.stringOrNull("remoteItemId"),
     )
 
     private fun Writer.bookmark(bookmark: BackupBookmark) = obj {
@@ -155,6 +165,7 @@ object BackupCodec {
         null, Value.Null -> null
         else -> error("字段类型错误：$key")
     }
+    private fun Map<String, Value>.stringOrDefault(key: String, fallback: String): String = stringOrNull(key) ?: fallback
     private fun Map<String, Value>.number(key: String): Double = (value(key) as? Value.Num)?.value ?: error("字段类型错误：$key")
     private fun Map<String, Value>.numberOrNull(key: String): Double? = when (val item = get(key)) {
         is Value.Num -> item.value

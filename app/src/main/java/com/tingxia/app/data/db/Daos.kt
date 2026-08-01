@@ -228,6 +228,12 @@ interface ChapterDao {
 
     @Query("UPDATE chapters SET customTitle = :customTitle WHERE id = :chapterId")
     suspend fun updateCustomTitle(chapterId: Long, customTitle: String?)
+
+    @Query("UPDATE chapters SET durationMs = :durationMs WHERE id = :chapterId AND bookId = :bookId AND durationMs <= 0")
+    suspend fun setDurationIfUnknown(bookId: Long, chapterId: Long, durationMs: Long): Int
+
+    @Query("SELECT COALESCE(SUM(durationMs), 0) FROM chapters WHERE bookId = :bookId")
+    suspend fun totalDuration(bookId: Long): Long
 }
 
 @Dao

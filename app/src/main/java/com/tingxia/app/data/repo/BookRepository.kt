@@ -23,6 +23,9 @@ import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.data.model.toModel
 import com.tingxia.app.data.policy.SafPermissionPolicy
+import com.tingxia.app.data.remote.FqAudioChapter
+import com.tingxia.app.data.remote.FqAudioTone
+import com.tingxia.app.data.remote.FqSearchBook
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -98,6 +101,61 @@ class BookRepository @Inject constructor(
 
     suspend fun findBookIdByRootUri(rootUri: String): Long? =
         bookDao.findIdByRootUri(rootUri)
+
+    suspend fun importFqNovelBook(
+        book: FqSearchBook,
+        tone: FqAudioTone,
+        chapters: List<FqAudioChapter>,
+    ): Long = database.withTransaction {
+        require(chapters.isNotEmpty()) { "这个演播版本暂无可用章节" }
+        val rootUri = "fqnovel://${tone.audioBookId}"
+        bookDao.findIdByRootUri(rootUri)?.let { return@withTransaction it }
+        val now = System.currentTimeMillis()
+        val bookId = bookDao.insertBook(
+            BookEntity(
+                title = book.title,
+                author = book.author,
+                coverPath = book.coverUrl,
+                rootUri = rootUri,
+                needsReauth = false,
+                lastScannedAt = now,
+                sourceType = "FQNOVEL",
+                remoteBookId = book.bookId,
+                remoteAudioBookId = tone.audioBookId,
+                remoteToneId = "0",
+            ),
+        )
+        val ids = chapterDao.insertAll(
+            chapters.map { chapter ->
+                ChapterEntity(
+                    bookId = bookId,
+                    title = chapter.title,
+                    uri = "fqnovel://${tone.audioBookId}/${chapter.itemId}",
+                    index = chapter.index,
+                    fileName = chapter.title,
+                    relativePath = chapter.title,
+                    mimeType = "audio/mp4",
+                    stableKey = "fqnovel:${tone.audioBookId}:${chapter.itemId}",
+                    remoteItemId = chapter.itemId,
+                )
+            },
+        )
+        if (ids.isNotEmpty()) bookDao.updateProgress(bookId, ids.first(), 0L, 0L, 0L)
+        invalidateOffsetIndex(bookId)
+        bookId
+    }
+
+    suspend fun recordRemoteChapterDuration(bookId: Long, chapterId: Long, durationMs: Long) {
+        if (durationMs <= 0L) return
+        database.withTransaction {
+            val book = bookDao.getBook(bookId) ?: return@withTransaction
+            if (book.sourceType != "FQNOVEL") return@withTransaction
+            if (chapterDao.setDurationIfUnknown(bookId, chapterId, durationMs) > 0) {
+                bookDao.updateTotalDuration(bookId, chapterDao.totalDuration(bookId))
+            }
+        }
+        invalidateOffsetIndex(bookId)
+    }
 
     suspend fun importFolder(
         treeUri: Uri,
@@ -607,7 +665,7 @@ class BookRepository @Inject constructor(
         }
         bookDao.deleteBook(bookId)
         invalidateOffsetIndex(bookId)
-        if (!root.startsWith("multi://") && bookDao.countByRootUri(root) == 0) {
+        if (book.sourceType == "LOCAL" && !root.startsWith("multi://") && bookDao.countByRootUri(root) == 0) {
             releaseUriPermission(Uri.parse(root))
         }
         fileUris.forEach { uri ->
@@ -705,11 +763,16 @@ class BookRepository @Inject constructor(
     }
 
     suspend fun markNeedsReauth(bookId: Long, needs: Boolean) {
-        bookDao.setNeedsReauth(bookId, needs)
+        val book = bookDao.getBook(bookId) ?: return
+        if (book.sourceType == "LOCAL") bookDao.setNeedsReauth(bookId, needs)
     }
 
     suspend fun checkBookAccess(bookId: Long): Boolean {
         val book = bookDao.getBook(bookId) ?: return false
+        if (book.sourceType != "LOCAL") {
+            if (book.needsReauth) bookDao.setNeedsReauth(bookId, false)
+            return true
+        }
         val ok = if (book.rootUri.startsWith("multi://")) {
             chapterDao.getChapters(bookId).all { canAccessUri(Uri.parse(it.uri)) }
         } else {

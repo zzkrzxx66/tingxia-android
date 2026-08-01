@@ -9,6 +9,9 @@ import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.UserPreferencesRepository
+import com.tingxia.app.data.remote.FqNovelApi
+import com.tingxia.app.data.remote.FqSearchBook
+import com.tingxia.app.data.remote.FqAudioTone
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -28,6 +31,7 @@ import javax.inject.Inject
 class ShelfViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val preferences: UserPreferencesRepository,
+    private val fqNovelApi: FqNovelApi,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -58,6 +62,17 @@ class ShelfViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _fqSearch = MutableStateFlow<List<FqSearchBook>>(emptyList())
+    val fqSearch: StateFlow<List<FqSearchBook>> = _fqSearch.asStateFlow()
+    private val _fqLoading = MutableStateFlow(false)
+    val fqLoading: StateFlow<Boolean> = _fqLoading.asStateFlow()
+    private val _fqTones = MutableStateFlow<List<FqAudioTone>>(emptyList())
+    val fqTones: StateFlow<List<FqAudioTone>> = _fqTones.asStateFlow()
+    private val _fqSelectedBook = MutableStateFlow<FqSearchBook?>(null)
+    val fqSelectedBook: StateFlow<FqSearchBook?> = _fqSelectedBook.asStateFlow()
+    private val _fqImporting = MutableStateFlow(false)
+    val fqImporting: StateFlow<Boolean> = _fqImporting.asStateFlow()
 
     fun setQuery(value: String) {
         _query.value = value
@@ -109,5 +124,55 @@ class ShelfViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    fun searchFqNovel(keyword: String) {
+        if (keyword.isBlank()) return
+        viewModelScope.launch {
+            _fqLoading.value = true
+            try {
+                _fqSearch.value = fqNovelApi.search(keyword.trim())
+            } catch (e: Exception) {
+                _error.value = e.message ?: "番茄搜索失败"
+            } finally {
+                _fqLoading.value = false
+            }
+        }
+    }
+
+    fun selectFqBook(book: FqSearchBook) {
+        viewModelScope.launch {
+            _fqLoading.value = true
+            try {
+                _fqSelectedBook.value = book
+                _fqTones.value = fqNovelApi.tones(book.bookId)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "获取真人演播版本失败"
+            } finally {
+                _fqLoading.value = false
+            }
+        }
+    }
+
+    fun clearFqSelection() {
+        _fqSelectedBook.value = null
+        _fqTones.value = emptyList()
+    }
+
+    fun importFqNovel(book: FqSearchBook, tone: FqAudioTone, onDone: (Long) -> Unit) {
+        if (_fqImporting.value) return
+        viewModelScope.launch {
+            _fqImporting.value = true
+            try {
+                val chapters = fqNovelApi.chapters(tone.audioBookId)
+                val id = bookRepository.importFqNovelBook(book, tone, chapters)
+                onDone(id)
+                clearFqSelection()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "加入书架失败"
+            } finally {
+                _fqImporting.value = false
+            }
+        }
     }
 }

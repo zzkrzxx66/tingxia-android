@@ -192,3 +192,14 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL("ALTER TABLE books ADD COLUMN skipOutroMs INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/** v5 → v6: stable remote-source identifiers for online audiobooks. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'LOCAL'")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteBookId TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteAudioBookId TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteToneId TEXT")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN remoteItemId TEXT")
+    }
+}

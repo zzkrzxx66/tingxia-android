@@ -327,6 +327,13 @@ class PlaybackService : MediaSessionService() {
                     }
                     if (sleepMode is SleepTimerMode.EndOfChapter) clearSleep(restoreVolume = true)
                 }
+                if (playbackState == Player.STATE_READY && player.duration > 0L) {
+                    parseIds(player.currentMediaItem)?.let { (bookId, chapterId) ->
+                        serviceScope.launch(Dispatchers.IO) {
+                            bookRepository.recordRemoteChapterDuration(bookId, chapterId, player.duration)
+                        }
+                    }
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {

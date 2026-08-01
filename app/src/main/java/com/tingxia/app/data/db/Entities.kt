@@ -27,6 +27,10 @@ data class BookEntity(
     val lastScannedAt: Long = 0L,
     val skipIntroMs: Long = 0L,
     val skipOutroMs: Long = 0L,
+    val sourceType: String = "LOCAL",
+    val remoteBookId: String? = null,
+    val remoteAudioBookId: String? = null,
+    val remoteToneId: String? = null,
 )
 
 @Entity(
@@ -61,6 +65,7 @@ data class ChapterEntity(
     val customTitle: String? = null,
     val completionState: Int = 0,
     val completedAt: Long? = null,
+    val remoteItemId: String? = null,
 )
 
 @Entity(

@@ -54,6 +54,10 @@ class BackupRepository @Inject constructor(
                     lastScannedAt = book.lastScannedAt,
                     skipIntroMs = book.skipIntroMs,
                     skipOutroMs = book.skipOutroMs,
+                    sourceType = book.sourceType,
+                    remoteBookId = book.remoteBookId,
+                    remoteAudioBookId = book.remoteAudioBookId,
+                    remoteToneId = book.remoteToneId,
                     coverUri = book.coverPath?.takeIf { it.startsWith("content:") || it.startsWith("http") },
                     chapters = chapters.map { ch ->
                         BackupChapter(
@@ -70,6 +74,7 @@ class BackupRepository @Inject constructor(
                             customTitle = ch.customTitle,
                             completionState = ch.completionState,
                             completedAt = ch.completedAt,
+                            remoteItemId = ch.remoteItemId,
                         )
                     },
                     bookmarks = bookmarksByBook[book.id].orEmpty().mapNotNull { mark ->
@@ -143,12 +148,16 @@ class BackupRepository @Inject constructor(
                 currentPositionMs = backup.currentPositionMs,
                 listenedDurationMs = backup.listenedDurationMs,
                 createdAt = backup.createdAt,
-                needsReauth = true,
+                needsReauth = backup.sourceType == "LOCAL",
                 playbackSpeed = backup.playbackSpeed,
                 autoPlayNext = backup.autoPlayNext,
                 lastScannedAt = backup.lastScannedAt,
                 skipIntroMs = backup.skipIntroMs,
                 skipOutroMs = backup.skipOutroMs,
+                sourceType = backup.sourceType,
+                remoteBookId = backup.remoteBookId,
+                remoteAudioBookId = backup.remoteAudioBookId,
+                remoteToneId = backup.remoteToneId,
             ),
         )
         val chapters = backup.chapters.sortedBy { it.index }.map { it.toEntity(bookId) }
@@ -204,6 +213,10 @@ class BackupRepository @Inject constructor(
                 lastScannedAt = backup.lastScannedAt,
                 skipIntroMs = backup.skipIntroMs,
                 skipOutroMs = backup.skipOutroMs,
+                sourceType = backup.sourceType,
+                remoteBookId = backup.remoteBookId,
+                remoteAudioBookId = backup.remoteAudioBookId,
+                remoteToneId = backup.remoteToneId,
             ),
         )
         bookmarkDao.deleteForBook(existing.id)
@@ -236,6 +249,7 @@ class BackupRepository @Inject constructor(
         customTitle = customTitle,
         completionState = completionState,
         completedAt = completedAt,
+        remoteItemId = remoteItemId,
     )
 
     private fun BackupBookmark.toEntity(bookId: Long, chapterId: Long) = BookmarkEntity(

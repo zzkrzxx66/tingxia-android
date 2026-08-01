@@ -212,7 +212,7 @@ fun BookDetailScreen(
                                 menu = false
                                 viewModel.startRescan()
                             },
-                            enabled = !rescanning && book?.needsReauth != true,
+                            enabled = book?.isRemote != true && !rescanning && book?.needsReauth != true,
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.reauthorize_folder)) },
@@ -220,7 +220,7 @@ fun BookDetailScreen(
                                 menu = false
                                 reauthTree.launch(null)
                             },
-                            enabled = !reauthing,
+                            enabled = book?.isRemote != true && !reauthing,
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.remove_from_shelf)) },
@@ -362,7 +362,7 @@ fun BookDetailScreen(
                         )
                     }
                 }
-                if (book?.needsReauth == true) {
+                if (book?.needsReauth == true && book?.isRemote != true) {
                     Spacer(Modifier.height(12.dp))
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,

@@ -4,6 +4,8 @@ import com.tingxia.app.data.db.BookmarkEntity
 import com.tingxia.app.data.db.BookEntity
 import com.tingxia.app.data.db.ChapterEntity
 
+enum class BookSourceType { LOCAL, FQNOVEL }
+
 data class Book(
     val id: Long,
     val title: String,
@@ -23,7 +25,12 @@ data class Book(
     val lastScannedAt: Long = 0L,
     val skipIntroMs: Long = 0L,
     val skipOutroMs: Long = 0L,
+    val sourceType: BookSourceType = BookSourceType.LOCAL,
+    val remoteBookId: String? = null,
+    val remoteAudioBookId: String? = null,
+    val remoteToneId: String? = null,
 ) {
+    val isRemote: Boolean get() = sourceType != BookSourceType.LOCAL
     val progressFraction: Float
         get() {
             if (totalDurationMs <= 0L) return 0f
@@ -50,6 +57,7 @@ data class Chapter(
     val customTitle: String? = null,
     val completionState: Int = 0,
     val completedAt: Long? = null,
+    val remoteItemId: String? = null,
 ) {
     val displayTitle: String
         get() = customTitle?.takeIf { it.isNotBlank() } ?: title
@@ -122,6 +130,10 @@ fun BookEntity.toModel() = Book(
     lastScannedAt = lastScannedAt,
     skipIntroMs = skipIntroMs,
     skipOutroMs = skipOutroMs,
+    sourceType = runCatching { BookSourceType.valueOf(sourceType) }.getOrDefault(BookSourceType.LOCAL),
+    remoteBookId = remoteBookId,
+    remoteAudioBookId = remoteAudioBookId,
+    remoteToneId = remoteToneId,
 )
 
 fun ChapterEntity.toModel() = Chapter(
@@ -140,6 +152,7 @@ fun ChapterEntity.toModel() = Chapter(
     customTitle = customTitle,
     completionState = completionState,
     completedAt = completedAt,
+    remoteItemId = remoteItemId,
 )
 
 fun BookmarkEntity.toModel(
