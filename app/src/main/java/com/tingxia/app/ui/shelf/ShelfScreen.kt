@@ -3,6 +3,7 @@ package com.tingxia.app.ui.shelf
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +57,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,6 +91,8 @@ fun ShelfScreen(
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val fqSearch by viewModel.fqSearch.collectAsStateWithLifecycle()
+    val fqQuery by viewModel.fqQuery.collectAsStateWithLifecycle()
+    val fqHasSearched by viewModel.fqHasSearched.collectAsStateWithLifecycle()
     val fqLoading by viewModel.fqLoading.collectAsStateWithLifecycle()
     val fqTones by viewModel.fqTones.collectAsStateWithLifecycle()
     val fqSelectedBook by viewModel.fqSelectedBook.collectAsStateWithLifecycle()
@@ -97,7 +101,11 @@ fun ShelfScreen(
     var sortMenu by remember { mutableStateOf(false) }
     var filterMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
-    var fqSheet by remember { mutableStateOf(false) }
+    var homeSection by rememberSaveable { mutableStateOf(HomeSection.SHELF) }
+
+    BackHandler(enabled = homeSection == HomeSection.ONLINE && fqSelectedBook != null) {
+        viewModel.clearFqSelection()
+    }
 
     LaunchedEffect(error) {
         error?.let {
@@ -128,7 +136,11 @@ fun ShelfScreen(
                             style = MaterialTheme.typography.titleLarge,
                         )
                         Text(
-                            stringResource(R.string.shelf_book_count, books.size),
+                            if (homeSection == HomeSection.SHELF) {
+                                stringResource(R.string.shelf_book_count, books.size)
+                            } else {
+                                "发现真人演播好书"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -146,7 +158,7 @@ fun ShelfScreen(
             )
         },
         floatingActionButton = {
-            Box {
+            if (homeSection == HomeSection.SHELF) Box {
                 FloatingActionButton(
                     onClick = { importMenu = true },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -159,13 +171,6 @@ fun ShelfScreen(
                     expanded = importMenu,
                     onDismissRequest = { importMenu = false },
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("番茄真人有声") },
-                        onClick = {
-                            importMenu = false
-                            fqSheet = true
-                        },
-                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.import_folder)) },
                         onClick = {
@@ -191,6 +196,14 @@ fun ShelfScreen(
                     .padding(innerPadding),
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
+                    HomeSectionTabs(
+                        selected = homeSection,
+                        onSelected = {
+                            homeSection = it
+                            importMenu = false
+                        },
+                    )
+                    if (homeSection == HomeSection.SHELF) {
                     OutlinedTextField(
                         value = query,
                         onValueChange = viewModel::setQuery,
@@ -345,9 +358,29 @@ fun ShelfScreen(
                             }
                         }
                     }
+                    } else {
+                        FqNovelCatalog(
+                            query = fqQuery,
+                            searchResults = fqSearch,
+                            selectedBook = fqSelectedBook,
+                            tones = fqTones,
+                            loading = fqLoading,
+                            importing = fqImporting,
+                            hasSearched = fqHasSearched,
+                            onQueryChange = viewModel::setFqQuery,
+                            onSearch = viewModel::searchFqNovel,
+                            onSelectBook = viewModel::selectFqBook,
+                            onBack = viewModel::clearFqSelection,
+                            onImport = { book, tone ->
+                                viewModel.importFqNovel(book, tone) { bookId ->
+                                    onOpenBook(bookId)
+                                }
+                            },
+                        )
+                    }
                 }
 
-                if (importing) {
+                if (importing && homeSection == HomeSection.SHELF) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -390,27 +423,36 @@ fun ShelfScreen(
             }
         },
     )
-    if (fqSheet) {
-        FqNovelSheet(
-            searchResults = fqSearch,
-            selectedBook = fqSelectedBook,
-            tones = fqTones,
-            loading = fqLoading,
-            importing = fqImporting,
-            onSearch = viewModel::searchFqNovel,
-            onSelectBook = viewModel::selectFqBook,
-            onBack = viewModel::clearFqSelection,
-            onImport = { book, tone ->
-                viewModel.importFqNovel(book, tone) { bookId ->
-                    fqSheet = false
-                    onOpenBook(bookId)
+}
+
+private enum class HomeSection { SHELF, ONLINE }
+
+@Composable
+private fun HomeSectionTabs(selected: HomeSection, onSelected: (HomeSection) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(Modifier.padding(4.dp)) {
+            listOf(HomeSection.SHELF to "我的书架", HomeSection.ONLINE to "在线找书").forEach { (section, label) ->
+                Surface(
+                    onClick = { onSelected(section) },
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (selected == section) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
+                    tonalElevation = if (selected == section) 2.dp else 0.dp,
+                ) {
+                    Text(
+                        label,
+                        modifier = Modifier.padding(vertical = 11.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected == section) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            },
-            onDismiss = {
-                fqSheet = false
-                viewModel.clearFqSelection()
-            },
-        )
+            }
+        }
     }
 }
 
@@ -470,11 +512,17 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.continue_listening),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.continue_listening),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    if (book.isRemote) {
+                        Spacer(Modifier.width(8.dp))
+                        OnlineBadge()
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
                 Text(
                     book.title,
@@ -533,7 +581,12 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 corner = 8.dp,
             )
-            if (book.needsReauth) {
+            if (book.isRemote) {
+                OnlineBadge(
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                )
+            }
+            if (book.needsReauth && !book.isRemote) {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
                     shape = MaterialTheme.shapes.extraSmall,
@@ -562,7 +615,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            book.author?.takeIf { it.isNotBlank() } ?: formatDuration(book.totalDurationMs),
+            book.author?.takeIf { it.isNotBlank() } ?: if (book.isRemote) "在线真人有声" else formatDuration(book.totalDurationMs),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -580,6 +633,22 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun OnlineBadge(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.extraSmall,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Text(
+            "在线",
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
     }
 }
 

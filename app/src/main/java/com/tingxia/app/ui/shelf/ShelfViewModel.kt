@@ -65,6 +65,10 @@ class ShelfViewModel @Inject constructor(
 
     private val _fqSearch = MutableStateFlow<List<FqSearchBook>>(emptyList())
     val fqSearch: StateFlow<List<FqSearchBook>> = _fqSearch.asStateFlow()
+    private val _fqQuery = MutableStateFlow("")
+    val fqQuery: StateFlow<String> = _fqQuery.asStateFlow()
+    private val _fqHasSearched = MutableStateFlow(false)
+    val fqHasSearched: StateFlow<Boolean> = _fqHasSearched.asStateFlow()
     private val _fqLoading = MutableStateFlow(false)
     val fqLoading: StateFlow<Boolean> = _fqLoading.asStateFlow()
     private val _fqTones = MutableStateFlow<List<FqAudioTone>>(emptyList())
@@ -131,13 +135,20 @@ class ShelfViewModel @Inject constructor(
         viewModelScope.launch {
             _fqLoading.value = true
             try {
-                _fqSearch.value = fqNovelApi.search(keyword.trim())
+                val normalized = keyword.trim()
+                _fqQuery.value = normalized
+                _fqSearch.value = fqNovelApi.search(normalized)
+                _fqHasSearched.value = true
             } catch (e: Exception) {
                 _error.value = e.message ?: "番茄搜索失败"
             } finally {
                 _fqLoading.value = false
             }
         }
+    }
+
+    fun setFqQuery(value: String) {
+        _fqQuery.value = value
     }
 
     fun selectFqBook(book: FqSearchBook) {

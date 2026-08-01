@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -206,22 +207,24 @@ fun BookDetailScreen(
                                 },
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.rescan_folder)) },
-                            onClick = {
-                                menu = false
-                                viewModel.startRescan()
-                            },
-                            enabled = book?.isRemote != true && !rescanning && book?.needsReauth != true,
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.reauthorize_folder)) },
-                            onClick = {
-                                menu = false
-                                reauthTree.launch(null)
-                            },
-                            enabled = book?.isRemote != true && !reauthing,
-                        )
+                        if (book?.isRemote != true) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.rescan_folder)) },
+                                onClick = {
+                                    menu = false
+                                    viewModel.startRescan()
+                                },
+                                enabled = !rescanning && book?.needsReauth != true,
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.reauthorize_folder)) },
+                                onClick = {
+                                    menu = false
+                                    reauthTree.launch(null)
+                                },
+                                enabled = !reauthing,
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.remove_from_shelf)) },
                             onClick = {
@@ -279,6 +282,31 @@ fun BookDetailScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        if (book?.isRemote == true) {
+                            Spacer(Modifier.height(8.dp))
+                            Surface(
+                                shape = MaterialTheme.shapes.extraSmall,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Headphones,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp),
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "在线真人有声",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                }
+                            }
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(
