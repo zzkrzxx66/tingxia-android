@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0
+
+- Rebuild the interface on a real corner ladder (6/10/14/20/28) so badges,
+  buttons, cards, and panels finally read as a hierarchy instead of sharing one
+  8dp radius, and replace five hand-rolled card containers with a single one.
+- Render book artwork at its authored 3:4 instead of cropping it square, which
+  had been cutting the tops off covers.
+- Add opt-in Material You wallpaper colour (Android 12+, falls back to the
+  forest palette), switchable under Settings › 外观.
+- Rework the shelf into a 3-up portrait grid with progress on the artwork, and
+  make the idle tab visible again instead of matching its own track.
+- Rework online search: portrait result cards with aligned rows, a single
+  actionable magnifier, and an empty state that leads with a hero and a
+  popular-search tile grid rather than half a screen of white space.
+- Float the mini player on a rounded, shadowed surface.
+
 ## 0.5.0
 
 - Redesign the shelf, book detail, full player, mini player, and settings around
