@@ -56,8 +56,7 @@ import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 
-/** Search shortcuts, not a curated shelf — these are keywords, no catalogue data is implied. */
-private val PopularSearches = listOf("斩神", "三体", "诡秘之主", "盗墓笔记", "鬼吹灯", "庆余年")
+
 
 /** Top-level online catalogue destination, sharing the shelf's view model. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,6 +72,11 @@ fun FqNovelCatalogScreen(
     val fqTones by viewModel.fqTones.collectAsStateWithLifecycle()
     val fqSelectedBook by viewModel.fqSelectedBook.collectAsStateWithLifecycle()
     val fqImporting by viewModel.fqImporting.collectAsStateWithLifecycle()
+    val fqHotBooks by viewModel.fqHotBooks.collectAsStateWithLifecycle()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.loadFqDiscover()
+    }
 
     androidx.activity.compose.BackHandler(enabled = fqSelectedBook != null) {
         viewModel.clearFqSelection()
@@ -107,6 +111,7 @@ fun FqNovelCatalogScreen(
                 loading = fqLoading,
                 importing = fqImporting,
                 hasSearched = fqHasSearched,
+                hotBooks = fqHotBooks,
                 onQueryChange = viewModel::setFqQuery,
                 onSearch = viewModel::searchFqNovel,
                 onSelectBook = viewModel::selectFqBook,
@@ -130,6 +135,7 @@ fun FqNovelCatalog(
     loading: Boolean,
     importing: Boolean,
     hasSearched: Boolean,
+    hotBooks: List<FqSearchBook> = emptyList(),
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
     onSelectBook: (FqSearchBook) -> Unit,
@@ -203,7 +209,7 @@ fun FqNovelCatalog(
         }
 
         when {
-            !hasSearched && searchResults.isEmpty() -> OnlineWelcome(onSearch)
+            !hasSearched && searchResults.isEmpty() -> OnlineWelcome(hotBooks, onSelectBook)
             hasSearched && searchResults.isEmpty() && !loading -> OnlineEmpty(query)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -233,54 +239,64 @@ fun FqNovelCatalog(
 }
 
 @Composable
-private fun OnlineWelcome(onSearch: (String) -> Unit) {
+private fun OnlineWelcome(
+    hotBooks: List<FqSearchBook>,
+    onSelectBook: (FqSearchBook) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item {
-            Column {
-                Text("热门搜索", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(12.dp))
-                // A tile grid instead of three chips: fills the fold that used to be dead space
-                // and gives the eye something to land on.
-                PopularSearches.chunked(3).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        row.forEach { keyword ->
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(MaterialTheme.shapes.medium)
-                                    .clickable { onSearch(keyword) },
-                            ) {
-                                BookCover(
-                                    title = keyword,
-                                    coverPath = null,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    ratio = COVER_RATIO_PORTRAIT,
-                                    corner = CoverCorner.Grid,
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    keyword,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+        if (hotBooks.isNotEmpty()) {
+            item {
+                Column {
+                    Text("热门有声书", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(12.dp))
+                    hotBooks.take(9).chunked(3).forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            row.forEach { book ->
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .clickable { onSelectBook(book) },
+                                ) {
+                                    BookCover(
+                                        title = book.title,
+                                        coverPath = book.coverUrl,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        ratio = COVER_RATIO_PORTRAIT,
+                                        corner = CoverCorner.Grid,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        book.title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        book.author?.takeIf { it.isNotBlank() } ?: "未知作者",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
+                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
         }
         item {
             Text(
-                "在线书籍加入书架后，与本地有声书共用播放进度、书签、倍速和睡眠定时。",
+                "在线书籍加入书架后,与本地有声书共用播放进度、书签、倍速和睡眠定时。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

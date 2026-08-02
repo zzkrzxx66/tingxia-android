@@ -77,6 +77,9 @@ class ShelfViewModel @Inject constructor(
     val fqSelectedBook: StateFlow<FqSearchBook?> = _fqSelectedBook.asStateFlow()
     private val _fqImporting = MutableStateFlow(false)
     val fqImporting: StateFlow<Boolean> = _fqImporting.asStateFlow()
+    private val _fqHotBooks = MutableStateFlow<List<FqSearchBook>>(emptyList())
+    val fqHotBooks: StateFlow<List<FqSearchBook>> = _fqHotBooks.asStateFlow()
+    private var fqDiscoverLoaded = false
 
     fun setQuery(value: String) {
         _query.value = value
@@ -149,6 +152,18 @@ class ShelfViewModel @Inject constructor(
 
     fun setFqQuery(value: String) {
         _fqQuery.value = value
+    }
+
+    /** Load real aggregated hot audio books once per app session for the discover section. */
+    fun loadFqDiscover() {
+        if (fqDiscoverLoaded) return
+        fqDiscoverLoaded = true
+        viewModelScope.launch {
+            try {
+                _fqHotBooks.value = fqNovelApi.hotAudioBooks()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun selectFqBook(book: FqSearchBook) {

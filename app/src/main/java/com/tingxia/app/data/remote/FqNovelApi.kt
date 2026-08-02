@@ -43,6 +43,30 @@ class FqNovelApi(
         }
     }
 
+    private fun parseBooks(root: JSONObject): List<FqSearchBook> {
+        val data = root.optJSONArray("data") ?: JSONArray()
+        return buildList {
+            for (i in 0 until data.length()) {
+                val item = data.optJSONObject(i) ?: continue
+                val id = item.optString("bookId")
+                if (id.isNotBlank()) add(
+                    FqSearchBook(
+                        bookId = id,
+                        title = item.optString("bookName", "未命名"),
+                        author = item.optString("author").takeIf { it.isNotBlank() },
+                        coverUrl = item.optString("coverUrl").takeIf { it.isNotBlank() },
+                        description = item.optString("description").takeIf { it.isNotBlank() },
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Real aggregated hot audio books for the online-find discover section. */
+    suspend fun hotAudioBooks(): List<FqSearchBook> = withContext(Dispatchers.IO) {
+        parseBooks(get("/search/hot"))
+    }
+
     suspend fun tones(bookId: String): List<FqAudioTone> = withContext(Dispatchers.IO) {
         val root = get("/audio/tones/$bookId")
         val tones = root.optJSONObject("data")?.optJSONArray("audio_tones") ?: JSONArray()
