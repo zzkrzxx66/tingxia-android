@@ -327,3 +327,10 @@ fun formatDuration(ms: Long): String {
 fun formatProgressLabel(positionMs: Long, durationMs: Long): String {
     return "${formatDuration(positionMs)} / ${formatDuration(durationMs)}"
 }
+
+/** 887289 -> "88.7"; values under 10k keep the raw count. */
+fun formatWordCount(count: Long): String {
+    if (count < 10_000L) return count.toString()
+    val wan = count / 10_000.0
+    return if (wan >= 100) "%d".format(wan.toLong()) else "%.1f".format(wan)
+}

@@ -147,4 +147,8 @@
     <string name="skip_offsets">片头片尾</string>
     <string name="on">已开启</string>
     <string name="off">已关闭</string>
+    <string name="book_description">简介</string>
+    <string name="expand">展开</string>
+    <string name="collapse">收起</string>
+    <string name="word_count_wan">%1$s 万字</string>
 </resources>

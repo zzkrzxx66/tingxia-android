@@ -29,6 +29,9 @@ data class Book(
     val remoteBookId: String? = null,
     val remoteAudioBookId: String? = null,
     val remoteToneId: String? = null,
+    val description: String? = null,
+    val category: String? = null,
+    val wordCount: Long = 0L,
 ) {
     val isRemote: Boolean get() = sourceType != BookSourceType.LOCAL
     val progressFraction: Float
@@ -134,6 +137,9 @@ fun BookEntity.toModel() = Book(
     remoteBookId = remoteBookId,
     remoteAudioBookId = remoteAudioBookId,
     remoteToneId = remoteToneId,
+    description = description,
+    category = category,
+    wordCount = wordCount,
 )
 
 fun ChapterEntity.toModel() = Chapter(

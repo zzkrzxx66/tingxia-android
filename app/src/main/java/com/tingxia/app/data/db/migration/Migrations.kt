@@ -203,3 +203,12 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         db.execSQL("ALTER TABLE chapters ADD COLUMN remoteItemId TEXT")
     }
 }
+
+/** v6 → v7: online book metadata (blurb, category, word count) kept on the shelf copy. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN description TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN category TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN wordCount INTEGER NOT NULL DEFAULT 0")
+    }
+}

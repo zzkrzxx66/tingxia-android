@@ -80,6 +80,7 @@ import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.playerScrim
@@ -382,12 +383,60 @@ fun BookDetailScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White.copy(alpha = 0.75f),
                                 )
+                                book?.wordCount?.takeIf { it > 0 }?.let { words ->
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        stringResource(R.string.word_count_wan, formatWordCount(words)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.75f),
+                                    )
+                                }
+                                book?.category?.takeIf { it.isNotBlank() }?.let { category ->
+                                    Spacer(Modifier.height(8.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        color = Color.White.copy(alpha = 0.16f),
+                                    ) {
+                                        Text(
+                                            category,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = Color.White.copy(alpha = 0.9f),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    book?.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        Spacer(Modifier.height(16.dp))
+                        var expanded by remember { mutableStateOf(false) }
+                        Text(
+                            stringResource(R.string.book_description),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            description.trim(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = if (expanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            stringResource(if (expanded) R.string.collapse else R.string.expand),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .clickable { expanded = !expanded }
+                                .padding(vertical = 6.dp, horizontal = 2.dp),
+                        )
+                    }
                     if ((book?.lastPlayedAt ?: 0) > 0) {
                         Spacer(Modifier.height(16.dp))
                         Row(

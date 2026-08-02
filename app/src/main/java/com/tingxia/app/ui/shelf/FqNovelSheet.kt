@@ -48,11 +48,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.res.stringResource
 import com.tingxia.app.R
 import com.tingxia.app.data.remote.FqAudioTone
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.SectionCard
+import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 
@@ -88,7 +90,7 @@ fun FqNovelCatalogScreen(
             TopAppBar(
                 title = {
                     Text(
-                        androidx.compose.ui.res.stringResource(R.string.nav_online),
+                        stringResource(R.string.nav_online),
                         style = MaterialTheme.typography.titleLarge,
                     )
                 },
@@ -368,6 +370,24 @@ private fun OnlineBookCard(book: FqSearchBook, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.secondary,
                         maxLines = 1,
                     )
+                    book.category?.takeIf { it.isNotBlank() }?.let {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    book.wordCount.takeIf { it > 0 }?.let {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.word_count_wan, formatWordCount(it)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -428,6 +448,18 @@ private fun FqEditionPicker(
                             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(4.dp))
                             Text(book.author ?: "未知作者", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val metaLine = buildList {
+                                book.category?.takeIf { it.isNotBlank() }?.let(::add)
+                                if (book.wordCount > 0) add(stringResource(R.string.word_count_wan, formatWordCount(book.wordCount)))
+                            }
+                            if (metaLine.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    metaLine.joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             book.description?.let {
                                 Spacer(Modifier.height(10.dp))
                                 Text(

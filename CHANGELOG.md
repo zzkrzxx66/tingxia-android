@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.4
+
+- Keep the online book metadata that was fetched but dropped at import:
+  blurb, category, and word count now persist on the shelf copy (DB v7),
+  ride along in backups, and show up in the app — an expandable 简介
+  section, category chip, and word count on the book detail page, plus
+  category/word-count metadata on online search cards and the edition
+  picker.
+
 ## 0.9.3
 
 - Give shelf and detail covers a paperback finish: spine crease with a catch

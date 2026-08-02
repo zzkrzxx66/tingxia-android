@@ -14,6 +14,8 @@ data class FqSearchBook(
     val author: String?,
     val coverUrl: String?,
     val description: String?,
+    val category: String?,
+    val wordCount: Long,
 )
 
 data class FqAudioTone(val audioBookId: String, val title: String, val iconUrl: String?)
@@ -29,16 +31,7 @@ class FqNovelApi(
         buildList {
             for (i in 0 until books.length()) {
                 val item = books.optJSONObject(i) ?: continue
-                val id = item.optString("bookId")
-                if (id.isNotBlank()) add(
-                    FqSearchBook(
-                        bookId = id,
-                        title = item.optString("bookName", "未命名"),
-                        author = item.optString("author").takeIf { it.isNotBlank() },
-                        coverUrl = item.optString("coverUrl").takeIf { it.isNotBlank() },
-                        description = item.optString("description").takeIf { it.isNotBlank() },
-                    ),
-                )
+                parseBook(item)?.let(::add)
             }
         }
     }
@@ -48,18 +41,23 @@ class FqNovelApi(
         return buildList {
             for (i in 0 until data.length()) {
                 val item = data.optJSONObject(i) ?: continue
-                val id = item.optString("bookId")
-                if (id.isNotBlank()) add(
-                    FqSearchBook(
-                        bookId = id,
-                        title = item.optString("bookName", "未命名"),
-                        author = item.optString("author").takeIf { it.isNotBlank() },
-                        coverUrl = item.optString("coverUrl").takeIf { it.isNotBlank() },
-                        description = item.optString("description").takeIf { it.isNotBlank() },
-                    ),
-                )
+                parseBook(item)?.let(::add)
             }
         }
+    }
+
+    private fun parseBook(item: JSONObject): FqSearchBook? {
+        val id = item.optString("bookId")
+        if (id.isBlank()) return null
+        return FqSearchBook(
+            bookId = id,
+            title = item.optString("bookName", "未命名"),
+            author = item.optString("author").takeIf { it.isNotBlank() },
+            coverUrl = item.optString("coverUrl").takeIf { it.isNotBlank() },
+            description = item.optString("description").takeIf { it.isNotBlank() },
+            category = item.optString("category").takeIf { it.isNotBlank() },
+            wordCount = item.optLong("wordCount").coerceAtLeast(0L),
+        )
     }
 
     /** Real aggregated hot audio books for the online-find discover section. */

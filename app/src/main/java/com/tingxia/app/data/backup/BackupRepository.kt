@@ -58,6 +58,9 @@ class BackupRepository @Inject constructor(
                     remoteBookId = book.remoteBookId,
                     remoteAudioBookId = book.remoteAudioBookId,
                     remoteToneId = book.remoteToneId,
+                    description = book.description,
+                    category = book.category,
+                    wordCount = book.wordCount,
                     coverUri = book.coverPath?.takeIf { it.startsWith("content:") || it.startsWith("http") },
                     chapters = chapters.map { ch ->
                         BackupChapter(
@@ -158,6 +161,9 @@ class BackupRepository @Inject constructor(
                 remoteBookId = backup.remoteBookId,
                 remoteAudioBookId = backup.remoteAudioBookId,
                 remoteToneId = backup.remoteToneId,
+                description = backup.description,
+                category = backup.category,
+                wordCount = backup.wordCount,
             ),
         )
         val chapters = backup.chapters.sortedBy { it.index }.map { it.toEntity(bookId) }
@@ -217,6 +223,9 @@ class BackupRepository @Inject constructor(
                 remoteBookId = backup.remoteBookId,
                 remoteAudioBookId = backup.remoteAudioBookId,
                 remoteToneId = backup.remoteToneId,
+                description = backup.description,
+                category = backup.category,
+                wordCount = backup.wordCount,
             ),
         )
         bookmarkDao.deleteForBook(existing.id)

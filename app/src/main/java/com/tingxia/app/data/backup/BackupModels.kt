@@ -31,6 +31,9 @@ data class BackupBook(
     val remoteBookId: String? = null,
     val remoteAudioBookId: String? = null,
     val remoteToneId: String? = null,
+    val description: String? = null,
+    val category: String? = null,
+    val wordCount: Long = 0L,
 )
 
 data class BackupChapter(

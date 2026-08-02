@@ -68,6 +68,9 @@ object BackupCodec {
         field("remoteBookId", book.remoteBookId)
         field("remoteAudioBookId", book.remoteAudioBookId)
         field("remoteToneId", book.remoteToneId)
+        field("description", book.description)
+        field("category", book.category)
+        field("wordCount", book.wordCount)
         field("chapters") { array(book.chapters) { chapter(it) } }
         field("bookmarks") { array(book.bookmarks) { bookmark(it) } }
     }
@@ -92,6 +95,9 @@ object BackupCodec {
         remoteBookId = map.stringOrNull("remoteBookId"),
         remoteAudioBookId = map.stringOrNull("remoteAudioBookId"),
         remoteToneId = map.stringOrNull("remoteToneId"),
+        description = map.stringOrNull("description"),
+        category = map.stringOrNull("category"),
+        wordCount = map.longOrDefault("wordCount", 0L).coerceAtLeast(0L),
         chapters = map.array("chapters").map { chapter(it.asObject()) },
         bookmarks = map.array("bookmarks").map { bookmark(it.asObject()) },
     )

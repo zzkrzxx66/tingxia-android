@@ -123,6 +123,9 @@ class BookRepository @Inject constructor(
                 remoteBookId = book.bookId,
                 remoteAudioBookId = tone.audioBookId,
                 remoteToneId = "0",
+                description = book.description,
+                category = book.category,
+                wordCount = book.wordCount,
             ),
         )
         val ids = chapterDao.insertAll(
