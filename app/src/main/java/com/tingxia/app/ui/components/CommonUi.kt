@@ -2,6 +2,7 @@ package com.tingxia.app.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -42,6 +45,8 @@ import java.io.File
  * @param size fixed width. Height follows [ratio]; omit to fill the available width instead.
  * @param ratio width / height. 1f is a square thumbnail, [com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT]
  *   is the 3:4 shape real book covers are authored at — cropping those to a square cuts off faces.
+ * @param realistic when true, paperback light/shadow overlays (spine crease, page edges, a drop
+ *   shadow) sit on top of the artwork so tiles read as physical books on the shelf.
  */
 @Composable
 fun BookCover(
@@ -51,12 +56,19 @@ fun BookCover(
     size: Dp? = null,
     corner: Dp = CoverCorner.Card,
     ratio: Float = 1f,
+    realistic: Boolean = false,
 ) {
     val shape = RoundedCornerShape(corner)
-    val boxMod = if (size != null) {
+    val sized = if (size != null) {
         modifier.width(size).height(size / ratio)
     } else {
         modifier.aspectRatio(ratio)
+    }
+    val boxMod = if (realistic) {
+        // spotColor warms the contact shadow so books sit on the shelf instead of floating.
+        sized.shadow(elevation = 5.dp, shape = shape, clip = false, spotColor = Color(0xFF4A3B2C))
+    } else {
+        sized
     }
     Box(boxMod.clearAndSetSemantics { }.clip(shape)) {
         val model: Any? = when {
@@ -75,6 +87,96 @@ fun BookCover(
         } else {
             FallbackCover(title = title, compact = size != null && size < 80.dp)
         }
+        if (realistic) {
+            RealisticBookOverlay(compact = size != null && size < 80.dp)
+        }
+    }
+}
+
+/**
+ * Paperback finish painted over the artwork:
+ *  - left: the dark crease and catch-light where cover wraps around the spine,
+ *  - right: a strip of page edges in paper tone,
+ *  - top: cut-page hairlines (skipped when compact, they turn to mush),
+ *  - overall: the debossed hairline frame a printed hardcover carries.
+ * All tones follow the light/dark theme so the effect stays subtle at night.
+ */
+@Composable
+private fun RealisticBookOverlay(compact: Boolean, modifier: Modifier = Modifier) {
+    val darkTheme = isSystemInDarkTheme()
+    val pageEdge = if (darkTheme) Color(0xFF4A453D) else Color(0xFFEFE7D8)
+    val pageEdgeShade = if (darkTheme) Color(0xFF3A362F) else Color(0xFFE0D5C2)
+    val pageLine = if (darkTheme) Color(0xFF5A544A) else Color(0xFFCFC3AE)
+    val frame = if (darkTheme) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.22f)
+    Box(modifier.fillMaxSize()) {
+        // Spine crease: dark fold then a thin highlight, like light raking across the hinge.
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(if (compact) 4.dp else 6.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = 0.30f),
+                            Color.Black.copy(alpha = 0.10f),
+                            Color.White.copy(alpha = 0.14f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
+        // Page block peeking past the right edge of the cover board.
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(if (compact) 2.dp else 3.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(pageEdge, pageEdgeShade, pageEdge),
+                    ),
+                ),
+        )
+        if (!compact) {
+            // Cut-page hairlines along the head of the book.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxSize()
+                    .drawBehind {
+                        val line = 0.6.dp.toPx()
+                        val step = 1.6.dp.toPx()
+                        val inset = 1.2.dp.toPx()
+                        for (i in 0..3) {
+                            val y = inset + i * step
+                            drawLine(
+                                color = pageLine,
+                                start = Offset(inset, y),
+                                end = Offset(size.width - inset, y),
+                                strokeWidth = line,
+                            )
+                        }
+                    },
+            )
+        }
+        // Debossed inner frame, uniform across real covers and fallbacks.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawBehind {
+                    val inset = if (compact) 3.dp.toPx() else 6.dp.toPx()
+                    drawRect(
+                        color = frame,
+                        topLeft = Offset(inset, inset),
+                        size = androidx.compose.ui.geometry.Size(
+                            size.width - inset * 2,
+                            size.height - inset * 2,
+                        ),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()),
+                    )
+                },
+        )
     }
 }
 @Composable

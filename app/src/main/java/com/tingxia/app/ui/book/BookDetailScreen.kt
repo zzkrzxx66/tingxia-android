@@ -327,6 +327,7 @@ fun BookDetailScreen(
                                     size = 112.dp,
                                     ratio = COVER_RATIO_PORTRAIT,
                                     corner = CoverCorner.Detail,
+                                    realistic = true,
                                 )
                             }
                             Spacer(Modifier.width(18.dp))

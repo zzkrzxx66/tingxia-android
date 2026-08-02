@@ -431,6 +431,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 ratio = COVER_RATIO_PORTRAIT,
                 corner = CoverCorner.Grid,
+                realistic = true,
             )
             if (book.isRemote) {
                 OnlineBadge(

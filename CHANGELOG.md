@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3
+
+- Give shelf and detail covers a paperback finish: spine crease with a catch
+  light, page edges at the fore-edge, cut-page hairlines at the head, a
+  debossed hairline frame, and a warm contact shadow — all theme-aware so the
+  effect stays subtle in dark mode.
+
 ## 0.8.0
 
 - Rebuild the interface on a real corner ladder (6/10/14/20/28) so badges,
