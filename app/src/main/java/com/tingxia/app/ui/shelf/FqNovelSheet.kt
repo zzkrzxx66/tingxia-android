@@ -239,7 +239,6 @@ private fun OnlineWelcome(onSearch: (String) -> Unit) {
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item { OnlineHero() }
         item {
             Column {
                 Text("热门搜索", style = MaterialTheme.typography.titleMedium)
@@ -285,43 +284,6 @@ private fun OnlineWelcome(onSearch: (String) -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@Composable
-private fun OnlineHero() {
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
-                Icon(
-                    Icons.Default.Headphones,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(13.dp).size(26.dp),
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(
-                    "发现真人演播好书",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "搜索小说并选择喜欢的真人演播版本，加入书架后即可收听。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
         }
     }
 }
@@ -476,41 +438,46 @@ private fun FqEditionPicker(
             }
             items(tones, key = { it.audioBookId }) { tone ->
                 SectionCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.Top) {
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-                                Icon(
-                                    Icons.Default.Headphones,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(10.dp).size(20.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("真人演播", style = MaterialTheme.typography.titleSmall)
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    tone.title.removePrefix("主播：").ifBlank { "演播信息暂无" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(14.dp))
-                        Button(
-                            onClick = { onImport(book, tone) },
-                            enabled = !importing && !loading,
-                            modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
                             shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
                         ) {
-                            if (importing) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text("正在获取目录…")
-                            } else {
+                            Icon(
+                                Icons.Default.Headphones,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(8.dp).size(18.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "真人演播",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                tone.title.removePrefix("主播:").ifBlank { "演播信息暂无" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        if (importing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp).padding(end = 2.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            androidx.compose.material3.TextButton(
+                                onClick = { onImport(book, tone) },
+                                enabled = !loading,
+                            ) {
                                 Text("加入书架")
                             }
                         }

@@ -27,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -40,7 +39,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -51,6 +49,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +61,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,7 +71,6 @@ import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.ui.components.BookCover
-import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
@@ -84,11 +81,9 @@ fun ShelfScreen(
     onOpenBook: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onGoOnline: () -> Unit,
-    onContinue: (Long) -> Unit,
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
-    val recent by viewModel.recent.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
@@ -98,7 +93,6 @@ fun ShelfScreen(
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     LaunchedEffect(error) {
         error?.let {
@@ -119,20 +113,21 @@ fun ShelfScreen(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
                 title = {
-                    Column {
+                    Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.titleLarge,
                         )
+                        Spacer(Modifier.width(10.dp))
                         Text(
                             stringResource(R.string.shelf_book_count, books.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 3.dp),
                         )
                     }
                 },
@@ -169,7 +164,6 @@ fun ShelfScreen(
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                     }
                 },
-                scrollBehavior = scrollBehavior,
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -277,24 +271,17 @@ fun ShelfScreen(
                         )
                     } else {
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 112.dp),
+                            columns = GridCells.Adaptive(minSize = 88.dp),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
                                 top = 4.dp,
                                 bottom = 24.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(18.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            recent?.let { r ->
-                                if (r.lastPlayedAt > 0 && query.isBlank() && filter == ShelfFilter.ALL) {
-                                    item(span = { GridItemSpan(maxLineSpan) }) {
-                                        ContinueCard(book = r, onClick = { onContinue(r.id) })
-                                    }
-                                }
-                            }
                             if (books.isNotEmpty()) {
                                 item(span = { GridItemSpan(maxLineSpan) }) {
                                     Row(
@@ -425,87 +412,6 @@ private fun EmptyShelf(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onGoOnline, shape = MaterialTheme.shapes.medium) {
                 Text(stringResource(R.string.empty_shelf_online_action))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContinueCard(book: Book, onClick: () -> Unit) {
-    SectionCard(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BookCover(
-                title = book.title,
-                coverPath = book.coverPath,
-                size = 72.dp,
-                ratio = COVER_RATIO_PORTRAIT,
-                corner = CoverCorner.Card,
-            )
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.continue_listening),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.secondary,
-                    )
-                    if (book.isRemote) {
-                        Spacer(Modifier.width(8.dp))
-                        OnlineBadge()
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    book.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (book.totalDurationMs > 0L) {
-                    Text(
-                        stringResource(
-                            R.string.remaining_time,
-                            formatDuration((book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { book.progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(MaterialTheme.shapes.extraSmall),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Surface(
-                onClick = onClick,
-                modifier = Modifier.size(56.dp),
-                shape = androidx.compose.foundation.shape.CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                shadowElevation = 4.dp,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = stringResource(R.string.continue_playback),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(30.dp),
-                    )
-                }
             }
         }
     }

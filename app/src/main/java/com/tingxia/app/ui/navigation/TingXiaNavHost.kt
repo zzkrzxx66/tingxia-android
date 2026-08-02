@@ -208,13 +208,6 @@ fun TingXiaNavHost(
                                     launchSingleTop = true
                                 }
                             },
-                            onContinue = { bookId ->
-                                startPlayback {
-                                    playerViewModel.playBook(bookId) { ok ->
-                                        if (ok) navController.navigate(Routes.PLAYER)
-                                    }
-                                }
-                            },
                         )
                     }
                     composable(Routes.ONLINE) {

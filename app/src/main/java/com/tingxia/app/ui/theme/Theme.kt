@@ -189,24 +189,24 @@ private val TingXiaTypography = Typography(
 )
 
 /**
- * A real corner ladder so containers read as a hierarchy: badges sit below buttons,
- * buttons below cards, cards below full-width panels.
+ * A restrained corner ladder: print-like rectangles with just enough rounding
+ * to soften edges. Badges sit below buttons, buttons below cards.
  */
 private val TingXiaShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(12.dp),
+    extraLarge = RoundedCornerShape(16.dp),
 )
 
 /** Corner radii for artwork, which tracks the container it sits in. */
 object CoverCorner {
-    val Mini = 10.dp
-    val Grid = 12.dp
-    val Card = 12.dp
-    val Detail = 16.dp
-    val Hero = 20.dp
+    val Mini = 6.dp
+    val Grid = 6.dp
+    val Card = 8.dp
+    val Detail = 10.dp
+    val Hero = 12.dp
 }
 
 /** Portrait book artwork is 3:4; square is reserved for chrome-sized thumbnails. */
