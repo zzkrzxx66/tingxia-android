@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,11 +20,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.BatterySaver
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
@@ -64,6 +67,7 @@ import com.tingxia.app.R
 import com.tingxia.app.data.repo.PlaybackErrorPolicy
 import com.tingxia.app.data.repo.ThemeMode
 import com.tingxia.app.player.PlaybackSpeeds
+import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.theme.dynamicColorSupported
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,180 +128,190 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            SettingsSectionHeader(Icons.Default.Palette, stringResource(R.string.appearance))
-            val themes = listOf(
-                ThemeMode.SYSTEM to stringResource(R.string.theme_system),
-                ThemeMode.LIGHT to stringResource(R.string.theme_light),
-                ThemeMode.DARK to stringResource(R.string.theme_dark),
-            )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                themes.forEachIndexed { index, (mode, label) ->
-                    SegmentedButton(
-                        selected = themeMode == mode,
-                        onClick = { viewModel.setThemeMode(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(index, themes.size),
-                    ) {
-                        Text(label, maxLines = 1)
+            // Appearance
+            SettingsGroup(icon = Icons.Default.Palette, title = stringResource(R.string.appearance)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    val themes = listOf(
+                        Triple(ThemeMode.SYSTEM, stringResource(R.string.theme_system), Icons.Default.PhoneAndroid),
+                        Triple(ThemeMode.LIGHT, stringResource(R.string.theme_light), Icons.Default.LightMode),
+                        Triple(ThemeMode.DARK, stringResource(R.string.theme_dark), Icons.Default.DarkMode),
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        themes.forEachIndexed { index, (mode, label, icon) ->
+                            SegmentedButton(
+                                selected = themeMode == mode,
+                                onClick = { viewModel.setThemeMode(mode) },
+                                shape = SegmentedButtonDefaults.itemShape(index, themes.size),
+                                icon = {
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                            ) {
+                                Text(label, maxLines = 1)
+                            }
+                        }
+                    }
+                    if (dynamicColorSupported) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setDynamicColor(!dynamicColor) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.dynamic_color), style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    stringResource(R.string.dynamic_color_summary),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Switch(
+                                checked = dynamicColor,
+                                onCheckedChange = { viewModel.setDynamicColor(it) },
+                            )
+                        }
                     }
                 }
             }
 
-            if (dynamicColorSupported) {
-                Spacer(Modifier.height(18.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.setDynamicColor(!dynamicColor) },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.dynamic_color), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            stringResource(R.string.dynamic_color_summary),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            // Playback
+            SettingsGroup(icon = Icons.Default.PlayCircle, title = stringResource(R.string.playback)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        stringResource(R.string.default_speed),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Box {
+                        OutlinedButton(
+                            onClick = { speedExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
+                        ) {
+                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(19.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(PlaybackSpeeds.label(speed))
+                            Spacer(Modifier.weight(1f))
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                        }
+                        DropdownMenu(
+                            expanded = speedExpanded,
+                            onDismissRequest = { speedExpanded = false },
+                        ) {
+                            PlaybackSpeeds.ALL.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(PlaybackSpeeds.label(option)) },
+                                    onClick = {
+                                        viewModel.setDefaultSpeed(option)
+                                        speedExpanded = false
+                                    },
+                                )
+                            }
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = dynamicColor,
-                        onCheckedChange = { viewModel.setDynamicColor(it) },
+
+                    Spacer(Modifier.height(20.dp))
+                    Text(stringResource(R.string.playback_error_policy), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.playback_error_policy_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val policies = listOf(
+                        PlaybackErrorPolicy.STOP to stringResource(R.string.playback_error_stop),
+                        PlaybackErrorPolicy.SKIP to stringResource(R.string.playback_error_skip),
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        policies.forEachIndexed { index, (policy, label) ->
+                            SegmentedButton(
+                                selected = errorPolicy == policy,
+                                onClick = { viewModel.setPlaybackErrorPolicy(policy) },
+                                shape = SegmentedButtonDefaults.itemShape(index, policies.size),
+                            ) {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Backup
+            SettingsGroup(icon = Icons.Default.Storage, title = stringResource(R.string.backup_restore)) {
+                Column {
+                    SettingsActionRow(
+                        icon = Icons.Default.FileUpload,
+                        title = stringResource(R.string.export_backup),
+                        subtitle = stringResource(R.string.backup_restore_summary),
+                        onClick = { exportBackup.launch("tingxia-backup.json") },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 52.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                    SettingsActionRow(
+                        icon = Icons.Default.FileDownload,
+                        title = stringResource(R.string.import_backup),
+                        subtitle = null,
+                        onClick = { importBackup.launch(arrayOf("application/json", "text/json", "text/plain")) },
                     )
                 }
             }
 
-            SettingsSectionHeader(
-                icon = Icons.Default.PlayCircle,
-                title = stringResource(R.string.playback),
-                modifier = Modifier.padding(top = 28.dp),
-            )
-            Text(
-                stringResource(R.string.default_speed),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(6.dp))
-            androidx.compose.foundation.layout.Box {
-                OutlinedButton(
-                    onClick = { speedExpanded = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(19.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(PlaybackSpeeds.label(speed))
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                }
-                DropdownMenu(
-                    expanded = speedExpanded,
-                    onDismissRequest = { speedExpanded = false },
-                ) {
-                    PlaybackSpeeds.ALL.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(PlaybackSpeeds.label(option)) },
-                            onClick = {
-                                viewModel.setDefaultSpeed(option)
-                                speedExpanded = false
-                            },
-                        )
-                    }
+            // About
+            SettingsGroup(icon = Icons.Default.Info, title = stringResource(R.string.about)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(stringResource(R.string.app_description), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        stringResource(R.string.about_battery_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-
-            Spacer(Modifier.height(20.dp))
-            Text(stringResource(R.string.playback_error_policy), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.playback_error_policy_summary),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            val policies = listOf(
-                PlaybackErrorPolicy.STOP to stringResource(R.string.playback_error_stop),
-                PlaybackErrorPolicy.SKIP to stringResource(R.string.playback_error_skip),
-            )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                policies.forEachIndexed { index, (policy, label) ->
-                    SegmentedButton(
-                        selected = errorPolicy == policy,
-                        onClick = { viewModel.setPlaybackErrorPolicy(policy) },
-                        shape = SegmentedButtonDefaults.itemShape(index, policies.size),
-                    ) {
-                        Text(label)
-                    }
-                }
-            }
-
-            SettingsSectionHeader(
-                icon = Icons.Default.Storage,
-                title = stringResource(R.string.backup_restore),
-                modifier = Modifier.padding(top = 28.dp),
-            )
-            Text(
-                stringResource(R.string.backup_restore_summary),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            SettingsActionRow(
-                icon = Icons.Default.FileUpload,
-                title = stringResource(R.string.export_backup),
-                onClick = { exportBackup.launch("tingxia-backup.json") },
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            SettingsActionRow(
-                icon = Icons.Default.FileDownload,
-                title = stringResource(R.string.import_backup),
-                onClick = { importBackup.launch(arrayOf("application/json", "text/json", "text/plain")) },
-            )
-
-            SettingsSectionHeader(
-                icon = Icons.Default.BatterySaver,
-                title = stringResource(R.string.about_battery),
-                modifier = Modifier.padding(top = 28.dp),
-            )
-            Text(
-                stringResource(R.string.about_battery_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            SettingsSectionHeader(
-                icon = Icons.Default.Info,
-                title = stringResource(R.string.about),
-                modifier = Modifier.padding(top = 28.dp),
-            )
-            Text(stringResource(R.string.app_description), style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
 
 @Composable
-private fun SettingsSectionHeader(
+private fun SettingsGroup(
     icon: ImageVector,
     title: String,
-    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
 ) {
-    Row(
-        modifier = modifier.padding(bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.width(9.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
+    Column {
+        Row(
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        SectionCard(modifier = Modifier.fillMaxWidth()) {
+            content()
+        }
     }
 }
 
@@ -305,24 +319,33 @@ private fun SettingsSectionHeader(
 private fun SettingsActionRow(
     icon: ImageVector,
     title: String,
+    subtitle: String?,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp, horizontal = 2.dp),
+            .padding(vertical = 13.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-        Text(
-            title,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,

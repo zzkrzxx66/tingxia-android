@@ -5,15 +5,26 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -40,10 +51,12 @@ import com.tingxia.app.ui.player.FullPlayerScreen
 import com.tingxia.app.ui.player.MiniPlayerBar
 import com.tingxia.app.ui.player.PlayerViewModel
 import com.tingxia.app.ui.settings.SettingsScreen
+import com.tingxia.app.ui.shelf.FqNovelCatalogScreen
 import com.tingxia.app.ui.shelf.ShelfScreen
 
 object Routes {
     const val SHELF = "shelf"
+    const val ONLINE = "online"
     const val BOOK = "book/{bookId}"
     const val PLAYER = "player"
     const val SETTINGS = "settings"
@@ -61,6 +74,7 @@ fun TingXiaNavHost(
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showMini = playerState.bookId != null && currentRoute != Routes.PLAYER
+    val atTopLevel = currentRoute == Routes.SHELF || currentRoute == Routes.ONLINE
     val snackbar = remember { SnackbarHostState() }
     val notificationDeniedMessage = stringResource(R.string.notification_permission_denied)
     val skipChapterLabel = stringResource(R.string.skip_chapter)
@@ -120,29 +134,80 @@ fun TingXiaNavHost(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (showMini) {
-                MiniPlayerBar(
-                    state = playerState,
-                    onToggle = { playerViewModel.togglePlayPause() },
-                    onOpen = { navController.navigate(Routes.PLAYER) },
-                )
+            if (showMini || atTopLevel) {
+                Column {
+                    if (showMini) {
+                        MiniPlayerBar(
+                            state = playerState,
+                            onToggle = { playerViewModel.togglePlayPause() },
+                            onOpen = { navController.navigate(Routes.PLAYER) },
+                        )
+                    }
+                    if (atTopLevel) {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = currentRoute == Routes.SHELF,
+                                onClick = {
+                                    if (currentRoute != Routes.SHELF) {
+                                        navController.navigate(Routes.SHELF) {
+                                            popUpTo(Routes.SHELF) { inclusive = false }
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                },
+                                icon = {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.LibraryBooks,
+                                        contentDescription = null,
+                                    )
+                                },
+                                label = { Text(stringResource(R.string.nav_shelf)) },
+                            )
+                            NavigationBarItem(
+                                selected = currentRoute == Routes.ONLINE,
+                                onClick = {
+                                    if (currentRoute != Routes.ONLINE) {
+                                        navController.navigate(Routes.ONLINE) {
+                                            popUpTo(Routes.SHELF)
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                },
+                                icon = {
+                                    Icon(Icons.Outlined.TravelExplore, contentDescription = null)
+                                },
+                                label = { Text(stringResource(R.string.nav_online)) },
+                            )
+                        }
+                    }
+                }
             }
         },
         content = { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Only lift content above the mini player; never re-apply status bars.
-                    .padding(bottom = if (showMini) innerPadding.calculateBottomPadding() else 0.dp),
+                    // Only lift content above the bottom bar; never re-apply status bars.
+                    .padding(bottom = innerPadding.calculateBottomPadding()),
             ) {
                 NavHost(
                     navController = navController,
                     startDestination = Routes.SHELF,
+                    enterTransition = { fadeIn(tween(250)) },
+                    exitTransition = { fadeOut(tween(200)) },
+                    popEnterTransition = { fadeIn(tween(250)) },
+                    popExitTransition = { fadeOut(tween(200)) },
                 ) {
                     composable(Routes.SHELF) {
                         ShelfScreen(
                             onOpenBook = { id -> navController.navigate(Routes.book(id)) },
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                            onGoOnline = {
+                                navController.navigate(Routes.ONLINE) {
+                                    popUpTo(Routes.SHELF)
+                                    launchSingleTop = true
+                                }
+                            },
                             onContinue = { bookId ->
                                 startPlayback {
                                     playerViewModel.playBook(bookId) { ok ->
@@ -150,6 +215,11 @@ fun TingXiaNavHost(
                                     }
                                 }
                             },
+                        )
+                    }
+                    composable(Routes.ONLINE) {
+                        FqNovelCatalogScreen(
+                            onOpenBook = { id -> navController.navigate(Routes.book(id)) },
                         )
                     }
                     composable(

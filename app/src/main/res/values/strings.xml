@@ -5,8 +5,7 @@
     <string name="notification_channel_playback_desc">有声书后台播放与媒体控件</string>
     <string name="settings">设置</string>
     <string name="default_speed">默认倍速</string>
-    <string name="about_battery">后台播放提示</string>
-    <string name="about_battery_body">部分国产系统会限制后台。若锁屏后中断，请在系统设置中为听匣关闭电池优化，并允许自启动/关联启动（按需）。</string>
+    <string name="about_battery_body">部分国产系统会限制后台。若锁屏后中断,请在系统设置中为听匣关闭电池优化,并允许自启动/关联启动(按需)。</string>
     <string name="back">返回</string>
     <string name="appearance">外观</string>
     <string name="playback">播放</string>
@@ -53,7 +52,6 @@
     <string name="skip_outro_seconds">片尾（秒）</string>
     <string name="skip_seconds_range">请输入 0–300 秒</string>
     <string name="skip_active_summary">已跳过：片头 %1$d 秒 · 片尾 %2$d 秒</string>
-    <string name="choose_cover">选择封面</string>
     <string name="remove_cover">移除封面</string>
     <string name="rescan_folder">重新扫描目录</string>
     <string name="reauthorize_folder">重新授权目录</string>
@@ -121,8 +119,6 @@
     <string name="continue_listening">继续收听</string>
     <string name="nothing_playing">未在播放</string>
     <string name="now_playing">正在播放</string>
-    <string name="rewind_15_seconds_short">−15 秒</string>
-    <string name="forward_15_seconds_short">+15 秒</string>
     <string name="chapter_progress">第 %1$d / %2$d 章</string>
     <string name="pause">暂停</string>
     <string name="play">播放</string>
@@ -142,4 +138,14 @@
     <string name="widget_ready">准备播放</string>
     <string name="widget_chapter_progress">%1$d/%2$d 章</string>
     <string name="widget_time_progress">%1$s / %2$s</string>
+    <string name="nav_shelf">书架</string>
+    <string name="nav_online">在线找书</string>
+    <string name="empty_shelf_action">导入文件夹</string>
+    <string name="empty_shelf_online_action">去在线找书</string>
+    <string name="collapse_player">收起播放器</string>
+    <string name="change_cover">更换封面</string>
+    <string name="playback_speed">倍速</string>
+    <string name="skip_offsets">片头片尾</string>
+    <string name="on">已开启</string>
+    <string name="off">已关闭</string>
 </resources>

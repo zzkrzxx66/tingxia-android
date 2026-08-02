@@ -29,9 +29,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +46,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tingxia.app.R
 import com.tingxia.app.data.remote.FqAudioTone
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
@@ -50,6 +58,68 @@ import com.tingxia.app.ui.theme.CoverCorner
 
 /** Search shortcuts, not a curated shelf — these are keywords, no catalogue data is implied. */
 private val PopularSearches = listOf("斩神", "三体", "诡秘之主", "盗墓笔记", "鬼吹灯", "庆余年")
+
+/** Top-level online catalogue destination, sharing the shelf's view model. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FqNovelCatalogScreen(
+    onOpenBook: (Long) -> Unit,
+    viewModel: ShelfViewModel = hiltViewModel(),
+) {
+    val fqSearch by viewModel.fqSearch.collectAsStateWithLifecycle()
+    val fqQuery by viewModel.fqQuery.collectAsStateWithLifecycle()
+    val fqHasSearched by viewModel.fqHasSearched.collectAsStateWithLifecycle()
+    val fqLoading by viewModel.fqLoading.collectAsStateWithLifecycle()
+    val fqTones by viewModel.fqTones.collectAsStateWithLifecycle()
+    val fqSelectedBook by viewModel.fqSelectedBook.collectAsStateWithLifecycle()
+    val fqImporting by viewModel.fqImporting.collectAsStateWithLifecycle()
+
+    androidx.activity.compose.BackHandler(enabled = fqSelectedBook != null) {
+        viewModel.clearFqSelection()
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        androidx.compose.ui.res.stringResource(R.string.nav_online),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            FqNovelCatalog(
+                query = fqQuery,
+                searchResults = fqSearch,
+                selectedBook = fqSelectedBook,
+                tones = fqTones,
+                loading = fqLoading,
+                importing = fqImporting,
+                hasSearched = fqHasSearched,
+                onQueryChange = viewModel::setFqQuery,
+                onSearch = viewModel::searchFqNovel,
+                onSelectBook = viewModel::selectFqBook,
+                onBack = viewModel::clearFqSelection,
+                onImport = { book, tone ->
+                    viewModel.importFqNovel(book, tone) { bookId ->
+                        onOpenBook(bookId)
+                    }
+                },
+            )
+        }
+    }
+}
 
 @Composable
 fun FqNovelCatalog(

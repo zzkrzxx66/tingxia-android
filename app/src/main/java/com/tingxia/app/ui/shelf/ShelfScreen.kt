@@ -3,13 +3,6 @@ package com.tingxia.app.ui.shelf
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,55 +16,56 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.R
@@ -89,6 +83,7 @@ import com.tingxia.app.ui.theme.CoverCorner
 fun ShelfScreen(
     onOpenBook: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onGoOnline: () -> Unit,
     onContinue: (Long) -> Unit,
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
@@ -100,22 +95,10 @@ fun ShelfScreen(
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
-    val fqSearch by viewModel.fqSearch.collectAsStateWithLifecycle()
-    val fqQuery by viewModel.fqQuery.collectAsStateWithLifecycle()
-    val fqHasSearched by viewModel.fqHasSearched.collectAsStateWithLifecycle()
-    val fqLoading by viewModel.fqLoading.collectAsStateWithLifecycle()
-    val fqTones by viewModel.fqTones.collectAsStateWithLifecycle()
-    val fqSelectedBook by viewModel.fqSelectedBook.collectAsStateWithLifecycle()
-    val fqImporting by viewModel.fqImporting.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
-    var filterMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
-    var homeSection by rememberSaveable { mutableStateOf(HomeSection.SHELF) }
-
-    BackHandler(enabled = homeSection == HomeSection.ONLINE && fqSelectedBook != null) {
-        viewModel.clearFqSelection()
-    }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     LaunchedEffect(error) {
         error?.let {
@@ -136,22 +119,18 @@ fun ShelfScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            LargeTopAppBar(
                 title = {
                     Column {
                         Text(
                             stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.headlineSmall,
                         )
                         Text(
-                            if (homeSection == HomeSection.SHELF) {
-                                stringResource(R.string.shelf_book_count, books.size)
-                            } else {
-                                // The online section's own hero already says "发现真人演播好书".
-                                "在线搜索 · 真人演播"
-                            },
+                            stringResource(R.string.shelf_book_count, books.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -162,42 +141,36 @@ fun ShelfScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
+                    Box {
+                        IconButton(onClick = { importMenu = true }) {
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_audio))
+                        }
+                        DropdownMenu(
+                            expanded = importMenu,
+                            onDismissRequest = { importMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_folder)) },
+                                onClick = {
+                                    importMenu = false
+                                    openTree.launch(null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_multiple_audio)) },
+                                onClick = {
+                                    importMenu = false
+                                    openFiles.launch(arrayOf("audio/*", "application/octet-stream"))
+                                },
+                            )
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                     }
                 },
+                scrollBehavior = scrollBehavior,
             )
-        },
-        floatingActionButton = {
-            if (homeSection == HomeSection.SHELF) Box {
-                FloatingActionButton(
-                    onClick = { importMenu = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_audio))
-                }
-                DropdownMenu(
-                    expanded = importMenu,
-                    onDismissRequest = { importMenu = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.import_folder)) },
-                        onClick = {
-                            importMenu = false
-                            openTree.launch(null)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.import_multiple_audio)) },
-                        onClick = {
-                            importMenu = false
-                            openFiles.launch(arrayOf("audio/*", "application/octet-stream"))
-                        },
-                    )
-                }
-            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         content = { innerPadding ->
@@ -207,22 +180,6 @@ fun ShelfScreen(
                     .padding(innerPadding),
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    HomeSectionTabs(
-                        selected = homeSection,
-                        onSelected = {
-                            homeSection = it
-                            importMenu = false
-                        },
-                    )
-                    AnimatedContent(
-                        targetState = homeSection,
-                        transitionSpec = {
-                            fadeIn(tween(200)) togetherWith fadeOut(tween(140))
-                        },
-                        label = "homeSection",
-                        modifier = Modifier.fillMaxSize(),
-                    ) { section ->
-                    if (section == HomeSection.SHELF) Column(modifier = Modifier.fillMaxSize()) {
                     OutlinedTextField(
                         value = query,
                         onValueChange = viewModel::setQuery,
@@ -245,8 +202,6 @@ fun ShelfScreen(
                         },
                         shape = MaterialTheme.shapes.large,
                         colors = OutlinedTextFieldDefaults.colors(
-                            // Filled when idle, outlined only on focus — the old pair of states
-                            // looked like two different controls.
                             unfocusedBorderColor = Color.Transparent,
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -256,57 +211,44 @@ fun ShelfScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            OutlinedButton(
-                                onClick = { filterMenu = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.small,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            ) {
-                                Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    filterLabel(filter),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                        val filterOptions = listOf(
+                            ShelfFilter.ALL to stringResource(R.string.filter_all),
+                            ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
+                            ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
+                            ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
+                            ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
+                        )
+                        LazyRow(
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(
+                                filterOptions,
+                                key = { it.first.name },
+                            ) { (value, label) ->
+                                FilterChip(
+                                    selected = filter == value,
+                                    onClick = { viewModel.setFilter(value) },
+                                    label = { Text(label) },
                                 )
-                            }
-                            DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
-                                listOf(
-                                    ShelfFilter.ALL to stringResource(R.string.filter_all),
-                                    ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
-                                    ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
-                                    ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
-                                    ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
-                                ).forEach { (value, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            viewModel.setFilter(value)
-                                            filterMenu = false
-                                        },
-                                    )
-                                }
                             }
                         }
-                        Box(modifier = Modifier.weight(1f)) {
-                            OutlinedButton(
+                        Box {
+                            AssistChip(
                                 onClick = { sortMenu = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.small,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    sortLabel(sort),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
+                                label = { Text(sortLabel(sort), maxLines = 1) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Sort,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                            )
                             DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                                 listOf(
                                     ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
@@ -324,11 +266,14 @@ fun ShelfScreen(
                                 }
                             }
                         }
+                        Spacer(Modifier.width(16.dp))
                     }
 
                     if (books.isEmpty() && !importing) {
                         EmptyShelf(
                             filtered = query.isNotBlank() || filter != ShelfFilter.ALL,
+                            onImport = { openTree.launch(null) },
+                            onGoOnline = onGoOnline,
                         )
                     } else {
                         LazyVerticalGrid(
@@ -337,7 +282,7 @@ fun ShelfScreen(
                                 start = 16.dp,
                                 end = 16.dp,
                                 top = 4.dp,
-                                bottom = 96.dp,
+                                bottom = 24.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -379,39 +324,18 @@ fun ShelfScreen(
                             }
                         }
                     }
-                    } else {
-                        FqNovelCatalog(
-                            query = fqQuery,
-                            searchResults = fqSearch,
-                            selectedBook = fqSelectedBook,
-                            tones = fqTones,
-                            loading = fqLoading,
-                            importing = fqImporting,
-                            hasSearched = fqHasSearched,
-                            onQueryChange = viewModel::setFqQuery,
-                            onSearch = viewModel::searchFqNovel,
-                            onSelectBook = viewModel::selectFqBook,
-                            onBack = viewModel::clearFqSelection,
-                            onImport = { book, tone ->
-                                viewModel.importFqNovel(book, tone) { bookId ->
-                                    onOpenBook(bookId)
-                                }
-                            },
-                        )
-                    }
-                    }
                 }
 
-                if (importing && homeSection == HomeSection.SHELF) {
+                if (importing) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(16.dp)
                             .fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.surface,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         tonalElevation = 2.dp,
-                        shadowElevation = 4.dp,
+                        shadowElevation = 6.dp,
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
@@ -447,46 +371,12 @@ fun ShelfScreen(
     )
 }
 
-private enum class HomeSection { SHELF, ONLINE }
-
 @Composable
-private fun HomeSectionTabs(selected: HomeSection, onSelected: (HomeSection) -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Row(Modifier.padding(4.dp)) {
-            listOf(HomeSection.SHELF to "我的书架", HomeSection.ONLINE to "在线找书").forEach { (section, label) ->
-                val active = selected == section
-                Surface(
-                    onClick = { onSelected(section) },
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium,
-                    // The idle tab stays transparent; matching the track made it vanish into it.
-                    color = if (active) MaterialTheme.colorScheme.surface else Color.Transparent,
-                    shadowElevation = if (active) 2.dp else 0.dp,
-                ) {
-                    Text(
-                        label,
-                        modifier = Modifier.padding(vertical = 11.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                        color = if (active) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyShelf(filtered: Boolean) {
+private fun EmptyShelf(
+    filtered: Boolean,
+    onImport: () -> Unit,
+    onGoOnline: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -494,13 +384,21 @@ private fun EmptyShelf(filtered: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            Icons.AutoMirrored.Filled.LibraryBooks,
-            contentDescription = null,
-            modifier = Modifier.size(38.dp),
-            tint = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(14.dp))
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(96.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.AutoMirrored.Filled.LibraryBooks,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+        Spacer(Modifier.height(18.dp))
         Text(
             stringResource(
                 if (filtered) R.string.no_matching_books else R.string.empty_shelf,
@@ -517,6 +415,18 @@ private fun EmptyShelf(filtered: Boolean) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (!filtered) {
+            Spacer(Modifier.height(22.dp))
+            Button(onClick = onImport, shape = MaterialTheme.shapes.medium) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.empty_shelf_action))
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onGoOnline, shape = MaterialTheme.shapes.medium) {
+                Text(stringResource(R.string.empty_shelf_online_action))
+            }
+        }
     }
 }
 
@@ -534,7 +444,7 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
             BookCover(
                 title = book.title,
                 coverPath = book.coverPath,
-                size = 66.dp,
+                size = 72.dp,
                 ratio = COVER_RATIO_PORTRAIT,
                 corner = CoverCorner.Card,
             )
@@ -580,16 +490,22 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }
-            Spacer(Modifier.width(10.dp))
-            FilledIconButton(
+            Spacer(Modifier.width(12.dp))
+            Surface(
                 onClick = onClick,
-                modifier = Modifier.size(48.dp),
-                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.size(56.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                shadowElevation = 4.dp,
             ) {
-                Icon(
-                    Icons.Default.PlayArrow,
-                    contentDescription = stringResource(R.string.continue_playback),
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = stringResource(R.string.continue_playback),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
             }
         }
     }
@@ -682,15 +598,6 @@ private fun OnlineBadge(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSecondaryContainer,
         )
     }
-}
-
-@Composable
-private fun filterLabel(filter: ShelfFilter): String = when (filter) {
-    ShelfFilter.ALL -> stringResource(R.string.filter_all)
-    ShelfFilter.NOT_STARTED -> stringResource(R.string.filter_not_started)
-    ShelfFilter.IN_PROGRESS -> stringResource(R.string.filter_in_progress)
-    ShelfFilter.COMPLETED -> stringResource(R.string.filter_completed)
-    ShelfFilter.NEEDS_REAUTH -> stringResource(R.string.needs_reauthorization)
 }
 
 @Composable

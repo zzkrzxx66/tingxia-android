@@ -1,7 +1,7 @@
 package com.tingxia.app.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,11 +15,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.tingxia.app.R
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.CoverPalette
@@ -50,19 +54,11 @@ fun BookCover(
 ) {
     val shape = RoundedCornerShape(corner)
     val boxMod = if (size != null) {
-        modifier.width(size).height(size / ratio).clip(shape)
+        modifier.width(size).height(size / ratio)
     } else {
-        modifier.aspectRatio(ratio).clip(shape)
+        modifier.aspectRatio(ratio)
     }
-    Box(
-        boxMod.clearAndSetSemantics { }.then(
-            Modifier.border(
-                width = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-                shape = shape,
-            ),
-        ),
-    ) {
+    Box(boxMod.clearAndSetSemantics { }.clip(shape)) {
         val model: Any? = when {
             coverPath.isNullOrBlank() -> null
             coverPath.startsWith("content:") || coverPath.startsWith("file:") ||
@@ -77,39 +73,97 @@ fun BookCover(
                 contentScale = ContentScale.Crop,
             )
         } else {
-            val base = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
-            val compact = size != null && size < 80.dp
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // A soft diagonal wash reads as printed board stock rather than a flat swatch.
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                base.lighten(0.12f),
-                                base,
-                                base.darken(0.14f),
-                            ),
-                        ),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxHeight()
-                        .width(if (compact) 5.dp else 8.dp)
-                        .background(Color.Black.copy(alpha = 0.10f)),
-                )
-                Text(
-                    text = title.take(1).ifEmpty { stringResource(R.string.cover_fallback_character) },
-                    color = Color.White.copy(alpha = 0.96f),
-                    fontSize = if (compact) 20.sp else 34.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.sp,
-                )
-            }
+            FallbackCover(title = title, compact = size != null && size < 80.dp)
         }
+    }
+}
+@Composable
+private fun FallbackCover(title: String, compact: Boolean, modifier: Modifier = Modifier) {
+    val base = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            // A soft diagonal wash reads as printed board stock rather than a flat swatch.
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        base.lighten(0.12f),
+                        base,
+                        base.darken(0.14f),
+                    ),
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(if (compact) 5.dp else 8.dp)
+                .background(Color.Black.copy(alpha = 0.12f)),
+        )
+        // Hairline inner frame, like the debossed border on a hardcover.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawBehind {
+                    val inset = if (compact) 4.dp.toPx() else 7.dp.toPx()
+                    drawRect(
+                        color = Color.White.copy(alpha = 0.22f),
+                        topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
+                        size = androidx.compose.ui.geometry.Size(
+                            size.width - inset * 2,
+                            size.height - inset * 2,
+                        ),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()),
+                    )
+                },
+        )
+        Text(
+            text = title.take(1).ifEmpty { stringResource(R.string.cover_fallback_character) },
+            color = Color.White.copy(alpha = 0.96f),
+            fontSize = if (compact) 20.sp else 34.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.sp,
+        )
+    }
+}
+
+/** Full-bleed blurred artwork backdrop with a scrim, for immersive headers and the player. */
+@Composable
+fun AmbientBackground(
+    coverPath: String?,
+    title: String,
+    modifier: Modifier = Modifier,
+    scrim: Color = Color.Black.copy(alpha = 0.45f),
+    blurRadius: Dp = 28.dp,
+) {
+    val base = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
+    Box(
+        modifier = modifier.background(
+            Brush.verticalGradient(listOf(base.darken(0.35f), base.darken(0.55f))),
+        ),
+    ) {
+        val model: Any? = when {
+            coverPath.isNullOrBlank() -> null
+            coverPath.startsWith("content:") || coverPath.startsWith("file:") ||
+                coverPath.startsWith("http") -> coverPath
+            else -> File(coverPath)
+        }
+        if (model != null) {
+            Image(
+                painter = coil.compose.rememberAsyncImagePainter(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(model)
+                        .size(96) // tiny source: it is only a colour field once blurred
+                        .build(),
+                ),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().blur(blurRadius),
+            )
+        }
+        Box(modifier = Modifier.fillMaxSize().background(scrim))
     }
 }
 
@@ -125,18 +179,13 @@ fun SectionCard(
     color: Color = MaterialTheme.colorScheme.surface,
     content: @Composable () -> Unit,
 ) {
-    val border = androidx.compose.foundation.BorderStroke(
-        1.dp,
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-    )
     if (onClick != null) {
         Surface(
             onClick = onClick,
             modifier = modifier,
             shape = shape,
             color = color,
-            border = border,
-            shadowElevation = 1.dp,
+            shadowElevation = 2.dp,
             content = content,
         )
     } else {
@@ -144,8 +193,7 @@ fun SectionCard(
             modifier = modifier,
             shape = shape,
             color = color,
-            border = border,
-            shadowElevation = 1.dp,
+            shadowElevation = 2.dp,
             content = content,
         )
     }

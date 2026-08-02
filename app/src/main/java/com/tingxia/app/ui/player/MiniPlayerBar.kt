@@ -8,14 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,7 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -39,14 +37,10 @@ fun MiniPlayerBar(
     onOpen: () -> Unit,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        // Lifts off the list instead of being fenced from it by a hairline rule.
-        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
-        tonalElevation = 2.dp,
-        shadowElevation = 10.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 3.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .clickable(onClick = onOpen),
     ) {
         Column {
@@ -55,16 +49,25 @@ fun MiniPlayerBar(
             } else {
                 0f
             }
+            // Progress hugs the top edge so the bar itself stays one line tall.
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = Color.Transparent,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BookCover(
                     title = state.bookTitle.orEmpty(),
                     coverPath = state.coverPath,
-                    size = 46.dp,
+                    size = 44.dp,
                     corner = CoverCorner.Mini,
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -83,31 +86,20 @@ fun MiniPlayerBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                FilledIconButton(
+                IconButton(
                     onClick = onToggle,
-                    modifier = Modifier.size(42.dp),
-                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.size(46.dp),
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = stringResource(
                             if (state.isPlaying) R.string.pause else R.string.play,
                         ),
-                        modifier = Modifier.size(25.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(30.dp),
                     )
                 }
             }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 8.dp)
-                    .height(3.dp)
-                    .clip(MaterialTheme.shapes.extraSmall),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
         }
     }
 }

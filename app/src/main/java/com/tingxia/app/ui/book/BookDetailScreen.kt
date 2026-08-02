@@ -3,12 +3,15 @@ package com.tingxia.app.ui.book
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,42 +20,41 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,6 +64,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -72,10 +77,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.R
 import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
+import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
+import com.tingxia.app.ui.theme.playerScrim
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,7 +102,6 @@ fun BookDetailScreen(
     val rescanning by viewModel.rescanning.collectAsStateWithLifecycle()
     val rescanProgress by viewModel.rescanProgress.collectAsStateWithLifecycle()
     val rescanPreview by viewModel.rescanPreview.collectAsStateWithLifecycle()
-    val decisionVersion by viewModel.decisionVersion.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     var confirmRemove by remember { mutableStateOf(false) }
@@ -105,11 +111,14 @@ fun BookDetailScreen(
     var editAuthor by remember { mutableStateOf("") }
     var editChapter by remember { mutableStateOf<Chapter?>(null) }
     var editChapterTitle by remember { mutableStateOf("") }
+    var chapterMenuFor by remember { mutableStateOf<Chapter?>(null) }
     var editBookmark by remember { mutableStateOf<Bookmark?>(null) }
     var editBookmarkNote by remember { mutableStateOf("") }
+    var bookmarkMenuFor by remember { mutableStateOf<Bookmark?>(null) }
     var editSkipOffsets by remember { mutableStateOf(false) }
     var skipIntroSeconds by remember { mutableStateOf("0") }
     var skipOutroSeconds by remember { mutableStateOf("0") }
+    var autoPlayDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
 
@@ -139,325 +148,361 @@ fun BookDetailScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        book?.title.orEmpty(),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.edit_book_info)) },
-                            onClick = {
-                                menu = false
-                                editTitle = book?.title.orEmpty()
-                                editAuthor = book?.author.orEmpty()
-                                editBook = true
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(stringResource(R.string.skip_intro_outro))
-                                    Text(
-                                        stringResource(
-                                            R.string.skip_intro_outro_summary,
-                                            (book?.skipIntroMs ?: 0L) / 1_000L,
-                                            (book?.skipOutroMs ?: 0L) / 1_000L,
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
-                            onClick = {
-                                menu = false
-                                skipIntroSeconds = ((book?.skipIntroMs ?: 0L) / 1_000L).toString()
-                                skipOutroSeconds = ((book?.skipOutroMs ?: 0L) / 1_000L).toString()
-                                editSkipOffsets = true
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.choose_cover)) },
-                            onClick = {
-                                menu = false
-                                coverPicker.launch("image/*")
-                            },
-                        )
-                        if (!book?.coverPath.isNullOrBlank()) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.remove_cover)) },
-                                onClick = {
-                                    menu = false
-                                    viewModel.updateBookCover(null)
-                                },
-                            )
-                        }
-                        if (book?.isRemote != true) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.rescan_folder)) },
-                                onClick = {
-                                    menu = false
-                                    viewModel.startRescan()
-                                },
-                                enabled = !rescanning && book?.needsReauth != true,
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.reauthorize_folder)) },
-                                onClick = {
-                                    menu = false
-                                    reauthTree.launch(null)
-                                },
-                                enabled = !reauthing,
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.remove_from_shelf)) },
-                            onClick = {
-                                menu = false
-                                confirmRemove = true
-                            },
-                        )
-                        val allCompleted = chapters.isNotEmpty() && chapters.all { it.completionState == 2 }
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(
-                                        if (allCompleted) R.string.clear_book_completion
-                                        else R.string.mark_book_completed,
-                                    ),
-                                )
-                            },
-                            onClick = {
-                                menu = false
-                                viewModel.setAllChaptersCompleted(!allCompleted)
-                            },
-                        )
-                    }
-                },
-            )
-        },
         snackbarHost = { SnackbarHost(snackbar) },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(bottom = innerPadding.calculateBottomPadding()),
         ) {
             item {
-                Row(verticalAlignment = Alignment.Top) {
-                    BookCover(
-                        title = book?.title.orEmpty(),
+                // Immersive header: blurred artwork behind, crisp metadata on top.
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    AmbientBackground(
                         coverPath = book?.coverPath,
-                        size = 104.dp,
-                        ratio = COVER_RATIO_PORTRAIT,
-                        corner = CoverCorner.Detail,
+                        title = book?.title.orEmpty(),
+                        scrim = playerScrim,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(340.dp),
                     )
-                    Spacer(Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            book?.title.orEmpty(),
-                            style = MaterialTheme.typography.headlineSmall,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        book?.author?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (book?.isRemote == true) {
-                            Spacer(Modifier.height(8.dp))
-                            Surface(
-                                shape = MaterialTheme.shapes.extraSmall,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        Icons.Default.Headphones,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(15.dp),
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(340.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.5f to Color.Transparent,
+                                    1f to MaterialTheme.colorScheme.background,
+                                ),
+                            ),
+                    )
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            HeaderIconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Box {
+                                HeaderIconButton(onClick = { menu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
+                                }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.edit_book_info)) },
+                                        onClick = {
+                                            menu = false
+                                            editTitle = book?.title.orEmpty()
+                                            editAuthor = book?.author.orEmpty()
+                                            editBook = true
+                                        },
                                     )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        "在线真人有声",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.change_cover)) },
+                                        onClick = {
+                                            menu = false
+                                            coverPicker.launch("image/*")
+                                        },
+                                    )
+                                    if (!book?.coverPath.isNullOrBlank()) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.remove_cover)) },
+                                            onClick = {
+                                                menu = false
+                                                viewModel.updateBookCover(null)
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(stringResource(R.string.skip_intro_outro))
+                                                Text(
+                                                    stringResource(
+                                                        R.string.skip_intro_outro_summary,
+                                                        (book?.skipIntroMs ?: 0L) / 1_000L,
+                                                        (book?.skipOutroMs ?: 0L) / 1_000L,
+                                                    ),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            menu = false
+                                            skipIntroSeconds = ((book?.skipIntroMs ?: 0L) / 1_000L).toString()
+                                            skipOutroSeconds = ((book?.skipOutroMs ?: 0L) / 1_000L).toString()
+                                            editSkipOffsets = true
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(stringResource(R.string.auto_play_next))
+                                                Text(
+                                                    stringResource(
+                                                        if (book?.autoPlayNext != false) R.string.on else R.string.off,
+                                                    ),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            menu = false
+                                            autoPlayDialog = true
+                                        },
+                                    )
+                                    if (book?.isRemote != true) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.rescan_folder)) },
+                                            onClick = {
+                                                menu = false
+                                                viewModel.startRescan()
+                                            },
+                                            enabled = !rescanning && book?.needsReauth != true,
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.reauthorize_folder)) },
+                                            onClick = {
+                                                menu = false
+                                                reauthTree.launch(null)
+                                            },
+                                            enabled = !reauthing,
+                                        )
+                                    }
+                                    val allCompleted = chapters.isNotEmpty() && chapters.all { it.completionState == 2 }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(
+                                                    if (allCompleted) R.string.clear_book_completion
+                                                    else R.string.mark_book_completed,
+                                                ),
+                                            )
+                                        },
+                                        onClick = {
+                                            menu = false
+                                            viewModel.setAllChaptersCompleted(!allCompleted)
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.remove_from_shelf),
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                        },
+                                        onClick = {
+                                            menu = false
+                                            confirmRemove = true
+                                        },
                                     )
                                 }
                             }
                         }
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            stringResource(
-                                R.string.book_chapter_duration,
-                                chapters.size,
-                                formatDuration(book?.totalDurationMs ?: 0),
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if ((book?.lastPlayedAt ?: 0) > 0) {
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            stringResource(R.string.listening_progress),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            stringResource(
-                                R.string.remaining_time,
-                                formatDuration(
-                                    ((book?.totalDurationMs ?: 0L) -
-                                        (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L),
-                                ),
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { book?.progressFraction ?: 0f },
-                        modifier = Modifier.fillMaxWidth().height(4.dp),
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = onContinue,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    enabled = book?.needsReauth != true && !reauthing && !rescanning,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        stringResource(
-                            if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
-                            else R.string.start_playback,
-                        ),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = MaterialTheme.shapes.medium,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.auto_play_next), style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                stringResource(R.string.auto_play_next_summary),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = book?.autoPlayNext ?: true,
-                            onCheckedChange = viewModel::setAutoPlayNext,
-                        )
-                    }
-                }
-                if (book?.needsReauth == true && book?.isRemote != true) {
-                    Spacer(Modifier.height(12.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.medium,
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                stringResource(R.string.folder_permission_lost),
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = { reauthTree.launch(null) },
-                                enabled = !reauthing,
-                                modifier = Modifier.fillMaxWidth(),
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Surface(
+                                shape = MaterialTheme.shapes.medium,
+                                shadowElevation = 12.dp,
                             ) {
+                                BookCover(
+                                    title = book?.title.orEmpty(),
+                                    coverPath = book?.coverPath,
+                                    size = 112.dp,
+                                    ratio = COVER_RATIO_PORTRAIT,
+                                    corner = CoverCorner.Detail,
+                                )
+                            }
+                            Spacer(Modifier.width(18.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    book?.title.orEmpty(),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = Color.White,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                book?.author?.takeIf { it.isNotBlank() }?.let {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                    )
+                                }
+                                if (book?.isRemote == true) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Headphones,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(15.dp),
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                "在线真人有声",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
                                 Text(
                                     stringResource(
-                                        if (reauthing) R.string.reauthorizing else R.string.reauthorize_folder,
+                                        R.string.book_chapter_duration,
+                                        chapters.size,
+                                        formatDuration(book?.totalDurationMs ?: 0),
                                     ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.75f),
                                 )
                             }
                         }
                     }
                 }
-                if (rescanning) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(stringResource(R.string.scanning_item, rescanProgress?.currentName.orEmpty()))
+
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    if ((book?.lastPlayedAt ?: 0) > 0) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                stringResource(R.string.listening_progress),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                stringResource(
+                                    R.string.remaining_time,
+                                    formatDuration(
+                                        ((book?.totalDurationMs ?: 0L) -
+                                            (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L),
+                                    ),
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { book?.progressFraction ?: 0f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(MaterialTheme.shapes.extraSmall),
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = onContinue,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        enabled = book?.needsReauth != true && !reauthing && !rescanning,
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(
+                                if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
+                                else R.string.start_playback,
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    if (book?.needsReauth == true && book?.isRemote != true) {
+                        Spacer(Modifier.height(12.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.medium,
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    stringResource(R.string.folder_permission_lost),
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { reauthTree.launch(null) },
+                                    enabled = !reauthing,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            if (reauthing) R.string.reauthorizing else R.string.reauthorize_folder,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (rescanning) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            stringResource(R.string.scanning_item, rescanProgress?.currentName.orEmpty()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    SecondaryTabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = MaterialTheme.colorScheme.background,
+                        divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
+                    ) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text(stringResource(R.string.chapters_with_count, chapters.size)) },
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text(stringResource(R.string.bookmarks_with_count, bookmarks.size)) },
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
                 }
-                Spacer(Modifier.height(20.dp))
-                SecondaryTabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.background,
-                    divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
-                ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text(stringResource(R.string.chapters_with_count, chapters.size)) },
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text(stringResource(R.string.bookmarks_with_count, bookmarks.size)) },
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
             }
             if (selectedTab == 0) {
                 items(chapters, key = { it.id }) { chapter ->
-                    ChapterRow(
-                        chapter = chapter,
-                        isCurrent = chapter.id == book?.currentChapterId,
-                        enabled = book?.needsReauth != true,
-                        onClick = { onPlayChapter(chapter.id) },
-                        onToggleCompleted = {
-                            viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
-                        },
-                        onEditTitle = {
-                            editChapter = chapter
-                            editChapterTitle = chapter.displayTitle
-                        },
-                    )
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        ChapterRow(
+                            chapter = chapter,
+                            isCurrent = chapter.id == book?.currentChapterId,
+                            enabled = book?.needsReauth != true,
+                            onClick = { onPlayChapter(chapter.id) },
+                            onLongClick = { chapterMenuFor = chapter },
+                        )
+                    }
                 }
             } else if (bookmarks.isEmpty()) {
                 item {
@@ -480,17 +525,74 @@ fun BookDetailScreen(
                 }
             } else {
                 items(bookmarks, key = { "bm-${it.id}" }) { bm ->
-                    BookmarkRow(
-                        bookmark = bm,
-                        onClick = { onPlayBookmark(bm.chapterId, bm.positionMs) },
-                        onDelete = { viewModel.deleteBookmark(bm.id) },
-                        onEdit = {
-                            editBookmark = bm
-                            editBookmarkNote = bm.note.orEmpty()
-                        },
-                    )
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        BookmarkRow(
+                            bookmark = bm,
+                            onClick = { onPlayBookmark(bm.chapterId, bm.positionMs) },
+                            onLongClick = { bookmarkMenuFor = bm },
+                        )
+                    }
                 }
             }
+            item { Spacer(Modifier.height(32.dp)) }
+        }
+    }
+
+    // Long-press menus
+    chapterMenuFor?.let { chapter ->
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = { chapterMenuFor = null },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.edit_chapter_title)) },
+                onClick = {
+                    chapterMenuFor = null
+                    editChapter = chapter
+                    editChapterTitle = chapter.displayTitle
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(
+                            if (chapter.completionState == 2) R.string.mark_incomplete else R.string.mark_completed,
+                        ),
+                    )
+                },
+                onClick = {
+                    chapterMenuFor = null
+                    viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
+                },
+            )
+        }
+    }
+
+    bookmarkMenuFor?.let { bookmark ->
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = { bookmarkMenuFor = null },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.edit_bookmark_note)) },
+                onClick = {
+                    bookmarkMenuFor = null
+                    editBookmark = bookmark
+                    editBookmarkNote = bookmark.note.orEmpty()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(R.string.delete_bookmark),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+                onClick = {
+                    bookmarkMenuFor = null
+                    viewModel.deleteBookmark(bookmark.id)
+                },
+            )
         }
     }
 
@@ -596,6 +698,31 @@ fun BookDetailScreen(
         )
     }
 
+    if (autoPlayDialog) {
+        AlertDialog(
+            onDismissRequest = { autoPlayDialog = false },
+            title = { Text(stringResource(R.string.auto_play_next)) },
+            text = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.auto_play_next_summary),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = book?.autoPlayNext ?: true,
+                        onCheckedChange = viewModel::setAutoPlayNext,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { autoPlayDialog = false }) { Text(stringResource(R.string.apply)) }
+            },
+        )
+    }
 
     if (editBook) {
         AlertDialog(
@@ -722,7 +849,6 @@ fun BookDetailScreen(
         )
     }
 
-
     editBookmark?.let { bookmark ->
         AlertDialog(
             onDismissRequest = { editBookmark = null },
@@ -750,24 +876,53 @@ fun BookDetailScreen(
 }
 
 @Composable
+private fun HeaderIconButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.28f),
+        modifier = Modifier.size(40.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides Color.White,
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+/** Fades the immersive header's lower edge into the page background. */
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun ChapterRow(
     chapter: Chapter,
     isCurrent: Boolean,
     enabled: Boolean = true,
     onClick: () -> Unit,
-    onToggleCompleted: () -> Unit,
-    onEditTitle: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
+    val completed = chapter.completionState == 2
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onClick)
+                .clip(MaterialTheme.shapes.small)
+                .combinedClickable(
+                    enabled = enabled,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                )
                 .padding(vertical = 10.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer
+                color = if (isCurrent) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.extraSmall,
                 modifier = Modifier.size(34.dp),
@@ -776,12 +931,20 @@ private fun ChapterRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    Text(
-                        text = "%02d".format(chapter.index + 1),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (isCurrent) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    } else {
+                        Text(
+                            text = "%02d".format(chapter.index + 1),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -790,8 +953,11 @@ private fun ChapterRow(
                     chapter.displayTitle,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurface,
+                    color = when {
+                        isCurrent -> MaterialTheme.colorScheme.primary
+                        completed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -803,20 +969,15 @@ private fun ChapterRow(
                     )
                 }
             }
-            IconButton(onClick = onEditTitle, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_chapter_title), modifier = Modifier.size(19.dp))
-            }
-            IconButton(onClick = onToggleCompleted, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    if (chapter.completionState == 2) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                    contentDescription = stringResource(
-                        if (chapter.completionState == 2) R.string.mark_incomplete else R.string.mark_completed,
-                    ),
-                    tint = if (chapter.completionState == 2) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(21.dp),
-                )
-            }
+            Icon(
+                if (completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                contentDescription = stringResource(
+                    if (completed) R.string.mark_incomplete else R.string.mark_completed,
+                ),
+                tint = if (completed) MaterialTheme.colorScheme.secondary
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp),
+            )
         }
         HorizontalDivider(
             modifier = Modifier.padding(start = 50.dp),
@@ -825,18 +986,19 @@ private fun ChapterRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookmarkRow(
     bookmark: Bookmark,
     onClick: () -> Unit,
-    onDelete: () -> Unit,
-    onEdit: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .clip(MaterialTheme.shapes.small)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(vertical = 10.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -867,12 +1029,6 @@ private fun BookmarkRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_bookmark_note), modifier = Modifier.size(19.dp))
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_bookmark), modifier = Modifier.size(19.dp))
             }
         }
         HorizontalDivider(

@@ -57,10 +57,17 @@ private val LightColors = lightColorScheme(
     surfaceVariant = Mist,
     onSurfaceVariant = InkMuted,
     surfaceTint = Forest,
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF7F9F8),
+    surfaceContainer = Color(0xFFF0F4F1),
+    surfaceContainerHigh = Color(0xFFE9EFEB),
+    surfaceContainerHighest = Color(0xFFE1E8E3),
     outline = Color(0xFF9AA69F),
     outlineVariant = Color(0xFFD4DCD7),
     error = Color(0xFFB3261E),
     onError = Color.White,
+    errorContainer = Color(0xFFF9DEDC),
+    onErrorContainer = Color(0xFF8C1D18),
     inverseSurface = Color(0xFF29312D),
     inverseOnSurface = Color(0xFFF0F4F1),
     inversePrimary = Mint,
@@ -84,10 +91,17 @@ private val DarkColors = darkColorScheme(
     surfaceVariant = NightVariant,
     onSurfaceVariant = BoneMuted,
     surfaceTint = Mint,
+    surfaceContainerLowest = Color(0xFF0C100E),
+    surfaceContainerLow = Color(0xFF141917),
+    surfaceContainer = NightElevated,
+    surfaceContainerHigh = Color(0xFF1D2320),
+    surfaceContainerHighest = NightVariant,
     outline = Color(0xFF707B74),
     outlineVariant = Color(0xFF38413C),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
     inverseSurface = Bone,
     inverseOnSurface = Night,
     inversePrimary = Forest,
@@ -212,6 +226,17 @@ val CoverPalette = listOf(
 
 /** Material You wallpaper colours only exist from Android 12; older devices keep the forest palette. */
 val dynamicColorSupported: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/**
+ * Scrim laid over the blurred cover artwork behind immersive headers and the
+ * player, so foreground text keeps its contrast regardless of the artwork.
+ */
+val playerScrim: Color
+    @Composable get() = if (isSystemInDarkTheme()) {
+        Color.Black.copy(alpha = 0.55f)
+    } else {
+        Color(0xFF0E1512).copy(alpha = 0.42f)
+    }
 
 @Composable
 fun TingXiaTheme(
