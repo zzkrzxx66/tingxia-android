@@ -1,6 +1,5 @@
 package com.tingxia.app.ui.shelf
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,10 +18,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -36,6 +34,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +44,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import com.tingxia.app.data.remote.FqAudioTone
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.SectionCard
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
+import com.tingxia.app.ui.theme.CoverCorner
+
+/** Search shortcuts, not a curated shelf — these are keywords, no catalogue data is implied. */
+private val PopularSearches = listOf("斩神", "三体", "诡秘之主", "盗墓笔记", "鬼吹灯", "庆余年")
 
 @Composable
 fun FqNovelCatalog(
@@ -78,28 +84,52 @@ fun FqNovelCatalog(
             onValueChange = onQueryChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             singleLine = true,
             placeholder = { Text("搜索书名或作者") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            // Exactly one magnifier, and it is the actionable one. Online search needs an
+            // explicit submit (unlike the shelf field, which filters as you type), so the
+            // decorative leading icon was the one to go.
             trailingIcon = {
-                IconButton(onClick = { onSearch(query) }, enabled = query.isNotBlank() && !loading) {
-                    Icon(Icons.Default.Search, contentDescription = "搜索在线书籍")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "清除搜索内容",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    IconButton(onClick = { onSearch(query) }, enabled = query.isNotBlank() && !loading) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "搜索在线书籍",
+                            tint = if (query.isNotBlank() && !loading) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSearch(query) }),
             shape = MaterialTheme.shapes.large,
             colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                unfocusedBorderColor = Color.Transparent,
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 focusedContainerColor = MaterialTheme.colorScheme.surface,
             ),
         )
 
-        if (loading) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        // Fixed-height slot so appearing progress never nudges the list down.
+        Box(modifier = Modifier.fillMaxWidth().height(3.dp)) {
+            if (loading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(3.dp))
+            }
         }
 
         when {
@@ -107,12 +137,12 @@ fun FqNovelCatalog(
             hasSearched && searchResults.isEmpty() && !loading -> OnlineEmpty(query)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 96.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("搜索结果", style = MaterialTheme.typography.titleMedium)
@@ -136,67 +166,91 @@ fun FqNovelCatalog(
 private fun OnlineWelcome(onSearch: (String) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item {
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
-                        Icon(
-                            Icons.Default.Headphones,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(13.dp).size(26.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text("发现真人演播好书", style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "搜索小说并选择喜欢的真人演播版本，加入书架后即可收听。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                    }
-                }
-            }
-        }
+        item { OnlineHero() }
         item {
             Column {
-                Text("试试搜索", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("斩神", "三体", "诡秘之主").forEach { keyword ->
-                        AssistChip(onClick = { onSearch(keyword) }, label = { Text(keyword) })
+                Text("热门搜索", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                // A tile grid instead of three chips: fills the fold that used to be dead space
+                // and gives the eye something to land on.
+                PopularSearches.chunked(3).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        row.forEach { keyword ->
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(MaterialTheme.shapes.medium)
+                                    .clickable { onSearch(keyword) },
+                            ) {
+                                BookCover(
+                                    title = keyword,
+                                    coverPath = null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    ratio = COVER_RATIO_PORTRAIT,
+                                    corner = CoverCorner.Grid,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    keyword,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
         }
         item {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AutoStories, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        "在线书籍加入书架后，与本地有声书共用播放进度、书签、倍速和睡眠定时。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            Text(
+                "在线书籍加入书架后，与本地有声书共用播放进度、书签、倍速和睡眠定时。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OnlineHero() {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
+                Icon(
+                    Icons.Default.Headphones,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(13.dp).size(26.dp),
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(
+                    "发现真人演播好书",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "搜索小说并选择喜欢的真人演播版本，加入书架后即可收听。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
             }
         }
     }
@@ -223,41 +277,60 @@ private fun OnlineEmpty(query: String) {
 
 @Composable
 private fun OnlineBookCard(book: FqSearchBook, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            BookCover(title = book.title, coverPath = book.coverUrl, size = 92.dp, corner = 8.dp)
+    SectionCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+            BookCover(
+                title = book.title,
+                coverPath = book.coverUrl,
+                size = 74.dp,
+                ratio = COVER_RATIO_PORTRAIT,
+                corner = CoverCorner.Card,
+            )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(book.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(3.dp))
                 Text(
-                    book.author ?: "未知作者",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    book.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(7.dp))
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Row(Modifier.padding(horizontal = 9.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Headphones, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Spacer(Modifier.width(5.dp))
-                        Text("真人有声", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
-                }
-                book.description?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(7.dp))
+                Spacer(Modifier.height(4.dp))
+                // Author and format collapse into one metadata line; the old full-width pill
+                // pushed the blurb off the card.
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        it.replace('\n', ' '),
+                        book.author?.takeIf { it.isNotBlank() } ?: "未知作者",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        Icons.Default.Headphones,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "真人有声",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        maxLines = 1,
                     )
                 }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    book.description?.replace('\n', ' ').orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // Reserved whether or not a blurb exists, so rows line up.
+                    minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -282,21 +355,26 @@ private fun FqEditionPicker(
             }
             Text("选择演播版本", style = MaterialTheme.typography.titleLarge)
         }
-        if (loading || importing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        Box(modifier = Modifier.fillMaxWidth().height(3.dp)) {
+            if (loading || importing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(3.dp))
+            }
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Surface(
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                SectionCard(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                        BookCover(book.title, book.coverUrl, size = 112.dp, corner = 10.dp)
+                        BookCover(
+                            title = book.title,
+                            coverPath = book.coverUrl,
+                            size = 96.dp,
+                            ratio = COVER_RATIO_PORTRAIT,
+                            corner = CoverCorner.Detail,
+                        )
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -327,12 +405,7 @@ private fun FqEditionPicker(
                 }
             }
             items(tones, key = { it.audioBookId }) { tone ->
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                SectionCard(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.Top) {
                             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
@@ -361,6 +434,7 @@ private fun FqEditionPicker(
                             onClick = { onImport(book, tone) },
                             enabled = !importing && !loading,
                             modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
                         ) {
                             if (importing) {
                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)

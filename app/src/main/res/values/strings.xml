@@ -13,6 +13,8 @@
     <string name="theme_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
+    <string name="dynamic_color">跟随系统取色</string>
+    <string name="dynamic_color_summary">用壁纸配色替换默认的森绿主题</string>
     <string name="about">关于</string>
     <string name="app_description">听匣 · 本地有声书播放器</string>
     <string name="version_format">版本 %1$s (%2$d)</string>

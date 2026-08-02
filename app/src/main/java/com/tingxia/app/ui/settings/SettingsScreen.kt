@@ -41,6 +41,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -63,6 +64,7 @@ import com.tingxia.app.R
 import com.tingxia.app.data.repo.PlaybackErrorPolicy
 import com.tingxia.app.data.repo.ThemeMode
 import com.tingxia.app.player.PlaybackSpeeds
+import com.tingxia.app.ui.theme.dynamicColorSupported
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +73,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val dynamicColor by viewModel.dynamicColor.collectAsStateWithLifecycle()
     val speed by viewModel.defaultSpeed.collectAsStateWithLifecycle()
     val errorPolicy by viewModel.playbackErrorPolicy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
@@ -137,6 +140,30 @@ fun SettingsScreen(
                     ) {
                         Text(label, maxLines = 1)
                     }
+                }
+            }
+
+            if (dynamicColorSupported) {
+                Spacer(Modifier.height(18.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.setDynamicColor(!dynamicColor) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.dynamic_color), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            stringResource(R.string.dynamic_color_summary),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = dynamicColor,
+                        onCheckedChange = { viewModel.setDynamicColor(it) },
+                    )
                 }
             }
 

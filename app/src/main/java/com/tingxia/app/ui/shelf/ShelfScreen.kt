@@ -4,6 +4,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +67,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -72,7 +79,10 @@ import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
+import com.tingxia.app.ui.theme.CoverCorner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,7 +149,8 @@ fun ShelfScreen(
                             if (homeSection == HomeSection.SHELF) {
                                 stringResource(R.string.shelf_book_count, books.size)
                             } else {
-                                "发现真人演播好书"
+                                // The online section's own hero already says "发现真人演播好书".
+                                "在线搜索 · 真人演播"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -203,7 +214,15 @@ fun ShelfScreen(
                             importMenu = false
                         },
                     )
-                    if (homeSection == HomeSection.SHELF) {
+                    AnimatedContent(
+                        targetState = homeSection,
+                        transitionSpec = {
+                            fadeIn(tween(200)) togetherWith fadeOut(tween(140))
+                        },
+                        label = "homeSection",
+                        modifier = Modifier.fillMaxSize(),
+                    ) { section ->
+                    if (section == HomeSection.SHELF) Column(modifier = Modifier.fillMaxSize()) {
                     OutlinedTextField(
                         value = query,
                         onValueChange = viewModel::setQuery,
@@ -224,11 +243,13 @@ fun ShelfScreen(
                         } else {
                             null
                         },
-                        shape = MaterialTheme.shapes.medium,
+                        shape = MaterialTheme.shapes.large,
                         colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            // Filled when idle, outlined only on focus — the old pair of states
+                            // looked like two different controls.
+                            unfocusedBorderColor = Color.Transparent,
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             focusedContainerColor = MaterialTheme.colorScheme.surface,
                         ),
                     )
@@ -311,14 +332,14 @@ fun ShelfScreen(
                         )
                     } else {
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 148.dp),
+                            columns = GridCells.Adaptive(minSize = 112.dp),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
                                 top = 4.dp,
                                 bottom = 96.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(18.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
@@ -378,6 +399,7 @@ fun ShelfScreen(
                             },
                         )
                     }
+                    }
                 }
 
                 if (importing && homeSection == HomeSection.SHELF) {
@@ -436,19 +458,26 @@ private fun HomeSectionTabs(selected: HomeSection, onSelected: (HomeSection) -> 
     ) {
         Row(Modifier.padding(4.dp)) {
             listOf(HomeSection.SHELF to "我的书架", HomeSection.ONLINE to "在线找书").forEach { (section, label) ->
+                val active = selected == section
                 Surface(
                     onClick = { onSelected(section) },
                     modifier = Modifier.weight(1f),
                     shape = MaterialTheme.shapes.medium,
-                    color = if (selected == section) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
-                    tonalElevation = if (selected == section) 2.dp else 0.dp,
+                    // The idle tab stays transparent; matching the track made it vanish into it.
+                    color = if (active) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (active) 2.dp else 0.dp,
                 ) {
                     Text(
                         label,
                         modifier = Modifier.padding(vertical = 11.dp),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (selected == section) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (active) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
             }
@@ -493,22 +522,21 @@ private fun EmptyShelf(filtered: Boolean) {
 
 @Composable
 private fun ContinueCard(book: Book, onClick: () -> Unit) {
-    Surface(
+    SectionCard(
         onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BookCover(
                 title = book.title,
                 coverPath = book.coverPath,
-                size = 82.dp,
-                corner = 8.dp,
+                size = 66.dp,
+                ratio = COVER_RATIO_PORTRAIT,
+                corner = CoverCorner.Card,
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -552,11 +580,11 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
             FilledIconButton(
                 onClick = onClick,
-                modifier = Modifier.size(44.dp),
-                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.size(48.dp),
+                shape = MaterialTheme.shapes.medium,
             ) {
                 Icon(
                     Icons.Default.PlayArrow,
@@ -571,7 +599,7 @@ private fun ContinueCard(book: Book, onClick: () -> Unit) {
 private fun BookGridItem(book: Book, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .clip(MaterialTheme.shapes.small)
+            .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
     ) {
         Box {
@@ -579,11 +607,12 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 title = book.title,
                 coverPath = book.coverPath,
                 modifier = Modifier.fillMaxWidth(),
-                corner = 8.dp,
+                ratio = COVER_RATIO_PORTRAIT,
+                corner = CoverCorner.Grid,
             )
             if (book.isRemote) {
                 OnlineBadge(
-                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                 )
             }
             if (book.needsReauth && !book.isRemote) {
@@ -592,7 +621,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                     shape = MaterialTheme.shapes.extraSmall,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp),
+                        .padding(6.dp),
                 ) {
                     Icon(
                         Icons.Default.Warning,
@@ -604,8 +633,23 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                     )
                 }
             }
+            if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                // Progress rides the artwork itself so every tile keeps the same height.
+                LinearProgressIndicator(
+                    progress = { book.progressFraction },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp)
+                        .padding(bottom = 6.dp)
+                        .height(3.dp)
+                        .clip(MaterialTheme.shapes.extraSmall),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.Black.copy(alpha = 0.35f),
+                )
+            }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             book.title,
             style = MaterialTheme.typography.titleSmall,
@@ -621,18 +665,6 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
-            Spacer(Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = { book.progressFraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.5.dp)
-                    .clip(MaterialTheme.shapes.extraSmall),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        }
     }
 }
 

@@ -74,6 +74,8 @@ import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
+import com.tingxia.app.ui.theme.CoverCorner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -265,8 +267,9 @@ fun BookDetailScreen(
                     BookCover(
                         title = book?.title.orEmpty(),
                         coverPath = book?.coverPath,
-                        size = 126.dp,
-                        corner = 8.dp,
+                        size = 104.dp,
+                        ratio = COVER_RATIO_PORTRAIT,
+                        corner = CoverCorner.Detail,
                     )
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {

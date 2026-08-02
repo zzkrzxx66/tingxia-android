@@ -64,6 +64,8 @@ import com.tingxia.app.player.SeekOffsets
 import com.tingxia.app.player.SleepOptions
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
+import com.tingxia.app.ui.theme.CoverCorner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -125,12 +127,15 @@ fun FullPlayerScreen(
         ) {
             Spacer(Modifier.height(8.dp))
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val coverSize = minOf(maxWidth * 0.72f, 280.dp)
+                // Portrait artwork is taller than it is wide, so cap on width more tightly
+                // than the old square did or it eats the controls below.
+                val coverSize = minOf(maxWidth * 0.62f, 250.dp)
                 BookCover(
                     title = state.bookTitle.orEmpty(),
                     coverPath = state.coverPath,
                     size = coverSize,
-                    corner = 8.dp,
+                    ratio = COVER_RATIO_PORTRAIT,
+                    corner = CoverCorner.Hero,
                     modifier = Modifier.align(Alignment.Center),
                 )
             }

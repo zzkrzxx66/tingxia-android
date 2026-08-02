@@ -45,6 +45,7 @@ class UserPreferencesRepository @Inject constructor(
     private object Keys {
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val DEFAULT_SPEED = floatPreferencesKey("default_speed")
         val SHELF_SORT = stringPreferencesKey("shelf_sort")
         val SHELF_FILTER = stringPreferencesKey("shelf_filter")
@@ -59,6 +60,14 @@ class UserPreferencesRepository @Inject constructor(
         } else {
             ThemeMode.SYSTEM
         }
+    }
+
+    /**
+     * Deliberately kept out of [PreferencesSnapshot]: wallpaper-derived colour is a property of
+     * the device it was enabled on, so restoring it onto another phone carries no meaning.
+     */
+    val dynamicColor: Flow<Boolean> = preferencesFlow.map { prefs ->
+        prefs[Keys.DYNAMIC_COLOR] ?: false
     }
 
     val defaultSpeed: Flow<Float> = preferencesFlow.map { prefs ->
@@ -92,6 +101,10 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setDefaultSpeed(speed: Float) {
         context.dataStore.edit { it[Keys.DEFAULT_SPEED] = speed }
+    }
+
+    suspend fun setDynamicColor(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.DYNAMIC_COLOR] = enabled }
     }
 
     suspend fun setShelfSort(sort: ShelfSort) {

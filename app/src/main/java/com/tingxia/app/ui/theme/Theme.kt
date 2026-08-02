@@ -1,13 +1,17 @@
 package com.tingxia.app.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -94,57 +98,58 @@ private val TingXiaTypography = Typography(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 40.sp,
-        lineHeight = 46.sp,
+        lineHeight = 48.sp,
         letterSpacing = 0.sp,
     ),
     headlineSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 30.sp,
+        letterSpacing = 0.2.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
-        lineHeight = 26.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 28.sp,
+        letterSpacing = 0.2.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
-        lineHeight = 22.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.2.sp,
     ),
     titleSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
-        lineHeight = 18.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.2.sp,
     ),
+    // Chinese body copy reads better with a taller leading than the Latin defaults.
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 26.sp,
+        letterSpacing = 0.3.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
-        lineHeight = 20.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 22.sp,
+        letterSpacing = 0.3.sp,
     ),
     bodySmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.sp,
+        lineHeight = 18.sp,
+        letterSpacing = 0.3.sp,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -169,13 +174,29 @@ private val TingXiaTypography = Typography(
     ),
 )
 
+/**
+ * A real corner ladder so containers read as a hierarchy: badges sit below buttons,
+ * buttons below cards, cards below full-width panels.
+ */
 private val TingXiaShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(6.dp),
-    medium = RoundedCornerShape(8.dp),
-    large = RoundedCornerShape(8.dp),
-    extraLarge = RoundedCornerShape(8.dp),
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
+
+/** Corner radii for artwork, which tracks the container it sits in. */
+object CoverCorner {
+    val Mini = 10.dp
+    val Grid = 12.dp
+    val Card = 12.dp
+    val Detail = 16.dp
+    val Hero = 20.dp
+}
+
+/** Portrait book artwork is 3:4; square is reserved for chrome-sized thumbnails. */
+const val COVER_RATIO_PORTRAIT = 0.75f
 
 /** Muted cover fallbacks with enough hue variety to keep the shelf scannable. */
 val CoverPalette = listOf(
@@ -189,13 +210,24 @@ val CoverPalette = listOf(
     Color(0xFF53613F),
 )
 
+/** Material You wallpaper colours only exist from Android 12; older devices keep the forest palette. */
+val dynamicColorSupported: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
 @Composable
 fun TingXiaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
+    val colorScheme = when {
+        dynamicColor && dynamicColorSupported ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = colorScheme,
         typography = TingXiaTypography,
         shapes = TingXiaShapes,
         content = content,

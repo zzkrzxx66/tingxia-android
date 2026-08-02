@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
             val themeMode by userPreferencesRepository.themeMode.collectAsStateWithLifecycle(
                 initialValue = ThemeMode.SYSTEM,
             )
+            val dynamicColor by userPreferencesRepository.dynamicColor.collectAsStateWithLifecycle(
+                initialValue = false,
+            )
             val useDark = when (themeMode) {
                 ThemeMode.DARK -> true
                 ThemeMode.LIGHT -> false
@@ -52,7 +55,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }
-            TingXiaTheme(darkTheme = useDark) {
+            TingXiaTheme(darkTheme = useDark, dynamicColor = dynamicColor) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.background,

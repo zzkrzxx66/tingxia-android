@@ -26,6 +26,9 @@ class SettingsViewModel @Inject constructor(
     val defaultSpeed: StateFlow<Float> = preferences.defaultSpeed
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1.0f)
 
+    val dynamicColor: StateFlow<Boolean> = preferences.dynamicColor
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     val playbackErrorPolicy: StateFlow<PlaybackErrorPolicy> = preferences.playbackErrorPolicy
         .stateIn(
             viewModelScope,
@@ -45,6 +48,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setDefaultSpeed(speed: Float) {
         viewModelScope.launch { preferences.setDefaultSpeed(speed) }
+    }
+
+    fun setDynamicColor(enabled: Boolean) {
+        viewModelScope.launch { preferences.setDynamicColor(enabled) }
     }
 
     fun setPlaybackErrorPolicy(policy: PlaybackErrorPolicy) {
