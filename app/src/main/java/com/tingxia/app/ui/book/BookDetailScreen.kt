@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -174,7 +173,10 @@ fun BookDetailScreen(
         ) {
             item {
                 // Immersive header: blurred artwork behind, crisp metadata on top.
-                // heightIn(min) lets long titles grow past 340dp instead of clipping.
+                // The backdrop stays a fixed 340dp shell. heightIn(min=...) was tempting
+                // but lazy-list items inherit a viewport-sized maxHeight, so the
+                // backdrop's greedy Box stretched to fill the whole screen above the
+                // fold, leaving a huge empty blurred band below the cover row.
                 Box(modifier = Modifier.fillMaxWidth()) {
                     AmbientBackground(
                         coverPath = book?.coverPath,
@@ -182,12 +184,12 @@ fun BookDetailScreen(
                         scrim = playerScrim,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 340.dp),
+                            .height(340.dp),
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 340.dp)
+                            .height(340.dp)
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
@@ -196,7 +198,7 @@ fun BookDetailScreen(
                                 ),
                             ),
                     )
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 36.dp)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
