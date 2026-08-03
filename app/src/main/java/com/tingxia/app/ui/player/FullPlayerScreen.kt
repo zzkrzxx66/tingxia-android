@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TimerOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -58,13 +59,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import com.tingxia.app.R
 import com.tingxia.app.player.PlaybackSpeeds
 import com.tingxia.app.player.PlayerUiState
@@ -77,6 +86,13 @@ import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.playerScrim
+
+/** Soft drop shadow for white text sitting on blurred artwork of unknown brightness. */
+private val onArtworkTextShadow = Shadow(
+    color = Color.Black.copy(alpha = 0.45f),
+    offset = Offset(0f, 1f),
+    blurRadius = 8f,
+)
 
 @Composable
 fun FullPlayerScreen(
@@ -106,6 +122,7 @@ fun FullPlayerScreen(
     val duration = state.durationMs.coerceAtLeast(0L).toFloat()
     val position = if (scrubbing) scrubValue else state.positionMs.toFloat().coerceAtMost(duration)
 
+    val haptics = LocalHapticFeedback.current
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -116,6 +133,19 @@ fun FullPlayerScreen(
                 title = state.bookTitle.orEmpty(),
                 scrim = playerScrim,
                 modifier = Modifier.fillMaxSize(),
+            )
+            // Extra darkening concentrated behind the controls: bright covers otherwise
+            // swallow the white slider and timestamps.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.32f),
+                        ),
+                    ),
             )
             Column(
                 modifier = Modifier
@@ -189,7 +219,7 @@ fun FullPlayerScreen(
                 Text(
                     text = state.bookTitle.orEmpty(),
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.75f),
+                    color = Color.White.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -197,7 +227,7 @@ fun FullPlayerScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = state.chapterTitle.orEmpty().ifEmpty { stringResource(R.string.nothing_playing) },
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineSmall.copy(shadow = onArtworkTextShadow),
                     color = Color.White,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
@@ -212,42 +242,75 @@ fun FullPlayerScreen(
                             state.chapterCount,
                         ),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = Color.White.copy(alpha = 0.8f),
                     )
                 }
                 Spacer(Modifier.height(20.dp))
 
-                Slider(
-                    value = if (duration > 0f) position.coerceIn(0f, duration) else 0f,
-                    onValueChange = {
-                        scrubbing = true
-                        scrubValue = it
-                    },
-                    onValueChangeFinished = {
-                        onSeek(scrubValue.toLong())
-                        scrubbing = false
-                    },
-                    valueRange = 0f..(duration.takeIf { it > 0f } ?: 1f),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                    ),
-                )
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    if (scrubbing) {
+                        // Floating bubble tracking the thumb so long chapters can be
+                        // scrubbed to a precise spot without guessing.
+                        val fraction = if (duration > 0f) (scrubValue / duration).coerceIn(0f, 1f) else 0f
+                        val bubbleWidth = 64.dp
+                        val x = (maxWidth - bubbleWidth) * fraction
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = Color.White,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .offset(x = x, y = (-30).dp)
+                                .width(bubbleWidth),
+                        ) {
+                            Text(
+                                text = formatDuration(scrubValue.toLong()),
+                                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 5.dp),
+                            )
+                        }
+                    }
+                    Slider(
+                        value = if (duration > 0f) position.coerceIn(0f, duration) else 0f,
+                        onValueChange = {
+                            if (!scrubbing) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            onSeek(scrubValue.toLong())
+                            scrubbing = false
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        valueRange = 0f..(duration.takeIf { it > 0f } ?: 1f),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color.White,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.35f),
+                        ),
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = formatDuration(position.toLong()),
-                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFeatureSettings = "tnum",
+                            shadow = onArtworkTextShadow,
+                        ),
+                        color = Color.White.copy(alpha = 0.9f),
                     )
                     Text(
                         text = formatDuration(state.durationMs),
-                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFeatureSettings = "tnum",
+                            shadow = onArtworkTextShadow,
+                        ),
+                        color = Color.White.copy(alpha = 0.9f),
                     )
                 }
 
@@ -262,8 +325,8 @@ fun FullPlayerScreen(
                         Icon(
                             Icons.Default.SkipPrevious,
                             contentDescription = stringResource(R.string.previous_chapter),
-                            tint = Color.White,
-                            modifier = Modifier.size(30.dp),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(26.dp),
                         )
                     }
                     IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(52.dp)) {
@@ -271,7 +334,7 @@ fun FullPlayerScreen(
                             Icons.Default.Replay30,
                             contentDescription = stringResource(R.string.rewind_30_seconds),
                             tint = Color.White,
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(34.dp),
                         )
                     }
                     Surface(
@@ -297,15 +360,15 @@ fun FullPlayerScreen(
                             Icons.Default.Forward30,
                             contentDescription = stringResource(R.string.forward_30_seconds),
                             tint = Color.White,
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(34.dp),
                         )
                     }
                     IconButton(onClick = onNext, modifier = Modifier.size(48.dp)) {
                         Icon(
                             Icons.Default.SkipNext,
                             contentDescription = stringResource(R.string.next_chapter),
-                            tint = Color.White,
-                            modifier = Modifier.size(30.dp),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(26.dp),
                         )
                     }
                 }
@@ -374,7 +437,7 @@ fun FullPlayerScreen(
                         }
                         PlayerToolButton(
                             onClick = { sleepMenu = true },
-                            icon = Icons.Default.Timer,
+                            icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
                             label = sleepLabel,
                             active = sleepActive,
                         )
@@ -501,7 +564,7 @@ private fun PlayerToolButton(
             onClick = onClick,
             enabled = enabled,
             shape = CircleShape,
-            color = if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent,
+            color = if (active) Color.White.copy(alpha = 0.24f) else Color.Transparent,
             modifier = Modifier.size(44.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {

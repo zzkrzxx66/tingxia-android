@@ -10,7 +10,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -150,6 +152,7 @@ fun TingXiaNavHost(
                             state = playerState,
                             onToggle = { playerViewModel.togglePlayPause() },
                             onOpen = { navController.navigate(Routes.PLAYER) },
+                            onNext = { playerViewModel.nextChapter() },
                         )
                     }
                     if (atTopLevel) {
@@ -225,9 +228,21 @@ fun TingXiaNavHost(
                             onOpenBook = { id -> navController.navigate(Routes.book(id)) },
                         )
                     }
+                    // Drilling into a book slides laterally (push/pop) instead of the
+                    // generic cross-fade, matching the navigation hierarchy.
                     composable(
                         route = Routes.BOOK,
                         arguments = listOf(navArgument("bookId") { type = NavType.LongType }),
+                        enterTransition = {
+                            slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 4 } +
+                                fadeIn(tween(300))
+                        },
+                        exitTransition = { fadeOut(tween(200)) },
+                        popEnterTransition = { fadeIn(tween(250)) },
+                        popExitTransition = {
+                            slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it / 4 } +
+                                fadeOut(tween(220))
+                        },
                     ) { entry ->
                         val bookId = entry.arguments?.getLong("bookId") ?: return@composable
                         BookDetailScreen(

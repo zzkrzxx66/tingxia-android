@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -80,6 +79,8 @@ import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.EmptyState
+import com.tingxia.app.ui.components.ListSectionCard
 import com.tingxia.app.ui.components.SkipOffsetsDialog
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.components.formatWordCount
@@ -582,39 +583,42 @@ fun BookDetailScreen(
                 }
             }
             if (selectedTab == 0) {
-                items(chapters, key = { it.id }) { chapter ->
-                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        ChapterRow(
-                            chapter = chapter,
-                            isCurrent = chapter.id == book?.currentChapterId,
-                            enabled = book?.needsReauth != true,
-                            onClick = { onPlayChapter(chapter.id) },
-                            onLongClick = { chapterMenuFor = chapter },
-                        )
+                if (chapters.isNotEmpty()) {
+                    item(key = "chapter-card") {
+                        ListSectionCard(
+                            rowCount = chapters.size,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            dividerStartIndent = 46.dp,
+                        ) { index ->
+                            val chapter = chapters[index]
+                            ChapterRow(
+                                chapter = chapter,
+                                isCurrent = chapter.id == book?.currentChapterId,
+                                enabled = book?.needsReauth != true,
+                                onClick = { onPlayChapter(chapter.id) },
+                                onLongClick = { chapterMenuFor = chapter },
+                            )
+                        }
                     }
                 }
             } else if (bookmarks.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 42.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            Icons.Default.BookmarkBorder,
-                            contentDescription = null,
-                            modifier = Modifier.size(30.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            stringResource(R.string.no_bookmarks),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    EmptyState(
+                        icon = Icons.Default.BookmarkBorder,
+                        title = stringResource(R.string.no_bookmarks),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                    )
                 }
             } else {
-                items(bookmarks, key = { "bm-${it.id}" }) { bm ->
-                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                item(key = "bookmark-card") {
+                    ListSectionCard(
+                        rowCount = bookmarks.size,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        dividerStartIndent = 34.dp,
+                    ) { index ->
+                        val bm = bookmarks[index]
                         BookmarkRow(
                             bookmark = bm,
                             onClick = { onPlayBookmark(bm.chapterId, bm.positionMs) },
@@ -940,80 +944,80 @@ private fun ChapterRow(
     onLongClick: () -> Unit,
 ) {
     val completed = chapter.completionState == 2
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.small)
-                .combinedClickable(
-                    enabled = enabled,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                )
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            // The current chapter gets a full-row tint, not just a coloured number tile,
+            // so it stays findable while scrolling a long list.
+            .background(
+                if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                else Color.Transparent,
+            )
+            .combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            color = if (isCurrent) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.extraSmall,
+            modifier = Modifier.size(34.dp),
         ) {
-            Surface(
-                color = if (isCurrent) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.extraSmall,
-                modifier = Modifier.size(34.dp),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    if (isCurrent) {
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    } else {
-                        Text(
-                            text = "%02d".format(chapter.index + 1),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    chapter.displayTitle,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                    color = when {
-                        isCurrent -> MaterialTheme.colorScheme.primary
-                        completed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        else -> MaterialTheme.colorScheme.onSurface
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (chapter.durationMs > 0) {
+                if (isCurrent) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                } else {
                     Text(
-                        formatDuration(chapter.durationMs),
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "%02d".format(chapter.index + 1),
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            Icon(
-                if (completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                contentDescription = stringResource(
-                    if (completed) R.string.mark_incomplete else R.string.mark_completed,
-                ),
-                tint = if (completed) MaterialTheme.colorScheme.secondary
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(20.dp),
-            )
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 50.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                chapter.displayTitle,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                color = when {
+                    isCurrent -> MaterialTheme.colorScheme.primary
+                    completed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (chapter.durationMs > 0) {
+                Text(
+                    formatDuration(chapter.durationMs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Icon(
+            if (completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+            contentDescription = stringResource(
+                if (completed) R.string.mark_incomplete else R.string.mark_completed,
+            ),
+            tint = if (completed) MaterialTheme.colorScheme.secondary
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
@@ -1031,7 +1035,7 @@ private fun BookmarkRow(
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(vertical = 10.dp, horizontal = 4.dp),
+                .padding(vertical = 10.dp, horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -1063,9 +1067,5 @@ private fun BookmarkRow(
                 }
             }
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 34.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-        )
     }
 }

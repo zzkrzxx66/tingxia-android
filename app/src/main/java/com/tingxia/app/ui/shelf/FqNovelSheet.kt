@@ -57,6 +57,8 @@ import com.tingxia.app.R
 import com.tingxia.app.data.remote.FqAudioTone
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.BookGridTile
+import com.tingxia.app.ui.components.EmptyState
 import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
@@ -267,33 +269,16 @@ private fun OnlineWelcome(
                 )
             }
             gridItems(hotBooks.take(9), key = { it.bookId }) { book ->
-                Column(
-                    modifier = Modifier
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { onSelectBook(book) },
-                ) {
-                    BookCover(
-                        title = book.title,
-                        coverPath = book.coverUrl,
-                        modifier = Modifier.fillMaxWidth(),
-                        ratio = COVER_RATIO_PORTRAIT,
-                        corner = CoverCorner.Grid,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        book.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        book.author?.takeIf { it.isNotBlank() } ?: stringResource(R.string.unknown_author),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                BookGridTile(
+                    title = book.title,
+                    coverPath = book.coverUrl,
+                    subtitle = book.author?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.unknown_author),
+                    onClick = { onSelectBook(book) },
+                    // Online artwork already reads as cover art; the paperback
+                    // overlay is reserved for owned shelf items.
+                    realistic = false,
+                )
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -309,21 +294,12 @@ private fun OnlineWelcome(
 
 @Composable
 private fun OnlineEmpty(query: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(14.dp))
-        Text(stringResource(R.string.online_empty_title), style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            stringResource(R.string.online_empty_hint, query),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    EmptyState(
+        icon = Icons.Default.Search,
+        title = stringResource(R.string.online_empty_title),
+        body = stringResource(R.string.online_empty_hint, query),
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable

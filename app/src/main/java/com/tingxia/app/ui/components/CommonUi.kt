@@ -3,8 +3,11 @@ package com.tingxia.app.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -12,10 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -36,11 +43,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,6 +58,7 @@ import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.tingxia.app.R
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.CoverPalette
 import java.io.File
@@ -79,7 +90,11 @@ fun BookCover(
     }
     val boxMod = if (realistic) {
         // spotColor warms the contact shadow so books sit on the shelf instead of floating.
-        sized.shadow(elevation = 5.dp, shape = shape, clip = false, spotColor = Color(0xFF4A3B2C))
+        // The 1.5dp inner padding keeps that shadow from being clipped by tight grid
+        // cells or parent clips, at the cost of a barely-visible inset of the artwork.
+        sized
+            .padding(1.5.dp)
+            .shadow(elevation = 5.dp, shape = shape, clip = false, spotColor = Color(0xFF4A3B2C))
     } else {
         sized
     }
@@ -420,6 +435,135 @@ fun formatDuration(ms: Long): String {
 
 fun formatProgressLabel(positionMs: Long, durationMs: Long): String {
     return "${formatDuration(positionMs)} / ${formatDuration(durationMs)}"
+}
+
+/**
+ * The one empty-state look for the whole app: a tinted icon disc, a title, a muted
+ * body line, and an optional action. Previously every screen hand-rolled its own
+ * and the icon blocks had drifted to 96/42/30dp.
+ */
+@Composable
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    body: String? = null,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(88.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(38.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        if (body != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        if (action != null) {
+            Spacer(Modifier.height(22.dp))
+            action()
+        }
+    }
+}
+
+/**
+ * Shared shelf/catalogue grid tile: portrait cover + two-line title slot + one-line
+ * subtitle slot. Reserving both text lines keeps tile heights identical whether or
+ * not the title wraps, so rows never jiggle between the shelf and online pages.
+ */
+@Composable
+fun BookGridTile(
+    title: String,
+    coverPath: String?,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    realistic: Boolean = true,
+    overlay: (@Composable BoxScope.() -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+    ) {
+        Box {
+            BookCover(
+                title = title,
+                coverPath = coverPath,
+                modifier = Modifier.fillMaxWidth(),
+                ratio = COVER_RATIO_PORTRAIT,
+                corner = CoverCorner.Grid,
+                realistic = realistic,
+            )
+            if (overlay != null) overlay()
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 2,
+            minLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * Cards a long list (chapters, bookmarks) instead of letting rows float on the
+ * background with hand-drawn dividers: rows keep their own layout, but the outer
+ * card, the row padding and the inset dividers come from one place.
+ */
+@Composable
+fun ListSectionCard(
+    rowCount: Int,
+    modifier: Modifier = Modifier,
+    dividerStartIndent: Dp = 50.dp,
+    rowContent: @Composable (index: Int) -> Unit,
+) {
+    SectionCard(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            for (index in 0 until rowCount) {
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = dividerStartIndent),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                    )
+                }
+                rowContent(index)
+            }
+        }
+    }
 }
 
 /** 887289 -> "88.7"; values under 10k keep the raw count. */

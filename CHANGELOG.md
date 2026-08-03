@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.6
+
+- Shelf top bar now lifts to a raised surface while the grid scrolls
+  (pinned scroll behaviour), and grid tiles get more breathing room with
+  realistic cover shadows no longer clipped by tight cells.
+- Chapter and bookmark lists on the book-detail page sit inside a single
+  card with consistent inset dividers; the chapter in progress is
+  highlighted across the whole row, not just its number tile.
+- Shared BookGridTile component keeps shelf and online hot-book grids
+  identical in height and rhythm; all empty states (shelf, online search,
+  bookmarks) now use one EmptyState look.
+- Full player readability: a soft gradient darkens behind the controls on
+  bright covers, timestamps gain a subtle text shadow, and the cover
+  progress bar track keeps contrast on dark artwork.
+- Scrubbing the seek bar shows a floating time bubble tracking the thumb,
+  with haptic ticks on drag start/finish; skip buttons shrink and
+  ±30s buttons grow so the control hierarchy reads at a glance.
+- Active sleep timer swaps its icon to TimerOff and a brighter halo;
+  the mini player bar gains a next-chapter button.
+- Navigating shelf → book detail slides laterally (push/pop) instead of
+  the generic cross-fade, matching the navigation hierarchy.
+- Home-screen widget: fallback artwork now renders the same palette-wash +
+  book-initial style as the in-app fallback cover, and widget card corners
+  match the app's 12dp card radius.
+
 ## 0.9.5
 
 - The full player's skip intro/outro button now opens the same settings

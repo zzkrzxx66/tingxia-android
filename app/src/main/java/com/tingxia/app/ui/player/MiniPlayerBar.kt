@@ -14,8 +14,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,6 +39,7 @@ fun MiniPlayerBar(
     state: PlayerUiState,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
+    onNext: (() -> Unit)? = null,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -96,7 +99,7 @@ fun MiniPlayerBar(
                     onClick = onToggle,
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(end = 6.dp).size(38.dp),
+                    modifier = Modifier.size(38.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -106,6 +109,16 @@ fun MiniPlayerBar(
                             ),
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                if (onNext != null) {
+                    IconButton(onClick = onNext) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            contentDescription = stringResource(R.string.next_chapter),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                 }

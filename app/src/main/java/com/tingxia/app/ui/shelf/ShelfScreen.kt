@@ -52,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,10 +72,9 @@ import com.tingxia.app.R
 import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
-import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.BookGridTile
+import com.tingxia.app.ui.components.EmptyState
 import com.tingxia.app.ui.components.formatDuration
-import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
-import com.tingxia.app.ui.theme.CoverCorner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +95,7 @@ fun ShelfScreen(
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
+    val topBarScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     LaunchedEffect(error) {
         error?.let {
@@ -115,9 +116,11 @@ fun ShelfScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(topBarScrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
+                scrollBehavior = topBarScrollBehavior,
                 title = {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
@@ -280,8 +283,8 @@ fun ShelfScreen(
                                 top = 8.dp,
                                 bottom = 24.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             items(books, key = { it.id }) { book ->
@@ -346,75 +349,40 @@ private fun EmptyShelf(
     onImport: () -> Unit,
     onGoOnline: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(96.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.AutoMirrored.Filled.LibraryBooks,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
+    EmptyState(
+        icon = Icons.AutoMirrored.Filled.LibraryBooks,
+        title = stringResource(if (filtered) R.string.no_matching_books else R.string.empty_shelf),
+        body = stringResource(
+            if (filtered) R.string.adjust_search_or_filter else R.string.empty_shelf_hint,
+        ),
+        modifier = Modifier.fillMaxSize(),
+        action = if (filtered) null else {
+            {
+                Button(onClick = onImport, shape = MaterialTheme.shapes.medium) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.empty_shelf_action))
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onGoOnline, shape = MaterialTheme.shapes.medium) {
+                    Text(stringResource(R.string.empty_shelf_online_action))
+                }
             }
-        }
-        Spacer(Modifier.height(18.dp))
-        Text(
-            stringResource(
-                if (filtered) R.string.no_matching_books else R.string.empty_shelf,
-            ),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            if (filtered) {
-                stringResource(R.string.adjust_search_or_filter)
-            } else {
-                stringResource(R.string.empty_shelf_hint)
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (!filtered) {
-            Spacer(Modifier.height(22.dp))
-            Button(onClick = onImport, shape = MaterialTheme.shapes.medium) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.empty_shelf_action))
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onGoOnline, shape = MaterialTheme.shapes.medium) {
-                Text(stringResource(R.string.empty_shelf_online_action))
-            }
-        }
-    }
+        },
+    )
 }
 
 @Composable
 private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
-    ) {
-        Box {
-            BookCover(
-                title = book.title,
-                coverPath = book.coverPath,
-                modifier = Modifier.fillMaxWidth(),
-                ratio = COVER_RATIO_PORTRAIT,
-                corner = CoverCorner.Grid,
-                realistic = true,
-            )
+    BookGridTile(
+        title = book.title,
+        coverPath = book.coverPath,
+        subtitle = book.author?.takeIf { it.isNotBlank() }
+            ?: if (book.isRemote) stringResource(R.string.online_narrated)
+            else formatDuration(book.totalDurationMs),
+        onClick = onClick,
+        realistic = true,
+        overlay = {
             if (book.isRemote) {
                 OnlineBadge(
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
@@ -463,6 +431,8 @@ private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> 
             }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
                 // Progress rides the artwork itself so every tile keeps the same height.
+                // The track needs real contrast against dark covers; theme scrim at low
+                // alpha vanished entirely there, so a fixed dark wash is used instead.
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier
@@ -473,27 +443,11 @@ private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> 
                         .height(3.dp)
                         .clip(MaterialTheme.shapes.extraSmall),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f),
+                    trackColor = Color.Black.copy(alpha = 0.38f),
                 )
             }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            book.title,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            minLines = 2,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            book.author?.takeIf { it.isNotBlank() } ?: if (book.isRemote) stringResource(R.string.online_narrated) else formatDuration(book.totalDurationMs),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+        },
+    )
 }
 
 @Composable

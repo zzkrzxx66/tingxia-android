@@ -90,9 +90,11 @@ object PlaybackWidgetUpdater {
                 setTextViewText(R.id.widget_status, statusText(context, state))
                 val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let(artworkCache::get)
                 if (artwork == null) {
-                    setImageViewResource(
+                    // Match the in-app fallback cover: palette wash + initial, so the
+                    // desk widget speaks the same visual language as the shelf.
+                    setImageViewBitmap(
                         R.id.widget_artwork,
-                        R.drawable.ic_widget_artwork_placeholder,
+                        fallbackArtwork(context, state.bookTitle),
                     )
                 } else {
                     setImageViewBitmap(R.id.widget_artwork, artwork)
@@ -200,6 +202,80 @@ object PlaybackWidgetUpdater {
         return output
     }
 
+    private val fallbackCache = LruCache<String, Bitmap>(16)
+
+    /**
+     * Renders the same fallback the Compose `FallbackCover` paints: a diagonal
+     * three-stop palette wash, a darker spine band and the book's initial. Colours
+     * mirror [com.tingxia.app.ui.theme.CoverPalette] and the theme's mint/forest
+     * foreground for the light and night widget themes.
+     */
+    private fun fallbackArtwork(context: Context, title: String): Bitmap {
+        val dark = (context.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val key = "$dark|${title.ifBlank { "?" }}"
+        fallbackCache.get(key)?.let { return it }
+        val size = ARTWORK_OUTPUT_SIZE_PX
+        val base = FALLBACK_PALETTE[kotlin.math.abs(title.hashCode()) % FALLBACK_PALETTE.size]
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawRoundRect(
+            0f, 0f, size.toFloat(), size.toFloat(),
+            ARTWORK_CORNER_RADIUS_PX, ARTWORK_CORNER_RADIUS_PX,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = android.graphics.LinearGradient(
+                    0f, 0f, size.toFloat(), size.toFloat(),
+                    intArrayOf(base.lightened(0.12f), base, base.darkened(0.14f)),
+                    floatArrayOf(0f, 0.5f, 1f),
+                    Shader.TileMode.CLAMP,
+                )
+            },
+        )
+        // Spine band.
+        canvas.drawRect(
+            0f, 0f, size * 0.09f, size.toFloat(),
+            Paint().apply { color = 0x1F000000 },
+        )
+        // Book initial, optically centred.
+        val initial = title.trim().firstOrNull()?.toString() ?: "听"
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xF5FFFFFF.toInt()
+            textSize = size * 0.42f
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.DEFAULT,
+                android.graphics.Typeface.BOLD,
+            )
+        }
+        val textY = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(initial, size / 2f, textY, textPaint)
+        fallbackCache.put(key, bitmap)
+        return bitmap
+    }
+
+    private fun Int.lightened(amount: Float): Int {
+        val r = android.graphics.Color.red(this)
+        val g = android.graphics.Color.green(this)
+        val b = android.graphics.Color.blue(this)
+        return android.graphics.Color.rgb(
+            (r + (255 - r) * amount).toInt(),
+            (g + (255 - g) * amount).toInt(),
+            (b + (255 - b) * amount).toInt(),
+        )
+    }
+
+    private fun Int.darkened(amount: Float): Int {
+        val r = android.graphics.Color.red(this)
+        val g = android.graphics.Color.green(this)
+        val b = android.graphics.Color.blue(this)
+        return android.graphics.Color.rgb(
+            (r * (1f - amount)).toInt(),
+            (g * (1f - amount)).toInt(),
+            (b * (1f - amount)).toInt(),
+        )
+    }
+
     private fun openArtwork(context: Context, value: String): InputStream? {
         val uri = Uri.parse(value)
         return when (uri.scheme) {
@@ -259,6 +335,18 @@ object PlaybackWidgetUpdater {
     private const val ARTWORK_OUTPUT_SIZE_PX = 160
     private const val ARTWORK_CORNER_RADIUS_PX = 14f
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
+
+    /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
+    private val FALLBACK_PALETTE = intArrayOf(
+        0xFF315E4B.toInt(),
+        0xFF526C78.toInt(),
+        0xFF745866.toInt(),
+        0xFF75612F.toInt(),
+        0xFF74513E.toInt(),
+        0xFF3F6261.toInt(),
+        0xFF555B75.toInt(),
+        0xFF53613F.toInt(),
+    )
 }
 
 internal fun widgetLayoutForHeight(heightDp: Int): Int =
