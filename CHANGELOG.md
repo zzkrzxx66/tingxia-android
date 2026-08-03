@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.5
+
+- The full player's skip intro/outro button now opens the same settings
+  dialog as the book-detail menu instead of sitting disabled; the dialog
+  itself is a shared component so both surfaces stay in sync.
+- Drop the duplicate book count from the shelf grid header (the app bar
+  already shows it) and add a small play badge on the tile currently loaded
+  in the player.
+- The player now rises from and sinks back into the mini player bar with a
+  vertical slide; the mini bar itself slides in/out, gets a filled round
+  play toggle echoing the full player's button, and a hairline top divider.
+- The 继续播放 button tells you where it will resume (chapter · position),
+  and the chapter list opens scrolled to the chapter in progress.
+- Cover breathing eases back to rest on pause instead of snapping; active
+  player tool buttons get a soft halo that reads on the blurred backdrop.
+- Book-detail header grows with long titles (340dp is now a floor, not a
+  ceiling); SectionCards gain a hairline outline in light mode; the online
+  welcome grid reflows adaptively like the shelf instead of fixed 3-up rows.
+- Move all remaining hard-coded UI strings (online catalogue, badges,
+  skip-offset toasts) into string resources.
+
 ## 0.9.4
 
 - Keep the online book metadata that was fetched but dropped at import:

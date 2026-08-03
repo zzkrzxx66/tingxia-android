@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -164,7 +168,7 @@ fun FqNovelCatalog(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             singleLine = true,
-            placeholder = { Text("搜索书名或作者") },
+            placeholder = { Text(stringResource(R.string.online_search_hint)) },
             // Exactly one magnifier, and it is the actionable one. Online search needs an
             // explicit submit (unlike the shelf field, which filters as you type), so the
             // decorative leading icon was the one to go.
@@ -174,7 +178,7 @@ fun FqNovelCatalog(
                         IconButton(onClick = { onQueryChange("") }) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "清除搜索内容",
+                                contentDescription = stringResource(R.string.online_search_clear),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -182,7 +186,7 @@ fun FqNovelCatalog(
                     IconButton(onClick = { onSearch(query) }, enabled = query.isNotBlank() && !loading) {
                         Icon(
                             Icons.Default.Search,
-                            contentDescription = "搜索在线书籍",
+                            contentDescription = stringResource(R.string.online_search_submit),
                             tint = if (query.isNotBlank() && !loading) {
                                 MaterialTheme.colorScheme.primary
                             } else {
@@ -223,10 +227,10 @@ fun FqNovelCatalog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("搜索结果", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.online_search_results), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "${searchResults.size} 本",
+                            stringResource(R.string.online_result_count, searchResults.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -245,62 +249,59 @@ private fun OnlineWelcome(
     hotBooks: List<FqSearchBook>,
     onSelectBook: (FqSearchBook) -> Unit,
 ) {
-    LazyColumn(
+    // Adaptive grid matches the shelf's reflow behaviour on rotation and tablets;
+    // the old hand-chunked 3-up rows stayed 3-up forever.
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 88.dp),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         if (hotBooks.isNotEmpty()) {
-            item {
-                Column {
-                    Text("热门有声书", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(12.dp))
-                    hotBooks.take(9).chunked(3).forEach { row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            row.forEach { book ->
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(MaterialTheme.shapes.medium)
-                                        .clickable { onSelectBook(book) },
-                                ) {
-                                    BookCover(
-                                        title = book.title,
-                                        coverPath = book.coverUrl,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        ratio = COVER_RATIO_PORTRAIT,
-                                        corner = CoverCorner.Grid,
-                                    )
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        book.title,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        book.author?.takeIf { it.isNotBlank() } ?: "未知作者",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                    }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    stringResource(R.string.online_hot_books),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
+            gridItems(hotBooks.take(9), key = { it.bookId }) { book ->
+                Column(
+                    modifier = Modifier
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { onSelectBook(book) },
+                ) {
+                    BookCover(
+                        title = book.title,
+                        coverPath = book.coverUrl,
+                        modifier = Modifier.fillMaxWidth(),
+                        ratio = COVER_RATIO_PORTRAIT,
+                        corner = CoverCorner.Grid,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        book.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        book.author?.takeIf { it.isNotBlank() } ?: stringResource(R.string.unknown_author),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
-                "在线书籍加入书架后,与本地有声书共用播放进度、书签、倍速和睡眠定时。",
+                stringResource(R.string.online_shelf_summary),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }
@@ -315,10 +316,10 @@ private fun OnlineEmpty(query: String) {
     ) {
         Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(14.dp))
-        Text("没有找到相关书籍", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.online_empty_title), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(6.dp))
         Text(
-            "没有找到“$query”，可以尝试更短的书名或作者名。",
+            stringResource(R.string.online_empty_hint, query),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -349,7 +350,7 @@ private fun OnlineBookCard(book: FqSearchBook, onClick: () -> Unit) {
                 // pushed the blurb off the card.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        book.author?.takeIf { it.isNotBlank() } ?: "未知作者",
+                        book.author?.takeIf { it.isNotBlank() } ?: stringResource(R.string.unknown_author),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -365,7 +366,7 @@ private fun OnlineBookCard(book: FqSearchBook, onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "真人有声",
+                        stringResource(R.string.live_narration),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary,
                         maxLines = 1,
@@ -419,9 +420,9 @@ private fun FqEditionPicker(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack, enabled = !importing) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回搜索结果")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_to_results))
             }
-            Text("选择演播版本", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.online_pick_edition), style = MaterialTheme.typography.titleLarge)
         }
         Box(modifier = Modifier.fillMaxWidth().height(3.dp)) {
             if (loading || importing) {
@@ -447,7 +448,7 @@ private fun FqEditionPicker(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(4.dp))
-                            Text(book.author ?: "未知作者", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(book.author ?: stringResource(R.string.unknown_author), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             val metaLine = buildList {
                                 book.category?.takeIf { it.isNotBlank() }?.let(::add)
                                 if (book.wordCount > 0) add(stringResource(R.string.word_count_wan, formatWordCount(book.wordCount)))
@@ -476,9 +477,11 @@ private fun FqEditionPicker(
             }
             item {
                 Column(Modifier.padding(top = 4.dp)) {
-                    Text("真人演播版本", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.online_tones_title), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (tones.isEmpty() && !loading) "暂未发现可用的真人演播版本" else "选择一个版本加入书架",
+                        stringResource(
+                            if (tones.isEmpty() && !loading) R.string.online_tones_empty else R.string.online_tones_hint,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -504,11 +507,13 @@ private fun FqEditionPicker(
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "真人演播",
+                                stringResource(R.string.live_narrator),
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Text(
-                                tone.title.removePrefix("主播:").ifBlank { "演播信息暂无" },
+                                tone.title.removePrefix("主播:").trim().ifEmpty {
+                                    stringResource(R.string.tone_info_missing)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2,
@@ -526,7 +531,7 @@ private fun FqEditionPicker(
                                 onClick = { onImport(book, tone) },
                                 enabled = !loading,
                             ) {
-                                Text("加入书架")
+                                Text(stringResource(R.string.add_to_shelf))
                             }
                         }
                     }

@@ -1,9 +1,11 @@
 package com.tingxia.app.ui.book
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tingxia.app.R
 import com.tingxia.app.data.importer.ScanProgress
 import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.Bookmark
@@ -15,6 +17,7 @@ import com.tingxia.app.data.repo.ReauthDecisionRequiredException
 import com.tingxia.app.player.LibraryMutationSnapshot
 import com.tingxia.app.player.PlayerController
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +29,7 @@ import javax.inject.Inject
 @HiltViewModel
 class BookDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val app: Context,
     private val bookRepository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val playerController: PlayerController,
@@ -263,9 +267,9 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 playerController.setSkipOffsets(bookId, skipIntroMs, skipOutroMs)
-                _message.value = "跳过设置已保存"
+                _message.value = app.getString(R.string.skip_offsets_saved)
             } catch (e: Exception) {
-                _error.value = e.message ?: "更新跳过设置失败"
+                _error.value = e.message ?: app.getString(R.string.skip_offsets_failed)
             }
         }
     }

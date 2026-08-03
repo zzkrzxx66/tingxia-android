@@ -1,12 +1,15 @@
 package com.tingxia.app.ui.player
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tingxia.app.R
 import com.tingxia.app.data.repo.BookmarkRepository
 import com.tingxia.app.player.PlayerController
 import com.tingxia.app.player.PlayerUiState
 import com.tingxia.app.player.SleepTimerMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +18,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
+    @ApplicationContext private val app: Context,
     private val playerController: PlayerController,
     private val bookmarkRepository: BookmarkRepository,
 ) : ViewModel() {
@@ -57,9 +61,21 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 bookmarkRepository.addBookmark(bookId, chapterId, s.positionMs)
-                _toast.value = "已添加书签"
+                _toast.value = app.getString(R.string.bookmark_added)
             } catch (e: Exception) {
-                _toast.value = e.message ?: "添加书签失败"
+                _toast.value = e.message ?: app.getString(R.string.bookmark_add_failed)
+            }
+        }
+    }
+
+    fun setSkipOffsets(skipIntroMs: Long, skipOutroMs: Long) {
+        val bookId = state.value.bookId ?: return
+        viewModelScope.launch {
+            try {
+                playerController.setSkipOffsets(bookId, skipIntroMs, skipOutroMs)
+                _toast.value = app.getString(R.string.skip_offsets_saved)
+            } catch (e: Exception) {
+                _toast.value = e.message ?: app.getString(R.string.skip_offsets_failed)
             }
         }
     }

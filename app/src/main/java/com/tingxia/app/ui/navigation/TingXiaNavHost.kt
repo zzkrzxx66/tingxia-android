@@ -5,9 +5,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -136,7 +140,12 @@ fun TingXiaNavHost(
         bottomBar = {
             if (showMini || atTopLevel) {
                 Column {
-                    if (showMini) {
+                    AnimatedVisibility(
+                        visible = showMini,
+                        enter = slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it } +
+                            fadeIn(tween(280)),
+                        exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(180)),
+                    ) {
                         MiniPlayerBar(
                             state = playerState,
                             onToggle = { playerViewModel.togglePlayPause() },
@@ -208,6 +217,7 @@ fun TingXiaNavHost(
                                     launchSingleTop = true
                                 }
                             },
+                            playingBookId = playerState.bookId,
                         )
                     }
                     composable(Routes.ONLINE) {
@@ -246,7 +256,25 @@ fun TingXiaNavHost(
                             },
                         )
                     }
-                    composable(Routes.PLAYER) {
+                    // The player is a modal surface: it rises from the mini bar and
+                    // sinks back, unlike the lateral fades used between destinations.
+                    composable(
+                        route = Routes.PLAYER,
+                        enterTransition = {
+                            slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } +
+                                fadeIn(tween(320))
+                        },
+                        exitTransition = {
+                            slideOutVertically(tween(260)) { it } + fadeOut(tween(200))
+                        },
+                        popEnterTransition = {
+                            slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } +
+                                fadeIn(tween(320))
+                        },
+                        popExitTransition = {
+                            slideOutVertically(tween(260)) { it } + fadeOut(tween(200))
+                        },
+                    ) {
                         FullPlayerScreen(
                             state = playerState,
                             onBack = { navController.popBackStack() },
@@ -261,6 +289,9 @@ fun TingXiaNavHost(
                             onSleepEndOfChapter = { playerViewModel.setSleepEndOfChapter() },
                             onExtendSleep = { playerViewModel.extendSleep() },
                             onAddBookmark = { playerViewModel.addBookmark() },
+                            onSaveSkipOffsets = { intro, outro ->
+                                playerViewModel.setSkipOffsets(intro, outro)
+                            },
                         )
                     }
                     composable(Routes.SETTINGS) {

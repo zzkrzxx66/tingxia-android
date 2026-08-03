@@ -1,19 +1,31 @@
 package com.tingxia.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -28,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -281,13 +294,22 @@ fun SectionCard(
     color: Color = MaterialTheme.colorScheme.surface,
     content: @Composable () -> Unit,
 ) {
+    // Light mode: hairline outline + whisper of shadow reads crisper on the near-white
+    // canvas than shadow alone. Dark mode keeps pure shadow; outlines go muddy there.
+    val border = if (!isSystemInDarkTheme()) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    } else {
+        null
+    }
+    val shadow = if (border != null) 1.dp else 2.dp
     if (onClick != null) {
         Surface(
             onClick = onClick,
             modifier = modifier,
             shape = shape,
             color = color,
-            shadowElevation = 2.dp,
+            shadowElevation = shadow,
+            border = border,
             content = content,
         )
     } else {
@@ -295,10 +317,82 @@ fun SectionCard(
             modifier = modifier,
             shape = shape,
             color = color,
-            shadowElevation = 2.dp,
+            shadowElevation = shadow,
+            border = border,
             content = content,
         )
     }
+}
+
+/**
+ * Skip intro/outro (seconds) editor, shared by the book-detail menu and the
+ * full player so both surfaces stay in sync. Values are clamped to 0–300s.
+ */
+@Composable
+fun SkipOffsetsDialog(
+    initialIntroMs: Long,
+    initialOutroMs: Long,
+    onDismiss: () -> Unit,
+    onSave: (skipIntroMs: Long, skipOutroMs: Long) -> Unit,
+) {
+    var introSeconds by remember { mutableStateOf((initialIntroMs / 1_000L).toString()) }
+    var outroSeconds by remember { mutableStateOf((initialOutroMs / 1_000L).toString()) }
+    val intro = introSeconds.toLongOrNull()
+    val outro = outroSeconds.toLongOrNull()
+    val introValid = intro != null && intro in 0L..300L
+    val outroValid = outro != null && outro in 0L..300L
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.skip_intro_outro)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = introSeconds,
+                    onValueChange = { value ->
+                        if (value.all(Char::isDigit)) introSeconds = value
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.skip_intro_seconds)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    isError = introSeconds.isNotEmpty() && !introValid,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = outroSeconds,
+                    onValueChange = { value ->
+                        if (value.all(Char::isDigit)) outroSeconds = value
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.skip_outro_seconds)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    isError = outroSeconds.isNotEmpty() && !outroValid,
+                )
+                if ((!introValid && introSeconds.isNotEmpty()) ||
+                    (!outroValid && outroSeconds.isNotEmpty())
+                ) {
+                    Text(
+                        stringResource(R.string.skip_seconds_range),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = introValid && outroValid,
+                onClick = {
+                    onSave(checkNotNull(intro) * 1_000L, checkNotNull(outro) * 1_000L)
+                    onDismiss()
+                },
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }
 
 private fun Color.lighten(amount: Float): Color = Color(

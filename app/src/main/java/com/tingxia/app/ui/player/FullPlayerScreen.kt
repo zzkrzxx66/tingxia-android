@@ -3,6 +3,7 @@ package com.tingxia.app.ui.player
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -71,6 +72,7 @@ import com.tingxia.app.player.SeekOffsets
 import com.tingxia.app.player.SleepOptions
 import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.SkipOffsetsDialog
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
@@ -91,6 +93,7 @@ fun FullPlayerScreen(
     onSleepEndOfChapter: () -> Unit = {},
     onExtendSleep: () -> Unit = {},
     onAddBookmark: () -> Unit = {},
+    onSaveSkipOffsets: (Long, Long) -> Unit = { _, _ -> },
 ) {
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
@@ -98,6 +101,7 @@ fun FullPlayerScreen(
     var sleepMenu by remember { mutableStateOf(false) }
     var customSleepDialog by remember { mutableStateOf(false) }
     var customSleepMinutes by remember { mutableStateOf("10") }
+    var skipOffsetsDialog by remember { mutableStateOf(false) }
 
     val duration = state.durationMs.coerceAtLeast(0L).toFloat()
     val position = if (scrubbing) scrubValue else state.positionMs.toFloat().coerceAtMost(duration)
@@ -150,7 +154,7 @@ fun FullPlayerScreen(
                     val coverSize = minOf(maxWidth * 0.74f, 280.dp)
                     // A slow, barely-there swell keeps the artwork alive while playing.
                     val breathing = rememberInfiniteTransition(label = "coverBreath")
-                    val coverScale by breathing.animateFloat(
+                    val breathScale by breathing.animateFloat(
                         initialValue = 1f,
                         targetValue = 1.02f,
                         animationSpec = infiniteRepeatable(
@@ -159,12 +163,18 @@ fun FullPlayerScreen(
                         ),
                         label = "coverScale",
                     )
+                    // Ease back to rest on pause instead of snapping from mid-breath.
+                    val coverScale by animateFloatAsState(
+                        targetValue = if (state.isPlaying) breathScale else 1f,
+                        animationSpec = tween(450, easing = FastOutSlowInEasing),
+                        label = "coverSettle",
+                    )
                     Surface(
                         shape = MaterialTheme.shapes.large,
                         shadowElevation = 24.dp,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .scale(if (state.isPlaying) coverScale else 1f),
+                            .scale(coverScale),
                     ) {
                         BookCover(
                             title = state.bookTitle.orEmpty(),
@@ -405,7 +415,7 @@ fun FullPlayerScreen(
                     }
                     val skipActive = state.skipIntroMs > 0L || state.skipOutroMs > 0L
                     PlayerToolButton(
-                        onClick = { },
+                        onClick = { skipOffsetsDialog = true },
                         icon = Icons.Default.ContentCut,
                         label = if (skipActive) {
                             stringResource(
@@ -417,12 +427,20 @@ fun FullPlayerScreen(
                             stringResource(R.string.skip_offsets)
                         },
                         active = skipActive,
-                        enabled = false,
                     )
                 }
                 Spacer(Modifier.height(32.dp))
             }
         }
+    }
+
+    if (skipOffsetsDialog) {
+        SkipOffsetsDialog(
+            initialIntroMs = state.skipIntroMs,
+            initialOutroMs = state.skipOutroMs,
+            onDismiss = { skipOffsetsDialog = false },
+            onSave = onSaveSkipOffsets,
+        )
     }
 
     if (customSleepDialog) {
@@ -477,13 +495,23 @@ private fun PlayerToolButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.size(72.dp, 64.dp),
     ) {
-        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(44.dp)) {
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(24.dp),
-            )
+        // Active tools sit on a soft halo; on the blurred artwork backdrop a plain
+        // colour shift alone was too subtle to read as "on".
+        Surface(
+            onClick = onClick,
+            enabled = enabled,
+            shape = CircleShape,
+            color = if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent,
+            modifier = Modifier.size(44.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
         Text(
             label,

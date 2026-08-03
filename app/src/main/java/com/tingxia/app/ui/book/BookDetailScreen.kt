@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -79,6 +81,7 @@ import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.components.SkipOffsetsDialog
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
@@ -117,8 +120,6 @@ fun BookDetailScreen(
     var editBookmarkNote by remember { mutableStateOf("") }
     var bookmarkMenuFor by remember { mutableStateOf<Bookmark?>(null) }
     var editSkipOffsets by remember { mutableStateOf(false) }
-    var skipIntroSeconds by remember { mutableStateOf("0") }
-    var skipOutroSeconds by remember { mutableStateOf("0") }
     var autoPlayDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
@@ -147,18 +148,33 @@ fun BookDetailScreen(
         if (uri != null) viewModel.updateBookCover(uri)
     }
 
+    // Jump straight to the chapter in progress on first load; long books otherwise
+    // open at chapter 1 and force a manual hunt. Runs once per book, never again,
+    // so the user's own scrolling is never yanked back.
+    val listState = rememberLazyListState()
+    var scrolledToCurrent by remember { mutableStateOf(false) }
+    LaunchedEffect(chapters.size, book?.currentChapterId) {
+        if (!scrolledToCurrent && chapters.isNotEmpty()) {
+            val idx = chapters.indexOfFirst { it.id == book?.currentChapterId }
+            if (idx > 0) listState.scrollToItem(idx)
+            scrolledToCurrent = true
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
     ) { innerPadding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = innerPadding.calculateBottomPadding()),
         ) {
             item {
                 // Immersive header: blurred artwork behind, crisp metadata on top.
+                // heightIn(min) lets long titles grow past 340dp instead of clipping.
                 Box(modifier = Modifier.fillMaxWidth()) {
                     AmbientBackground(
                         coverPath = book?.coverPath,
@@ -166,12 +182,12 @@ fun BookDetailScreen(
                         scrim = playerScrim,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp),
+                            .heightIn(min = 340.dp),
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp)
+                            .heightIn(min = 340.dp)
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
@@ -239,8 +255,6 @@ fun BookDetailScreen(
                                         },
                                         onClick = {
                                             menu = false
-                                            skipIntroSeconds = ((book?.skipIntroMs ?: 0L) / 1_000L).toString()
-                                            skipOutroSeconds = ((book?.skipOutroMs ?: 0L) / 1_000L).toString()
                                             editSkipOffsets = true
                                         },
                                     )
@@ -366,7 +380,7 @@ fun BookDetailScreen(
                                             )
                                             Spacer(Modifier.width(6.dp))
                                             Text(
-                                                "在线真人有声",
+                                                stringResource(R.string.online_narrated),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                             )
@@ -471,6 +485,19 @@ fun BookDetailScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
+                    val continueLabel = book?.let { b ->
+                        if (b.lastPlayedAt > 0 && b.currentChapterId != null) {
+                            chapters.firstOrNull { it.id == b.currentChapterId }?.let { ch ->
+                                stringResource(
+                                    R.string.continue_chapter_at,
+                                    ch.displayTitle,
+                                    formatDuration(b.currentPositionMs),
+                                )
+                            }
+                        } else {
+                            null
+                        }
+                    }
                     Button(
                         onClick = onContinue,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -479,13 +506,23 @@ fun BookDetailScreen(
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(
-                                if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
-                                else R.string.start_playback,
-                            ),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                stringResource(
+                                    if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
+                                    else R.string.start_playback,
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            continueLabel?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
                     if (book?.needsReauth == true && book?.isRemote != true) {
                         Spacer(Modifier.height(12.dp))
@@ -809,66 +846,11 @@ fun BookDetailScreen(
     }
 
     if (editSkipOffsets) {
-        val intro = skipIntroSeconds.toLongOrNull()
-        val outro = skipOutroSeconds.toLongOrNull()
-        val introValid = intro != null && intro in 0L..300L
-        val outroValid = outro != null && outro in 0L..300L
-        AlertDialog(
-            onDismissRequest = { editSkipOffsets = false },
-            title = { Text(stringResource(R.string.skip_intro_outro)) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = skipIntroSeconds,
-                        onValueChange = { value ->
-                            if (value.all(Char::isDigit)) skipIntroSeconds = value
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.skip_intro_seconds)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        isError = skipIntroSeconds.isNotEmpty() && !introValid,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = skipOutroSeconds,
-                        onValueChange = { value ->
-                            if (value.all(Char::isDigit)) skipOutroSeconds = value
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.skip_outro_seconds)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        isError = skipOutroSeconds.isNotEmpty() && !outroValid,
-                    )
-                    if ((!introValid && skipIntroSeconds.isNotEmpty()) ||
-                        (!outroValid && skipOutroSeconds.isNotEmpty())
-                    ) {
-                        Text(
-                            stringResource(R.string.skip_seconds_range),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = introValid && outroValid,
-                    onClick = {
-                        viewModel.setSkipOffsets(
-                            skipIntroMs = checkNotNull(intro) * 1_000L,
-                            skipOutroMs = checkNotNull(outro) * 1_000L,
-                        )
-                        editSkipOffsets = false
-                    },
-                ) { Text(stringResource(R.string.save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { editSkipOffsets = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
+        SkipOffsetsDialog(
+            initialIntroMs = book?.skipIntroMs ?: 0L,
+            initialOutroMs = book?.skipOutroMs ?: 0L,
+            onDismiss = { editSkipOffsets = false },
+            onSave = viewModel::setSkipOffsets,
         )
     }
 
@@ -945,8 +927,6 @@ private fun HeaderIconButton(
         }
     }
 }
-
-/** Fades the immersive header's lower edge into the page background. */
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

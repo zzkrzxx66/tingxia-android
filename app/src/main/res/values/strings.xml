@@ -151,4 +151,32 @@
     <string name="expand">展开</string>
     <string name="collapse">收起</string>
     <string name="word_count_wan">%1$s 万字</string>
+    <!-- Online catalogue -->
+    <string name="online_badge">在线</string>
+    <string name="online_narrated">在线真人有声</string>
+    <string name="online_search_hint">搜索书名或作者</string>
+    <string name="online_search_clear">清除搜索内容</string>
+    <string name="online_search_submit">搜索在线书籍</string>
+    <string name="online_search_results">搜索结果</string>
+    <string name="online_result_count">%1$d 本</string>
+    <string name="online_hot_books">热门有声书</string>
+    <string name="online_shelf_summary">在线书籍加入书架后,与本地有声书共用播放进度、书签、倍速和睡眠定时。</string>
+    <string name="online_empty_title">没有找到相关书籍</string>
+    <string name="online_empty_hint">没有找到“%1$s”,可以尝试更短的书名或作者名。</string>
+    <string name="unknown_author">未知作者</string>
+    <string name="live_narration">真人有声</string>
+    <string name="online_pick_edition">选择演播版本</string>
+    <string name="back_to_results">返回搜索结果</string>
+    <string name="online_tones_title">真人演播版本</string>
+    <string name="online_tones_empty">暂未发现可用的真人演播版本</string>
+    <string name="online_tones_hint">选择一个版本加入书架</string>
+    <string name="live_narrator">真人演播</string>
+    <string name="tone_info_missing">演播信息暂无</string>
+    <string name="add_to_shelf">加入书架</string>
+    <string name="bookmark_added">已添加书签</string>
+    <string name="bookmark_add_failed">添加书签失败</string>
+    <string name="skip_offsets_saved">跳过设置已保存</string>
+    <string name="skip_offsets_failed">更新跳过设置失败</string>
+    <string name="continue_chapter_at">续听 %1$s · %2$s</string>
+    <string name="now_playing_badge">正在播放</string>
 </resources>

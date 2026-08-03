@@ -18,15 +18,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -81,6 +82,7 @@ fun ShelfScreen(
     onOpenBook: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onGoOnline: () -> Unit,
+    playingBookId: Long? = null,
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
@@ -275,37 +277,17 @@ fun ShelfScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 4.dp,
+                                top = 8.dp,
                                 bottom = 24.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            if (books.isNotEmpty()) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 8.dp, bottom = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            stringResource(R.string.my_shelf),
-                                            style = MaterialTheme.typography.titleMedium,
-                                        )
-                                        Spacer(Modifier.weight(1f))
-                                        Text(
-                                            stringResource(R.string.book_count, books.size),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
-                            }
                             items(books, key = { it.id }) { book ->
                                 BookGridItem(
                                     book = book,
+                                    isPlaying = book.id == playingBookId,
                                     onClick = { onOpenBook(book.id) },
                                 )
                             }
@@ -418,7 +400,7 @@ private fun EmptyShelf(
 }
 
 @Composable
-private fun BookGridItem(book: Book, onClick: () -> Unit) {
+private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .clip(MaterialTheme.shapes.medium)
@@ -437,6 +419,29 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 OnlineBadge(
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                 )
+            }
+            if (isPlaying) {
+                // Play dot marks the book loaded in the player, so the shelf answers
+                // "what am I listening to" without reading titles. Remote tiles carry
+                // the online badge at TopStart, so the dot shifts right to sit beside it.
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    shadowElevation = 3.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .padding(start = if (book.isRemote) 52.dp else 0.dp),
+                ) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = stringResource(R.string.now_playing_badge),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .padding(3.dp)
+                            .size(13.dp),
+                    )
+                }
             }
             if (book.needsReauth && !book.isRemote) {
                 Surface(
@@ -468,7 +473,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                         .height(3.dp)
                         .clip(MaterialTheme.shapes.extraSmall),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.Black.copy(alpha = 0.35f),
+                    trackColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f),
                 )
             }
         }
@@ -482,7 +487,7 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            book.author?.takeIf { it.isNotBlank() } ?: if (book.isRemote) "在线真人有声" else formatDuration(book.totalDurationMs),
+            book.author?.takeIf { it.isNotBlank() } ?: if (book.isRemote) stringResource(R.string.online_narrated) else formatDuration(book.totalDurationMs),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -499,7 +504,7 @@ private fun OnlineBadge(modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Text(
-            "在线",
+            stringResource(R.string.online_badge),
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,

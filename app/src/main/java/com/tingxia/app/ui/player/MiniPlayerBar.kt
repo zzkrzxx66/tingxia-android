@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -44,6 +46,9 @@ fun MiniPlayerBar(
             .clickable(onClick = onOpen),
     ) {
         Column {
+            // Hairline on top keeps the bar distinct from content scrolling beneath it,
+            // especially in dark mode where the tonal step is subtle.
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             val progress = if (state.durationMs > 0) {
                 (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
             } else {
@@ -86,18 +91,23 @@ fun MiniPlayerBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(
+                // Filled round toggle echoes the full player's big white play button.
+                Surface(
                     onClick = onToggle,
-                    modifier = Modifier.size(46.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 6.dp).size(38.dp),
                 ) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = stringResource(
-                            if (state.isPlaying) R.string.pause else R.string.play,
-                        ),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(30.dp),
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = stringResource(
+                                if (state.isPlaying) R.string.pause else R.string.play,
+                            ),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
         }
