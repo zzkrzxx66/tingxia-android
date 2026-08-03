@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased (0.10.0 "Paper & Ink")
+
+- P0 design tokens: the whole palette converges to one ink accent
+  (#1E2B25) on warm paper (#F7F4ED); the copper family, the tan CTA and
+  the milk-tea chips are gone. One cinnabar (#B4432E) survives for
+  personal marks (completion dots, bookmarks). Dark mode goes near-black.
+- Book and chapter titles switch to a serif face; shelf titles gain
+  weight. Card radius 12→18dp; shadows are ink-tinted.
+- Detail page: the gold "继续播放" button becomes an ink continue card
+  that belongs to the chapter list; the cover grows to 132dp with a
+  deeper shadow; the "在线真人有声" chip turns translucent black; chapter
+  numbers lose their grey tiles and render as large light serif folios;
+  the current chapter is a full ink strip; finished chapters get a small
+  cinnabar dot instead of a loud checkmark.
+- Player: the cover bleeds wider (0.82) and sits left of centre with the
+  chapter folio number large in the right margin; all text left-aligns to
+  the slider's left edge; the play disc inverts to ink with a white
+  glyph; the "正在播放" caption is gone; tool buttons shrink; the scrub
+  bubble matches the ink play button; cover breathing slows to a 4s
+  resting rhythm and settles smaller on pause.
+
 ## 0.9.7
 
 - Fix a 0.9.6 regression: the chapter list again opens at the chapter in

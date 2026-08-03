@@ -455,13 +455,13 @@ private fun OnlineBadge(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.extraSmall,
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = Color.Black.copy(alpha = 0.45f),
     ) {
         Text(
             stringResource(R.string.online_badge),
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            color = Color.White.copy(alpha = 0.94f),
         )
     }
 }

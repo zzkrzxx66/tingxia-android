@@ -333,19 +333,19 @@ object PlaybackWidgetUpdater {
     private const val ARTWORK_CACHE_BYTES = 512 * 1_024
     private const val ARTWORK_DECODE_SIZE_PX = 192
     private const val ARTWORK_OUTPUT_SIZE_PX = 160
-    private const val ARTWORK_CORNER_RADIUS_PX = 14f
+    private const val ARTWORK_CORNER_RADIUS_PX = 10f
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
     private val FALLBACK_PALETTE = intArrayOf(
-        0xFF315E4B.toInt(),
-        0xFF526C78.toInt(),
-        0xFF745866.toInt(),
+        0xFF1E2B25.toInt(),
+        0xFF4A5A50.toInt(),
+        0xFF6B4A3E.toInt(),
         0xFF75612F.toInt(),
-        0xFF74513E.toInt(),
-        0xFF3F6261.toInt(),
-        0xFF555B75.toInt(),
-        0xFF53613F.toInt(),
+        0xFF3E4A5A.toInt(),
+        0xFF4A3E52.toInt(),
+        0xFF2E4A44.toInt(),
+        0xFF5A4A2E.toInt(),
     )
 }
 
