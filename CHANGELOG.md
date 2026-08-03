@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.7
+
+- Fix a 0.9.6 regression: the chapter list again opens at the chapter in
+  progress instead of the very bottom (the single-card list defeated the
+  initial scroll). Chapters now render as lazy 100-per-card groups.
+- Long books gain a 选集 strip under the tabs (1–100, 101–200, …) that
+  jumps straight to a chapter block instead of scrolling hundreds of rows;
+  it appears only when there is more than one group.
+
 ## 0.9.6
 
 - Shelf top bar now lifts to a raised surface while the grid scrolls

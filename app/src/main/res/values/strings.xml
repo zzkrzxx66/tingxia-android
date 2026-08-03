@@ -64,6 +64,7 @@
     <string name="auto_play_next_summary">当前章节结束后继续播放</string>
     <string name="listening_progress">收听进度</string>
     <string name="chapters_with_count">章节 %1$d</string>
+    <string name="chapter_group_range">%1$d–%2$d</string>
     <string name="bookmarks_with_count">书签 %1$d</string>
     <string name="no_bookmarks">还没有书签</string>
     <string name="continue_playback">继续播放</string>

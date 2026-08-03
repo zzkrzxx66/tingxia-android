@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +41,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +64,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +91,10 @@ import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.playerScrim
+import kotlinx.coroutines.launch
+
+/** Chapters per card/选集 block. */
+private const val CHAPTER_GROUP_SIZE = 100
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,6 +131,7 @@ fun BookDetailScreen(
     var autoPlayDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(error) {
         error?.let {
@@ -148,15 +157,27 @@ fun BookDetailScreen(
         if (uri != null) viewModel.updateBookCover(uri)
     }
 
-    // Jump straight to the chapter in progress on first load; long books otherwise
-    // open at chapter 1 and force a manual hunt. Runs once per book, never again,
-    // so the user's own scrolling is never yanked back.
+    // Chapters render in 100-per-card groups so the lazy list only composes the
+    // visible group; the 选集 strip and the initial scroll both target group items.
+    val chapterGroups = remember(chapters) {
+        chapters.sortedBy { it.index }.chunked(CHAPTER_GROUP_SIZE)
+    }
+    var selectedGroupIndex by remember { mutableIntStateOf(0) }
+
+    // Jump straight to the group containing the chapter in progress on first load;
+    // long books otherwise open at chapter 1 and force a manual hunt. Runs once per
+    // book, never again, so the user's own scrolling is never yanked back.
+    // Item 0 is the header, so chapter groups start at lazy index 1.
     val listState = rememberLazyListState()
     var scrolledToCurrent by remember { mutableStateOf(false) }
     LaunchedEffect(chapters.size, book?.currentChapterId) {
         if (!scrolledToCurrent && chapters.isNotEmpty()) {
             val idx = chapters.indexOfFirst { it.id == book?.currentChapterId }
-            if (idx > 0) listState.scrollToItem(idx)
+            if (idx >= 0) {
+                val groupIndex = idx / CHAPTER_GROUP_SIZE
+                selectedGroupIndex = groupIndex
+                listState.scrollToItem(1 + groupIndex)
+            }
             scrolledToCurrent = true
         }
     }
@@ -579,18 +600,52 @@ fun BookDetailScreen(
                             text = { Text(stringResource(R.string.bookmarks_with_count, bookmarks.size)) },
                         )
                     }
+                    if (selectedTab == 0 && chapterGroups.size > 1) {
+                        // 选集 strip: jump straight to a 100-chapter block instead of
+                        // scrolling through hundreds of rows.
+                        Spacer(Modifier.height(10.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(chapterGroups.size) { groupIndex ->
+                                val group = chapterGroups[groupIndex]
+                                FilterChip(
+                                    selected = groupIndex == selectedGroupIndex,
+                                    onClick = {
+                                        selectedGroupIndex = groupIndex
+                                        scope.launch { listState.scrollToItem(1 + groupIndex) }
+                                    },
+                                    label = {
+                                        Text(
+                                            stringResource(
+                                                R.string.chapter_group_range,
+                                                group.first().index + 1,
+                                                group.last().index + 1,
+                                            ),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(4.dp))
                 }
             }
             if (selectedTab == 0) {
-                if (chapters.isNotEmpty()) {
-                    item(key = "chapter-card") {
+                // One card per 100-chapter group keeps the list lazy: only the
+                // visible group's card is composed, and scrollToItem can land on
+                // the group containing the chapter in progress.
+                chapterGroups.forEachIndexed { groupIndex, group ->
+                    item(key = "chapter-group-${group.first().id}") {
                         ListSectionCard(
-                            rowCount = chapters.size,
-                            modifier = Modifier.padding(horizontal = 16.dp),
+                            rowCount = group.size,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(top = if (groupIndex == 0) 0.dp else 10.dp),
                             dividerStartIndent = 46.dp,
                         ) { index ->
-                            val chapter = chapters[index]
+                            val chapter = group[index]
                             ChapterRow(
                                 chapter = chapter,
                                 isCurrent = chapter.id == book?.currentChapterId,
