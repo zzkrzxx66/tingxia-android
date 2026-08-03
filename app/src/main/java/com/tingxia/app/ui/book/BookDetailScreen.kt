@@ -72,7 +72,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,8 +90,6 @@ import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
-import com.tingxia.app.ui.theme.displayTitleStyle
-import com.tingxia.app.ui.theme.folioNumberStyle
 import com.tingxia.app.ui.theme.playerScrim
 import kotlinx.coroutines.launch
 
@@ -361,12 +358,12 @@ fun BookDetailScreen(
                         ) {
                             Surface(
                                 shape = MaterialTheme.shapes.medium,
-                                shadowElevation = 16.dp,
+                                shadowElevation = 12.dp,
                             ) {
                                 BookCover(
                                     title = book?.title.orEmpty(),
                                     coverPath = book?.coverPath,
-                                    size = 132.dp,
+                                    size = 112.dp,
                                     ratio = COVER_RATIO_PORTRAIT,
                                     corner = CoverCorner.Detail,
                                     realistic = true,
@@ -376,7 +373,7 @@ fun BookDetailScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     book?.title.orEmpty(),
-                                    style = displayTitleStyle,
+                                    style = MaterialTheme.typography.headlineSmall,
                                     color = Color.White,
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
@@ -393,7 +390,7 @@ fun BookDetailScreen(
                                     Spacer(Modifier.height(8.dp))
                                     Surface(
                                         shape = MaterialTheme.shapes.extraSmall,
-                                        color = Color.Black.copy(alpha = 0.42f),
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
@@ -403,13 +400,13 @@ fun BookDetailScreen(
                                                 Icons.Default.Headphones,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(15.dp),
-                                                tint = Color.White.copy(alpha = 0.92f),
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             )
                                             Spacer(Modifier.width(6.dp))
                                             Text(
                                                 stringResource(R.string.online_narrated),
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = Color.White.copy(alpha = 0.92f),
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
                                             )
                                         }
                                     }
@@ -525,49 +522,29 @@ fun BookDetailScreen(
                             null
                         }
                     }
-                    // The continue control is the list's first card, not a standalone
-                    // button: same width, same radius, ink surface. It belongs to the
-                    // page instead of floating above it like a store CTA.
-                    Surface(
+                    Button(
                         onClick = onContinue,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
                         enabled = book?.needsReauth != true && !reauthing && !rescanning,
-                        modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.primary,
-                        shadowElevation = 4.dp,
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(26.dp),
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                stringResource(
+                                    if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
+                                    else R.string.start_playback,
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
                             )
-                            Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            continueLabel?.let {
                                 Text(
-                                    stringResource(
-                                        if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
-                                        else R.string.start_playback,
-                                    ),
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = FontFamily.Serif,
-                                        fontWeight = FontWeight.SemiBold,
-                                    ),
-                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                continueLabel?.let {
-                                    Text(
-                                        it,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
                             }
                         }
                     }
@@ -1026,10 +1003,10 @@ private fun ChapterRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.small)
-            // The current chapter is a full ink strip: findable while scrolling a
-            // long list, and it belongs to the same ink family as the continue card.
+            // The current chapter gets a full-row tint, not just a coloured number tile,
+            // so it stays findable while scrolling a long list.
             .background(
-                if (isCurrent) MaterialTheme.colorScheme.primary
+                if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                 else Color.Transparent,
             )
             .combinedClickable(
@@ -1040,34 +1017,40 @@ private fun ChapterRow(
             .padding(vertical = 10.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Folio number: no tile, just a large light serif digit like a page number.
-        Box(
-            modifier = Modifier.size(width = 40.dp, height = 34.dp),
-            contentAlignment = Alignment.Center,
+        Surface(
+            color = if (isCurrent) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.extraSmall,
+            modifier = Modifier.size(34.dp),
         ) {
-            if (isCurrent) {
-                Icon(
-                    Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
-            } else {
-                Text(
-                    text = "%02d".format(chapter.index + 1),
-                    style = folioNumberStyle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (isCurrent) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                } else {
+                    Text(
+                        text = "%02d".format(chapter.index + 1),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 chapter.displayTitle,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                 color = when {
-                    isCurrent -> MaterialTheme.colorScheme.onPrimary
+                    isCurrent -> MaterialTheme.colorScheme.primary
                     completed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     else -> MaterialTheme.colorScheme.onSurface
                 },
@@ -1078,31 +1061,19 @@ private fun ChapterRow(
                 Text(
                     formatDuration(chapter.durationMs),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isCurrent) {
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        if (completed) {
-            // A small cinnabar dot: a private pencil mark, not a UI checkbox.
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondary),
-            )
-        } else {
-            Icon(
-                Icons.Default.RadioButtonUnchecked,
-                contentDescription = stringResource(R.string.mark_completed),
-                tint = (if (isCurrent) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = 0.4f),
-                modifier = Modifier.size(16.dp),
-            )
-        }
+        Icon(
+            if (completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+            contentDescription = stringResource(
+                if (completed) R.string.mark_incomplete else R.string.mark_completed,
+            ),
+            tint = if (completed) MaterialTheme.colorScheme.secondary
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

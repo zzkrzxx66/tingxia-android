@@ -70,10 +70,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
@@ -158,6 +155,7 @@ fun FullPlayerScreen(
                     .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
                     .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -170,27 +168,34 @@ fun FullPlayerScreen(
                             tint = Color.White,
                         )
                     }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = stringResource(R.string.now_playing),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    // Balance the leading button so the title stays centred.
+                    Spacer(Modifier.size(48.dp))
                 }
 
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(12.dp))
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    // Cover bleeds wider and sits left of centre; the free strip on
-                    // the right holds the chapter folio like a page margin number.
-                    val coverSize = minOf(maxWidth * 0.82f, 300.dp)
+                    val coverSize = minOf(maxWidth * 0.74f, 280.dp)
                     // A slow, barely-there swell keeps the artwork alive while playing.
                     val breathing = rememberInfiniteTransition(label = "coverBreath")
                     val breathScale by breathing.animateFloat(
                         initialValue = 1f,
-                        targetValue = 1.015f,
+                        targetValue = 1.02f,
                         animationSpec = infiniteRepeatable(
-                            tween(4000, easing = FastOutSlowInEasing),
+                            tween(2600, easing = FastOutSlowInEasing),
                             RepeatMode.Reverse,
                         ),
                         label = "coverScale",
                     )
-                    // Pause shrinks the cover slightly instead of snapping mid-breath.
+                    // Ease back to rest on pause instead of snapping from mid-breath.
                     val coverScale by animateFloatAsState(
-                        targetValue = if (state.isPlaying) breathScale else 0.98f,
+                        targetValue = if (state.isPlaying) breathScale else 1f,
                         animationSpec = tween(450, easing = FastOutSlowInEasing),
                         label = "coverSettle",
                     )
@@ -198,7 +203,7 @@ fun FullPlayerScreen(
                         shape = MaterialTheme.shapes.large,
                         shadowElevation = 24.dp,
                         modifier = Modifier
-                            .align(Alignment.CenterStart)
+                            .align(Alignment.Center)
                             .scale(coverScale),
                     ) {
                         BookCover(
@@ -209,42 +214,24 @@ fun FullPlayerScreen(
                             corner = CoverCorner.Hero,
                         )
                     }
-                    if (state.chapterCount > 0) {
-                        Text(
-                            text = "%03d".format(state.chapterIndex + 1),
-                            style = MaterialTheme.typography.displayLarge.copy(
-                                fontFamily = FontFamily.Serif,
-                                fontWeight = FontWeight.Light,
-                                fontSize = 64.sp,
-                                lineHeight = 68.sp,
-                                shadow = onArtworkTextShadow,
-                            ),
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(bottom = 8.dp),
-                        )
-                    }
                 }
-                Spacer(Modifier.height(20.dp))
-                // Everything below is left-aligned to the slider's left edge: one
-                // quiet vertical line down the page instead of centred stacking.
+                Spacer(Modifier.height(24.dp))
                 Text(
                     text = state.bookTitle.orEmpty(),
                     style = MaterialTheme.typography.labelLarge,
                     color = Color.White.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = state.chapterTitle.orEmpty().ifEmpty { stringResource(R.string.nothing_playing) },
                     style = MaterialTheme.typography.headlineSmall.copy(shadow = onArtworkTextShadow),
                     color = Color.White,
+                    textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 if (state.chapterCount > 0) {
                     Spacer(Modifier.height(4.dp))
@@ -256,7 +243,6 @@ fun FullPlayerScreen(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 Spacer(Modifier.height(20.dp))
@@ -270,7 +256,7 @@ fun FullPlayerScreen(
                         val x = (maxWidth - bubbleWidth) * fraction
                         Surface(
                             shape = MaterialTheme.shapes.small,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = Color.White,
                             shadowElevation = 6.dp,
                             modifier = Modifier
                                 .offset(x = x, y = (-30).dp)
@@ -279,7 +265,7 @@ fun FullPlayerScreen(
                             Text(
                                 text = formatDuration(scrubValue.toLong()),
                                 style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color = MaterialTheme.colorScheme.primary,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(vertical = 5.dp),
                             )
@@ -351,14 +337,12 @@ fun FullPlayerScreen(
                             modifier = Modifier.size(34.dp),
                         )
                     }
-                    // Ink disc with a white glyph: the inverse of the old white disc,
-                    // and the same ink as the continue card on the detail page.
                     Surface(
                         onClick = onToggle,
                         modifier = Modifier.size(76.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        shadowElevation = 12.dp,
+                        color = Color.White,
+                        shadowElevation = 10.dp,
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -366,8 +350,8 @@ fun FullPlayerScreen(
                                 contentDescription = stringResource(
                                     if (state.isPlaying) R.string.pause else R.string.play,
                                 ),
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(38.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(40.dp),
                             )
                         }
                     }
@@ -389,7 +373,7 @@ fun FullPlayerScreen(
                     }
                 }
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(28.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -572,7 +556,7 @@ private fun PlayerToolButton(
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.size(72.dp, 58.dp),
+        modifier = Modifier.size(72.dp, 64.dp),
     ) {
         // Active tools sit on a soft halo; on the blurred artwork backdrop a plain
         // colour shift alone was too subtle to read as "on".
@@ -581,20 +565,20 @@ private fun PlayerToolButton(
             enabled = enabled,
             shape = CircleShape,
             color = if (active) Color.White.copy(alpha = 0.24f) else Color.Transparent,
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(44.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     icon,
                     contentDescription = label,
                     tint = tint,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            style = MaterialTheme.typography.labelSmall,
             color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

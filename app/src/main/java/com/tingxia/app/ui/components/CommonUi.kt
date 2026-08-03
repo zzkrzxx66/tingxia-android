@@ -94,7 +94,7 @@ fun BookCover(
         // cells or parent clips, at the cost of a barely-visible inset of the artwork.
         sized
             .padding(1.5.dp)
-            .shadow(elevation = 5.dp, shape = shape, clip = false, spotColor = Color(0xFF3E3628))
+            .shadow(elevation = 5.dp, shape = shape, clip = false, spotColor = Color(0xFF4A3B2C))
     } else {
         sized
     }
@@ -135,9 +135,7 @@ private fun RealisticBookOverlay(compact: Boolean, modifier: Modifier = Modifier
     val pageEdge = if (darkTheme) Color(0xFF4A453D) else Color(0xFFEFE7D8)
     val pageEdgeShade = if (darkTheme) Color(0xFF3A362F) else Color(0xFFE0D5C2)
     val pageLine = if (darkTheme) Color(0xFF5A544A) else Color(0xFFCFC3AE)
-    // Debossed frame stays a whisper: at full strength it reads as a white border
-    // on the paper background and breaks the "printed book" illusion.
-    val frame = if (darkTheme) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.10f)
+    val frame = if (darkTheme) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.22f)
     Box(modifier.fillMaxSize()) {
         // Spine crease: dark fold then a thin highlight, like light raking across the hinge.
         Box(
@@ -311,7 +309,7 @@ fun SectionCard(
     color: Color = MaterialTheme.colorScheme.surface,
     content: @Composable () -> Unit,
 ) {
-    // Light mode: hairline outline + whisper of shadow reads crisper on the paper
+    // Light mode: hairline outline + whisper of shadow reads crisper on the near-white
     // canvas than shadow alone. Dark mode keeps pure shadow; outlines go muddy there.
     val border = if (!isSystemInDarkTheme()) {
         BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
