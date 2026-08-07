@@ -69,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -95,6 +96,10 @@ import kotlinx.coroutines.launch
 
 /** Chapters per card/选集 block. */
 private const val CHAPTER_GROUP_SIZE = 100
+
+// Approximate height of one ChapterRow (10dp vertical padding × 2 + ~44dp content),
+// used to scroll the current chapter into view inside its 100-row group card.
+private val CHAPTER_ROW_HEIGHT = 64.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,22 +169,28 @@ fun BookDetailScreen(
     }
     var selectedGroupIndex by remember { mutableIntStateOf(0) }
 
-    // Jump straight to the group containing the chapter in progress on first load;
-    // long books otherwise open at chapter 1 and force a manual hunt. Runs once per
-    // book, never again, so the user's own scrolling is never yanked back.
+    // Jump straight to the chapter in progress on first load; long books otherwise
+    // open at chapter 1 and force a manual hunt. The scroll is per-group (one lazy
+    // item per 100-chapter card), so the estimated row height offsets into the card.
+    // Runs once per book, never again, so the user's own scrolling is never yanked back.
     // Item 0 is the header, so chapter groups start at lazy index 1.
     val listState = rememberLazyListState()
     var scrolledToCurrent by remember { mutableStateOf(false) }
-    LaunchedEffect(chapters.size, book?.currentChapterId) {
-        if (!scrolledToCurrent && chapters.isNotEmpty()) {
-            val idx = chapters.indexOfFirst { it.id == book?.currentChapterId }
-            if (idx >= 0) {
-                val groupIndex = idx / CHAPTER_GROUP_SIZE
-                selectedGroupIndex = groupIndex
-                listState.scrollToItem(1 + groupIndex)
-            }
-            scrolledToCurrent = true
-        }
+    val chapterRowOffsetPx = with(LocalDensity.current) { CHAPTER_ROW_HEIGHT.roundToPx() }
+    LaunchedEffect(chapters, book?.currentChapterId) {
+        if (scrolledToCurrent || chapters.isEmpty()) return@LaunchedEffect
+        // Wait for the book flow before declaring failure: marking the jump as done
+        // while book is still null would permanently skip it when the book arrives late.
+        val currentChapterId = book?.currentChapterId ?: return@LaunchedEffect
+        val idx = chapters.indexOfFirst { it.id == currentChapterId }
+        if (idx < 0) return@LaunchedEffect // chapter may be mid-reshuffle; retry on next emission
+        val groupIndex = idx / CHAPTER_GROUP_SIZE
+        selectedGroupIndex = groupIndex
+        listState.scrollToItem(
+            1 + groupIndex,
+            scrollOffset = (idx % CHAPTER_GROUP_SIZE) * chapterRowOffsetPx,
+        )
+        scrolledToCurrent = true
     }
 
     Scaffold(
