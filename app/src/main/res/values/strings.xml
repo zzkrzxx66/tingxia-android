@@ -197,4 +197,23 @@
     <string name="remaining_book">全书剩余 %1$s</string>
     <string name="fine_scrub_hint">下拉进入精确调节</string>
     <string name="fine_scrub_active">精确调节中</string>
+    <string name="notification_channel_download">章节下载</string>
+    <string name="notification_channel_download_desc">离线缓存章节时的下载进度</string>
+    <string name="prefetch_notification_title">缓存《%1$s》</string>
+    <string name="prefetch_notification_progress">%1$d/%2$d · %3$s</string>
+    <string name="prefetch_notification_done">缓存完成:成功 %1$d,失败 %2$d</string>
+    <string name="prefetch_notification_cancelled">缓存已取消</string>
+    <string name="cache_menu">离线缓存</string>
+    <string name="cache_all_chapters">缓存全部章节</string>
+    <string name="cache_next_20">缓存接下来 20 章</string>
+    <string name="cache_clear_book">清除本书缓存</string>
+    <string name="cache_status_running">缓存中 %1$d/%2$d</string>
+    <string name="cache_started">已开始后台缓存</string>
+    <string name="cache_cancelled">已取消缓存</string>
+    <string name="cache_cleared">已清除本书缓存</string>
+    <string name="cache_usage">缓存占用 %1$s</string>
+    <string name="clear_cache">清空缓存</string>
+    <string name="cache_cleared_all">已清空全部缓存</string>
+    <string name="cached_badge">已缓存</string>
+    <string name="cache_usage_summary">在线有声书播放时自动缓存,LRU 上限 1GB;也可在书籍详情提前缓存整本。</string>
 </resources>

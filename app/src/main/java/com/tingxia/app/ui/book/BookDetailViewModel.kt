@@ -14,8 +14,11 @@ import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.BookmarkRepository
 import com.tingxia.app.data.repo.RescanPreview
 import com.tingxia.app.data.repo.ReauthDecisionRequiredException
+import com.tingxia.app.player.CacheManager
 import com.tingxia.app.player.LibraryMutationSnapshot
 import com.tingxia.app.player.PlayerController
+import com.tingxia.app.player.PrefetchService
+import androidx.media3.common.util.UnstableApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +29,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
 class BookDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -33,6 +37,7 @@ class BookDetailViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val playerController: PlayerController,
+    val cacheManager: CacheManager,
 ) : ViewModel() {
 
     private val bookId: Long = checkNotNull(savedStateHandle["bookId"])
@@ -71,6 +76,9 @@ class BookDetailViewModel @Inject constructor(
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    /** Online-book prefetch progress, mirrored from the foreground service. */
+    val prefetchState: StateFlow<PrefetchService.PrefetchState> = PrefetchService.state
 
     init {
         viewModelScope.launch {
@@ -314,6 +322,42 @@ class BookDetailViewModel @Inject constructor(
                 playerController.refreshQueueMetadata(bookId)
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新章节标题失败"
+            }
+        }
+    }
+
+    /** Cache the whole book (or [count] chapters starting at [fromIndex]). */
+    fun prefetch(fromIndex: Int = 0, count: Int = -1) {
+        val book = book.value ?: return
+        if (book.isRemote) {
+            PrefetchService.start(app, bookId, fromIndex, count)
+            _message.value = app.getString(R.string.cache_started)
+        }
+    }
+
+    fun cancelPrefetch() {
+        PrefetchService.cancel(app)
+        _message.value = app.getString(R.string.cache_cancelled)
+    }
+
+    fun clearBookCache() {
+        viewModelScope.launch {
+            try {
+                val book = book.value ?: return@launch
+                val chapters = chapters.value
+                chapters.forEach { ch ->
+                    val itemId = ch.remoteItemId ?: return@forEach
+                    val key = cacheManager.cacheKeyForChapter(
+                        book.remoteAudioBookId.orEmpty(), itemId,
+                    )
+                    try {
+                        cacheManager.cache.removeResource(key)
+                    } catch (_: Exception) {
+                    }
+                }
+                _message.value = app.getString(R.string.cache_cleared)
+            } catch (e: Exception) {
+                _error.value = e.message
             }
         }
     }

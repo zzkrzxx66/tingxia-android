@@ -706,6 +706,7 @@ private suspend fun ListenableFuture<androidx.media3.session.SessionResult>.awai
         continuation.invokeOnCancellation { cancel(true) }
     }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 fun Chapter.toMediaItem(
     book: Book,
     chapterCount: Int = 0,
@@ -747,7 +748,9 @@ fun Chapter.toMediaItem(
         .setStartPositionMs(clip.startMs)
         .apply { clip.endMs?.let(::setEndPositionMs) }
         .build()
-    val mediaUri = if (book.isRemote && !book.remoteAudioBookId.isNullOrBlank() && !remoteItemId.isNullOrBlank()) {
+    val isRemoteStream = book.isRemote &&
+        !book.remoteAudioBookId.isNullOrBlank() && !remoteItemId.isNullOrBlank()
+    val mediaUri = if (isRemoteStream) {
         val tone = book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0"
         "https://fq.logix.cc.cd/audio/stream/${book.remoteAudioBookId}/${remoteItemId}?toneId=$tone"
     } else {
@@ -756,6 +759,13 @@ fun Chapter.toMediaItem(
     return MediaItem.Builder()
         .setMediaId("${book.id}_$id")
         .setUri(mediaUri)
+        .apply {
+            // Stable cache key per (audiobook, chapter) so playback and prefetch
+            // share one cache entry regardless of the toneId query param.
+            if (isRemoteStream) {
+                setCustomCacheKey("fqnovel_${book.remoteAudioBookId}_$remoteItemId")
+            }
+        }
         .setMediaMetadata(metadata)
         .setClippingConfiguration(clipping)
         .build()

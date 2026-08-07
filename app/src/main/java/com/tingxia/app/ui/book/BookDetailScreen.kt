@@ -78,6 +78,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.util.UnstableApi
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.R
 import com.tingxia.app.data.model.Bookmark
@@ -103,6 +104,7 @@ private val CHAPTER_ROW_HEIGHT = 64.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@androidx.annotation.OptIn(UnstableApi::class)
 fun BookDetailScreen(
     bookId: Long,
     onBack: () -> Unit,
@@ -311,6 +313,59 @@ fun BookDetailScreen(
                                             autoPlayDialog = true
                                         },
                                     )
+                                    if (book?.isRemote == true) {
+                                        val pf by viewModel.prefetchState.collectAsStateWithLifecycle()
+                                        val runningForThis = pf.running && pf.bookId == bookId
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(stringResource(R.string.cache_all_chapters))
+                                                    if (runningForThis) {
+                                                        Text(
+                                                            stringResource(
+                                                                R.string.cache_status_running,
+                                                                pf.doneCount, pf.totalCount,
+                                                            ),
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                menu = false
+                                                viewModel.prefetch()
+                                            },
+                                            enabled = !runningForThis,
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.cache_next_20)) },
+                                            onClick = {
+                                                menu = false
+                                                val fromIndex = chapters.firstOrNull {
+                                                    it.completionState != 2
+                                                }?.index ?: 0
+                                                viewModel.prefetch(fromIndex = fromIndex, count = 20)
+                                            },
+                                            enabled = !runningForThis,
+                                        )
+                                        if (runningForThis) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.cancel)) },
+                                                onClick = {
+                                                    menu = false
+                                                    viewModel.cancelPrefetch()
+                                                },
+                                            )
+                                        }
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.cache_clear_book)) },
+                                            onClick = {
+                                                menu = false
+                                                viewModel.clearBookCache()
+                                            },
+                                        )
+                                    }
                                     if (book?.isRemote != true) {
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.rescan_folder)) },

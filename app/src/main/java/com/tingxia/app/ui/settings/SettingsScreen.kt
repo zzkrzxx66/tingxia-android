@@ -20,7 +20,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
@@ -260,6 +262,35 @@ fun SettingsScreen(
                         title = stringResource(R.string.import_backup),
                         subtitle = null,
                         onClick = { importBackup.launch(arrayOf("application/json", "text/json", "text/plain")) },
+                    )
+                }
+            }
+
+            // Offline cache (online audiobooks)
+            val cacheBytes by viewModel.cacheBytes.collectAsStateWithLifecycle()
+            LaunchedEffect(Unit) { viewModel.refreshCacheUsage() }
+            SettingsGroup(icon = Icons.Default.CloudDownload, title = stringResource(R.string.cache_menu)) {
+                Column {
+                    SettingsActionRow(
+                        icon = Icons.Default.CloudDownload,
+                        title = stringResource(
+                            R.string.cache_usage,
+                            android.text.format.Formatter.formatShortFileSize(
+                                androidx.compose.ui.platform.LocalContext.current, cacheBytes,
+                            ),
+                        ),
+                        subtitle = stringResource(R.string.cache_usage_summary),
+                        onClick = { viewModel.refreshCacheUsage() },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 52.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                    SettingsActionRow(
+                        icon = Icons.Default.DeleteSweep,
+                        title = stringResource(R.string.clear_cache),
+                        subtitle = null,
+                        onClick = { viewModel.clearCache() },
                     )
                 }
             }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.tingxia.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "0.10.0"
+        versionCode = 32
+        versionName = "0.11.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -129,6 +129,8 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
     implementation(libs.media3.common)
+    implementation(libs.media3.datasource)
+    implementation(libs.media3.database)
 
     implementation(libs.coroutines.android)
     implementation(libs.coil.compose)

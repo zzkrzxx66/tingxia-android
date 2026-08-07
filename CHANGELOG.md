@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0
+
+- Offline cache for online (fqnovel) audiobooks. Playback now streams through a
+  shared ExoPlayer SimpleCache keyed per (audiobook, chapter), so a chapter that
+  has played once keeps playing without network; local SAF files bypass the
+  cache entirely. LRU eviction caps the cache at 1 GB.
+- Prefetch whole books or the next 20 chapters from the book-detail menu. A
+  foreground service downloads chapters into the same cache with an ongoing
+  progress notification, a cancel action, and per-book status in the menu.
+- Settings › 离线缓存 shows current cache usage and a one-tap 清空缓存; the
+  book-detail menu also offers 清除本书缓存 for a single title.
+
 ## 0.10.0
 
 - M4B embedded-chapter parsing: single-file audiobooks expand into real chapters

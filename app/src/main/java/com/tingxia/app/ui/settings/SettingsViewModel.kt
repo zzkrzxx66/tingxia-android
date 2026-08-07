@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import android.net.Uri
 import com.tingxia.app.data.backup.BackupRepository
 import com.tingxia.app.data.repo.UserPreferencesRepository
+import com.tingxia.app.player.CacheManager
 import com.tingxia.app.data.repo.ThemeMode
 import com.tingxia.app.data.repo.PlaybackErrorPolicy
+import androidx.media3.common.util.UnstableApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,10 +16,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferences: UserPreferencesRepository,
     private val backupRepository: BackupRepository,
+    private val cacheManager: CacheManager,
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = preferences.themeMode
@@ -77,6 +81,23 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _error.value = e.message ?: "导入备份失败"
             }
+        }
+    }
+
+    private val _cacheBytes = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val cacheBytes: StateFlow<Long> = _cacheBytes
+
+    fun refreshCacheUsage() {
+        viewModelScope.launch {
+            _cacheBytes.value = runCatching { cacheManager.cachedBytes() }.getOrDefault(0L)
+        }
+    }
+
+    fun clearCache() {
+        viewModelScope.launch {
+            cacheManager.clearAll()
+            _cacheBytes.value = 0L
+            _message.value = "已清空全部缓存"
         }
     }
 

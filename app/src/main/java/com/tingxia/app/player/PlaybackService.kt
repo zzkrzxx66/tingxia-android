@@ -12,6 +12,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -53,6 +54,7 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var bookRepository: BookRepository
     @Inject lateinit var preferences: UserPreferencesRepository
     @Inject lateinit var statsRepository: StatsRepository
+    @Inject lateinit var cacheManager: CacheManager
 
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -91,7 +93,20 @@ class PlaybackService : MediaSessionService() {
             onWriteFailure = { error -> Log.w(TAG, "Progress write failed", error) },
         )
 
+        // Remote http(s) reads go through the shared audio cache via
+        // CacheDataSource; content:// SAF URIs fall through to the local resolver
+        // (DefaultDataSource delegates non-http to File/ContentDataSource, which
+        // simply never hit the cache upstream).
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(this)
+                    .setDataSourceFactory(
+                        androidx.media3.datasource.DefaultDataSource.Factory(
+                            this,
+                            cacheManager.cacheDataSourceFactory(),
+                        ),
+                    ),
+            )
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
