@@ -33,6 +33,9 @@ data class ScannedChapter(
     val durationMs: Long,
     val index: Int,
     val stableKey: String,
+    /** Embedded-chapter clip window (m4b); null = whole file. */
+    val clipStartMs: Long? = null,
+    val clipEndMs: Long? = null,
 )
 
 data class ScannedBook(
@@ -53,6 +56,7 @@ data class ScanProgress(
 class FolderScanner @Inject constructor(
     @ApplicationContext private val context: Context,
     private val metadataReader: MetadataReader,
+    private val embeddedChapterReader: EmbeddedChapterReader,
 ) {
     suspend fun scanFiles(
         uris: List<Uri>,
@@ -66,27 +70,46 @@ class FolderScanner @Inject constructor(
         val completed = AtomicInteger(0)
         val semaphore = Semaphore(METADATA_CONCURRENCY)
         val chapters = coroutineScope {
-            files.mapIndexed { index, file ->
+            files.map { file ->
                 async {
                     semaphore.withPermit {
                         val duration = metadataReader.readDurationMs(file.uri)
                         val done = completed.incrementAndGet()
                         onProgress(ScanProgress(done, file.name, files.size))
-                        ScannedChapter(
-                            title = stripExtension(file.name),
-                            uri = file.uri.toString(),
-                            documentId = file.documentId,
-                            relativePath = file.name,
-                            fileName = file.name,
-                            fileSize = file.fileSize,
-                            mimeType = file.mimeType,
-                            durationMs = duration,
-                            index = index,
-                            stableKey = ChapterIdentity.stableKey(file.name, file.fileSize, duration),
+                        expandEmbeddedChapters(file, duration) { start, end, title ->
+                            ScannedChapter(
+                                title = title,
+                                uri = file.uri.toString(),
+                                documentId = file.documentId,
+                                relativePath = file.name,
+                                fileName = file.name,
+                                fileSize = file.fileSize,
+                                mimeType = file.mimeType,
+                                durationMs = end - start,
+                                index = -1,
+                                stableKey = ChapterIdentity.stableKey(
+                                    "${file.name}#$start", file.fileSize, end - start,
+                                ),
+                                clipStartMs = start,
+                                clipEndMs = end,
+                            )
+                        } ?: listOf(
+                            ScannedChapter(
+                                title = stripExtension(file.name),
+                                uri = file.uri.toString(),
+                                documentId = file.documentId,
+                                relativePath = file.name,
+                                fileName = file.name,
+                                fileSize = file.fileSize,
+                                mimeType = file.mimeType,
+                                durationMs = duration,
+                                index = -1,
+                                stableKey = ChapterIdentity.stableKey(file.name, file.fileSize, duration),
+                            ),
                         )
                     }
                 }
-            }.awaitAll()
+            }.awaitAll().flatten().mapIndexed { index, ch -> ch.copy(index = index) }
         }
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(files.joinToString("\n") { it.uri.toString() }.toByteArray(Charsets.UTF_8))
@@ -151,7 +174,7 @@ class FolderScanner @Inject constructor(
         val completed = AtomicInteger(0)
         val semaphore = Semaphore(METADATA_CONCURRENCY)
         val chapters = coroutineScope {
-            audioFiles.mapIndexed { index, file ->
+            audioFiles.map { file ->
                 async {
                     semaphore.withPermit {
                         coroutineContext.ensureActive()
@@ -160,22 +183,40 @@ class FolderScanner @Inject constructor(
                             val done = completed.incrementAndGet()
                             onProgress(ScanProgress(done, file.relativePath, audioFiles.size))
                         }
-                        val stableKey = ChapterIdentity.stableKey(file.relativePath, file.fileSize, duration)
-                        ScannedChapter(
-                            title = stripExtension(file.name),
-                            uri = file.uri.toString(),
-                            documentId = file.documentId,
-                            relativePath = file.relativePath,
-                            fileName = file.name,
-                            fileSize = file.fileSize,
-                            mimeType = file.mimeType,
-                            durationMs = duration,
-                            index = index,
-                            stableKey = stableKey,
+                        expandEmbeddedChapters(file, duration) { start, end, title ->
+                            ScannedChapter(
+                                title = title,
+                                uri = file.uri.toString(),
+                                documentId = file.documentId,
+                                relativePath = file.relativePath,
+                                fileName = file.name,
+                                fileSize = file.fileSize,
+                                mimeType = file.mimeType,
+                                durationMs = end - start,
+                                index = -1,
+                                stableKey = ChapterIdentity.stableKey(
+                                    "${file.relativePath}#$start", file.fileSize, end - start,
+                                ),
+                                clipStartMs = start,
+                                clipEndMs = end,
+                            )
+                        } ?: listOf(
+                            ScannedChapter(
+                                title = stripExtension(file.name),
+                                uri = file.uri.toString(),
+                                documentId = file.documentId,
+                                relativePath = file.relativePath,
+                                fileName = file.name,
+                                fileSize = file.fileSize,
+                                mimeType = file.mimeType,
+                                durationMs = duration,
+                                index = -1,
+                                stableKey = ChapterIdentity.stableKey(file.relativePath, file.fileSize, duration),
+                            ),
                         )
                     }
                 }
-            }.awaitAll()
+            }.awaitAll().flatten().mapIndexed { index, ch -> ch.copy(index = index) }
         }
 
         if (chapters.isEmpty()) {
@@ -191,6 +232,29 @@ class FolderScanner @Inject constructor(
             chapters = chapters,
             totalDurationMs = chapters.sumOf { it.durationMs },
         )
+    }
+
+    /**
+     * If [file] is a single-file audiobook (m4b/m4a) with embedded chapter markers,
+     * returns one virtual chapter per marker; otherwise null so callers fall back to
+     * treating the whole file as one chapter.
+     */
+    private suspend fun expandEmbeddedChapters(
+        file: AudioFile,
+        fileDurationMs: Long,
+        make: (startMs: Long, endMs: Long, title: String) -> ScannedChapter,
+    ): List<ScannedChapter>? {
+        if (!embeddedChapterReader.isCandidate(file.name, file.mimeType)) return null
+        val embedded = runCatching {
+            embeddedChapterReader.readChapters(file.uri, file.mimeType, file.name)
+        }.getOrNull() ?: return null
+        val base = stripExtension(file.name)
+        val chapters = embedded.mapIndexed { i, c ->
+            val title = c.title?.takeIf { it.isNotBlank() }
+                ?: "$base ${i + 1}"
+            make(c.startMs, c.endMs.coerceAtMost(fileDurationMs.takeIf { it > 0 } ?: c.endMs), title)
+        }
+        return chapters.takeIf { it.isNotEmpty() }
     }
 
     private data class AudioFile(

@@ -59,6 +59,7 @@ import com.tingxia.app.ui.player.PlayerViewModel
 import com.tingxia.app.ui.settings.SettingsScreen
 import com.tingxia.app.ui.shelf.FqNovelCatalogScreen
 import com.tingxia.app.ui.shelf.ShelfScreen
+import com.tingxia.app.ui.stats.StatsScreen
 
 object Routes {
     const val SHELF = "shelf"
@@ -66,6 +67,7 @@ object Routes {
     const val BOOK = "book/{bookId}"
     const val PLAYER = "player"
     const val SETTINGS = "settings"
+    const val STATS = "stats"
 
     fun book(bookId: Long) = "book/$bookId"
 }
@@ -310,7 +312,16 @@ fun TingXiaNavHost(
                         )
                     }
                     composable(Routes.SETTINGS) {
-                        SettingsScreen(onBack = { navController.popBackStack() })
+                        SettingsScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenStats = { navController.navigate(Routes.STATS) },
+                        )
+                    }
+                    composable(Routes.STATS) {
+                        StatsScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenBook = { id -> navController.navigate(Routes.book(id)) },
+                        )
                     }
                 }
             }

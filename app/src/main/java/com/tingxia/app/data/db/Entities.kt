@@ -69,6 +69,29 @@ data class ChapterEntity(
     val completionState: Int = 0,
     val completedAt: Long? = null,
     val remoteItemId: String? = null,
+    /** Embedded-chapter clip window inside the source file (m4b). null = whole file. */
+    val clipStartMs: Long? = null,
+    val clipEndMs: Long? = null,
+)
+
+@Entity(
+    tableName = "listen_sessions",
+    foreignKeys = [
+        ForeignKey(
+            entity = BookEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["bookId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("bookId"), Index("dayStartMs")],
+)
+data class ListenSessionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: Long,
+    /** Epoch ms of the local calendar day this listening time belongs to. */
+    val dayStartMs: Long,
+    val listenedMs: Long,
 )
 
 @Entity(

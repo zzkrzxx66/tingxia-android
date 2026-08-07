@@ -26,6 +26,7 @@ import com.tingxia.app.MainActivity
 import com.tingxia.app.R
 import com.tingxia.app.TingXiaApp
 import com.tingxia.app.data.repo.BookRepository
+import com.tingxia.app.data.repo.StatsRepository
 import com.tingxia.app.data.repo.UserPreferencesRepository
 import com.tingxia.app.widget.PlaybackWidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
@@ -51,6 +52,7 @@ class PlaybackService : MediaSessionService() {
 
     @Inject lateinit var bookRepository: BookRepository
     @Inject lateinit var preferences: UserPreferencesRepository
+    @Inject lateinit var statsRepository: StatsRepository
 
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -69,6 +71,9 @@ class PlaybackService : MediaSessionService() {
     private var lastBookId: Long? = null
     private var lastChapterId: Long? = null
     private var lastPositionMs: Long = 0L
+
+    // Real-listening-time tracking: wall-clock deltas between ticker ticks while playing.
+    private var lastPlayingTickElapsedMs: Long = -1L
 
     override fun onCreate() {
         super.onCreate()
@@ -226,7 +231,7 @@ class PlaybackService : MediaSessionService() {
                         updatePauseAtEnd(session.player)
                         future.set(
                             MediaSession.MediaItemsWithStartPosition(
-                                chapters.map { it.toMediaItem(book, chapters.size) },
+                                PlayerController.buildQueueItems(book, chapters),
                                 plan.startIndex,
                                 plan.startPositionMs,
                             ),
@@ -262,6 +267,7 @@ class PlaybackService : MediaSessionService() {
             while (isActive) {
                 delay(5_000)
                 captureAndEnqueueCurrent(player)
+                trackListening(player)
             }
         }
         player.addListener(object : Player.Listener {
@@ -387,6 +393,25 @@ class PlaybackService : MediaSessionService() {
             if (newIds != null) Triple(newIds.first, newIds.second, newPos) else null
         }
         enter?.let { progressWriter?.enqueue(it.first, it.second, it.third) }
+    }
+
+    private suspend fun trackListening(player: Player) {
+        val now = SystemClock.elapsedRealtime()
+        val snapshot = withContext(Dispatchers.Main.immediate) {
+            val playing = player.isPlaying
+            val bookId = parseIds(player.currentMediaItem)?.first ?: lastBookId
+            if (playing && bookId != null) bookId else null
+        }
+        if (snapshot != null) {
+            val prev = lastPlayingTickElapsedMs
+            lastPlayingTickElapsedMs = now
+            if (prev > 0L) {
+                val delta = (now - prev).coerceAtLeast(0L)
+                if (delta > 0L) statsRepository.recordListening(snapshot, delta)
+            }
+        } else {
+            lastPlayingTickElapsedMs = -1L
+        }
     }
 
     private suspend fun captureAndEnqueueCurrent(player: Player) {

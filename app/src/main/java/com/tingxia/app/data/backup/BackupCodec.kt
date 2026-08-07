@@ -117,6 +117,8 @@ object BackupCodec {
         field("completionState", chapter.completionState.coerceIn(0, 2))
         field("completedAt", chapter.completedAt)
         field("remoteItemId", chapter.remoteItemId)
+        field("clipStartMs", chapter.clipStartMs)
+        field("clipEndMs", chapter.clipEndMs)
     }
 
     private fun chapter(map: Map<String, Value>) = BackupChapter(
@@ -134,6 +136,8 @@ object BackupCodec {
         completionState = map.intOrDefault("completionState", 0).coerceIn(0, 2),
         completedAt = map.longOrNull("completedAt"),
         remoteItemId = map.stringOrNull("remoteItemId"),
+        clipStartMs = map.longOrNull("clipStartMs"),
+        clipEndMs = map.longOrNull("clipEndMs"),
     )
 
     private fun Writer.bookmark(bookmark: BackupBookmark) = obj {

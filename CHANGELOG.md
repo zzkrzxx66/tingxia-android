@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.0
+
+- M4B embedded-chapter parsing: single-file audiobooks expand into real chapters
+  during import and rescan. Chapter titles come from the file's own markers;
+  playback uses Media3 clipping composed with per-book intro/outro skipping.
+  Parsing runs through a pinned, checksum-verified static ffprobe binary
+  (downloaded once, cached) and degrades silently to whole-file chapters when a
+  file has no markers or the binary is unavailable.
+- Listening statistics (设置 › 听书统计): real listening time is recorded on the
+  playback ticker and split across local calendar days — total / last-7-days /
+  today, a weekly bar chart, finished-book count, and a top-books ranking that
+  links back to each book. Deleting a book also removes its stats.
+- The full player now shows time remaining at the current speed: chapter
+  remaining by default, tap to switch to whole-book remaining.
+- Precision scrubbing: while dragging the seek bar, pull down to drop into
+  quarter-sensitivity fine mode (re-anchored so the thumb doesn't jump), with
+  a hint label and haptic feedback on mode change.
+- Room v8 adds chapter clip windows and the listen_sessions table; backups carry
+  clip windows so restored m4b books keep their chapter split.
+
 ## 0.9.7
 
 - Fix a 0.9.6 regression: the chapter list again opens at the chapter in

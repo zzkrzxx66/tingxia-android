@@ -212,3 +212,28 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
         db.execSQL("ALTER TABLE books ADD COLUMN wordCount INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * v7 → v8:
+ * - chapters gain an optional embedded-chapter clip window (m4b)
+ * - listen_sessions powers the listening-stats page
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE chapters ADD COLUMN clipStartMs INTEGER")
+        db.execSQL("ALTER TABLE chapters ADD COLUMN clipEndMs INTEGER")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `listen_sessions` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `bookId` INTEGER NOT NULL,
+                `dayStartMs` INTEGER NOT NULL,
+                `listenedMs` INTEGER NOT NULL,
+                FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_listen_sessions_bookId` ON `listen_sessions` (`bookId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_listen_sessions_dayStartMs` ON `listen_sessions` (`dayStartMs`)")
+    }
+}

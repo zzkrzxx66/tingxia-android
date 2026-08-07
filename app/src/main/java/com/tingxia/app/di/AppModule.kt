@@ -12,6 +12,8 @@ import com.tingxia.app.data.db.migration.MIGRATION_3_4
 import com.tingxia.app.data.db.migration.MIGRATION_4_5
 import com.tingxia.app.data.db.migration.MIGRATION_5_6
 import com.tingxia.app.data.db.migration.MIGRATION_6_7
+import com.tingxia.app.data.db.migration.MIGRATION_7_8
+import com.tingxia.app.data.db.ListenSessionDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -27,7 +29,10 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TingXiaDatabase =
         Room.databaseBuilder(context, TingXiaDatabase::class.java, "tingxia.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+            )
             .build()
 
     @Provides
@@ -38,4 +43,7 @@ object AppModule {
 
     @Provides
     fun provideBookmarkDao(db: TingXiaDatabase): BookmarkDao = db.bookmarkDao()
+
+    @Provides
+    fun provideListenSessionDao(db: TingXiaDatabase): ListenSessionDao = db.listenSessionDao()
 }

@@ -157,6 +157,18 @@ interface BookDao {
 
     @Query("SELECT id FROM books WHERE rootUri = :rootUri LIMIT 1")
     suspend fun findIdByRootUri(rootUri: String): Long?
+
+    @Query("SELECT COUNT(*) FROM books")
+    suspend fun countAll(): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM books
+        WHERE EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id)
+          AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id AND c.completionState != 2)
+        """,
+    )
+    suspend fun countCompleted(): Int
 }
 
 @Dao
@@ -278,3 +290,57 @@ interface BookmarkDao {
     @Query("SELECT COUNT(*) FROM bookmarks WHERE chapterId IN (:chapterIds)")
     suspend fun countForChapters(chapterIds: List<Long>): Int
 }
+
+@Dao
+interface ListenSessionDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(session: ListenSessionEntity)
+
+    @Query("SELECT COALESCE(SUM(listenedMs), 0) FROM listen_sessions")
+    suspend fun totalListenedMs(): Long
+
+    @Query("SELECT COALESCE(SUM(listenedMs), 0) FROM listen_sessions WHERE dayStartMs >= :sinceDayStartMs")
+    suspend fun listenedMsSince(sinceDayStartMs: Long): Long
+
+    @Query(
+        """
+        SELECT dayStartMs, SUM(listenedMs) AS listenedMs
+        FROM listen_sessions
+        WHERE dayStartMs >= :sinceDayStartMs
+        GROUP BY dayStartMs
+        ORDER BY dayStartMs ASC
+        """,
+    )
+    suspend fun dailyTotalsSince(sinceDayStartMs: Long): List<DailyListening>
+
+    @Query(
+        """
+        SELECT ls.bookId AS bookId, b.title AS title, b.coverPath AS coverPath,
+               SUM(ls.listenedMs) AS listenedMs
+        FROM listen_sessions ls
+        INNER JOIN books b ON b.id = ls.bookId
+        GROUP BY ls.bookId
+        ORDER BY listenedMs DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun topBooks(limit: Int): List<BookListening>
+
+    @Query("DELETE FROM listen_sessions WHERE bookId = :bookId")
+    suspend fun deleteForBook(bookId: Long)
+
+    @Query("DELETE FROM listen_sessions")
+    suspend fun clearAll()
+}
+
+data class DailyListening(
+    val dayStartMs: Long,
+    val listenedMs: Long,
+)
+
+data class BookListening(
+    val bookId: Long,
+    val title: String,
+    val coverPath: String?,
+    val listenedMs: Long,
+)

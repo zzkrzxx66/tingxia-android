@@ -180,4 +180,21 @@
     <string name="skip_offsets_failed">更新跳过设置失败</string>
     <string name="continue_chapter_at">续听 %1$s · %2$s</string>
     <string name="now_playing_badge">正在播放</string>
+    <string name="stats_title">听书统计</string>
+    <string name="stats_open">查看听书统计</string>
+    <string name="stats_open_summary">累计时长、近 7 日与常听书籍</string>
+    <string name="stats_overview">总览</string>
+    <string name="stats_total">累计收听</string>
+    <string name="stats_week">近 7 日</string>
+    <string name="stats_today">今日</string>
+    <string name="stats_books_completed">已听完 %1$d / %2$d 本</string>
+    <string name="stats_last_7_days">近 7 日收听</string>
+    <string name="stats_top_books">常听书籍</string>
+    <string name="stats_empty_title">还没有收听记录</string>
+    <string name="stats_empty_body">开始播放后,这里会统计你的收听时长。</string>
+    <string name="loading">加载中…</string>
+    <string name="remaining_chapter">本章剩余 %1$s</string>
+    <string name="remaining_book">全书剩余 %1$s</string>
+    <string name="fine_scrub_hint">下拉进入精确调节</string>
+    <string name="fine_scrub_active">精确调节中</string>
 </resources>

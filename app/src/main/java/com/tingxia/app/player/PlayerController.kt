@@ -50,6 +50,9 @@ data class PlayerUiState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val bufferedMs: Long = 0L,
+    /** Linear position across the whole book (sum of chapter durations + current). */
+    val bookPositionMs: Long = 0L,
+    val bookDurationMs: Long = 0L,
     val speed: Float = 1.0f,
     val usesBookSpeedOverride: Boolean = false,
     val sleepMode: SleepTimerMode = SleepTimerMode.Off,
@@ -226,10 +229,13 @@ class PlayerController @Inject constructor(
         val requestedPos = positionMs
             ?: if (chapterId == null || chapterId == book.currentChapterId) book.currentPositionMs else 0L
         val startChapter = chapters[startIndex]
-        val startClip = chapterClip(startChapter.durationMs, book.skipIntroMs, book.skipOutroMs)
+        val startClip = chapterClip(
+            startChapter.durationMs, book.skipIntroMs, book.skipOutroMs,
+            startChapter.clipStartMs, startChapter.clipEndMs,
+        )
         val startPos = clampToChapterClip(requestedPos, startClip, startChapter.durationMs)
 
-        val items = chapters.map { it.toMediaItem(book, chapters.size) }
+        val items = buildQueueItems(book, chapters)
         val c = controller ?: return false
         c.setMediaItems(items, startIndex, startPos.coerceAtLeast(0L))
         val speed = book.playbackSpeed ?: preferences.defaultSpeed.first()
@@ -269,9 +275,12 @@ class PlayerController @Inject constructor(
         val startId = chapterId ?: chapters.first().id
         val startIndex = chapters.indexOfFirst { it.id == startId }.coerceAtLeast(0)
         val ch = chapters[startIndex]
-        val clip = chapterClip(ch.durationMs, book.skipIntroMs, book.skipOutroMs)
+        val clip = chapterClip(
+            ch.durationMs, book.skipIntroMs, book.skipOutroMs,
+            ch.clipStartMs, ch.clipEndMs,
+        )
         val pos = clampToChapterClip(positionMs, clip, ch.durationMs)
-        c.setMediaItems(chapters.map { it.toMediaItem(book, chapters.size) }, startIndex, pos)
+        c.setMediaItems(buildQueueItems(book, chapters), startIndex, pos)
         c.prepare()
         if (wasPlaying) c.play() else c.pause()
         _state.value = _state.value.copy(chapterCount = chapters.size)
@@ -414,7 +423,10 @@ class PlayerController @Inject constructor(
         // so map it through source-file coordinates into the new clip window.
         val liveClipStartMs = c.currentMediaItem?.clippingConfiguration?.startPositionMs ?: 0L
         val absolutePositionMs = liveClipStartMs + c.currentPosition.coerceAtLeast(0L)
-        val newClip = chapterClip(chapter.durationMs, book.skipIntroMs, book.skipOutroMs)
+        val newClip = chapterClip(
+            chapter.durationMs, book.skipIntroMs, book.skipOutroMs,
+            chapter.clipStartMs, chapter.clipEndMs,
+        )
         val mappedPositionMs = absoluteToClipRelative(absolutePositionMs, newClip, chapter.durationMs)
         // A grown outro must not drop the listener onto the clip end and instantly
         // finish the chapter; keep at least the minimum playable tail.
@@ -425,7 +437,7 @@ class PlayerController @Inject constructor(
         val speed = c.playbackParameters.speed
 
         c.setMediaItems(
-            chapters.map { it.toMediaItem(book, chapters.size) },
+            buildQueueItems(book, chapters),
             startIndex,
             startPositionMs,
         )
@@ -442,7 +454,7 @@ class PlayerController @Inject constructor(
         val book = bookRepository.getBook(bookId) ?: return
         val chapters = bookRepository.getChapters(bookId)
         if (chapters.isEmpty() || c.mediaItemCount != chapters.size) return
-        c.replaceMediaItems(0, c.mediaItemCount, chapters.map { it.toMediaItem(book, chapters.size) })
+        c.replaceMediaItems(0, c.mediaItemCount, buildQueueItems(book, chapters))
         _state.value = _state.value.copy(
             bookTitle = book.title,
             coverPath = book.coverPath,
@@ -601,7 +613,10 @@ class PlayerController @Inject constructor(
             ?: _state.value.usesBookSpeedOverride
         val skipIntroMs = extras?.getLong(KEY_SKIP_INTRO_MS) ?: _state.value.skipIntroMs
         val skipOutroMs = extras?.getLong(KEY_SKIP_OUTRO_MS) ?: _state.value.skipOutroMs
+        val bookTotalMs = extras?.getLong(KEY_BOOK_TOTAL_MS) ?: _state.value.bookDurationMs
+        val chapterStartOffsetMs = extras?.getLong(KEY_CHAPTER_START_OFFSET_MS) ?: 0L
         _state.value = _state.value.copy(
+            bookDurationMs = bookTotalMs,
             bookId = bookId ?: _state.value.bookId,
             bookTitle = item.mediaMetadata.albumTitle?.toString() ?: _state.value.bookTitle,
             chapterId = chapterId,
@@ -614,6 +629,17 @@ class PlayerController @Inject constructor(
             coverPath = item.mediaMetadata.artworkUri?.toString() ?: _state.value.coverPath,
             durationMs = controller?.duration?.coerceAtLeast(0L) ?: _state.value.durationMs,
             positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
+        )
+        updateBookPosition(chapterStartOffsetMs)
+    }
+
+    private fun updateBookPosition(chapterStartOffsetMs: Long? = null) {
+        val c = controller ?: return
+        val offset = chapterStartOffsetMs
+            ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong(KEY_CHAPTER_START_OFFSET_MS)
+            ?: return
+        _state.value = _state.value.copy(
+            bookPositionMs = offset + c.currentPosition.coerceAtLeast(0L),
         )
     }
 
@@ -629,6 +655,7 @@ class PlayerController @Inject constructor(
                         bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
                         isPlaying = c.isPlaying,
                     )
+                    updateBookPosition()
                 }
                 delay(500)
             }
@@ -649,6 +676,18 @@ class PlayerController @Inject constructor(
         const val KEY_BOOK_SPEED_OVERRIDE = "book_speed_override"
         const val KEY_SKIP_INTRO_MS = "skip_intro_ms"
         const val KEY_SKIP_OUTRO_MS = "skip_outro_ms"
+        const val KEY_BOOK_TOTAL_MS = "book_total_ms"
+        const val KEY_CHAPTER_START_OFFSET_MS = "chapter_start_offset_ms"
+
+        /** Builds queue items with each chapter's linear start offset baked in. */
+        fun buildQueueItems(book: Book, chapters: List<Chapter>): List<MediaItem> {
+            var acc = 0L
+            return chapters.sortedBy { it.index }.map { ch ->
+                val item = ch.toMediaItem(book, chapters.size, acc)
+                acc += ch.durationMs.coerceAtLeast(0L)
+                item
+            }
+        }
     }
 }
 
@@ -667,8 +706,18 @@ private suspend fun ListenableFuture<androidx.media3.session.SessionResult>.awai
         continuation.invokeOnCancellation { cancel(true) }
     }
 
-fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
-    val clip = chapterClip(durationMs, book.skipIntroMs, book.skipOutroMs)
+fun Chapter.toMediaItem(
+    book: Book,
+    chapterCount: Int = 0,
+    chapterStartOffsetMs: Long = 0L,
+): MediaItem {
+    val clip = chapterClip(
+        durationMs = durationMs,
+        skipIntroMs = book.skipIntroMs,
+        skipOutroMs = book.skipOutroMs,
+        clipStartMs = clipStartMs,
+        clipEndMs = clipEndMs,
+    )
     val extras = bundleOf(
         PlayerController.KEY_BOOK_ID to book.id,
         PlayerController.KEY_CHAPTER_ID to id,
@@ -678,6 +727,8 @@ fun Chapter.toMediaItem(book: Book, chapterCount: Int = 0): MediaItem {
         PlayerController.KEY_BOOK_SPEED_OVERRIDE to (book.playbackSpeed != null),
         PlayerController.KEY_SKIP_INTRO_MS to book.skipIntroMs,
         PlayerController.KEY_SKIP_OUTRO_MS to book.skipOutroMs,
+        PlayerController.KEY_BOOK_TOTAL_MS to book.totalDurationMs,
+        PlayerController.KEY_CHAPTER_START_OFFSET_MS to chapterStartOffsetMs,
     )
     val metadata = MediaMetadata.Builder()
         .setTitle(displayTitle)

@@ -78,6 +78,8 @@ class BackupRepository @Inject constructor(
                             completionState = ch.completionState,
                             completedAt = ch.completedAt,
                             remoteItemId = ch.remoteItemId,
+                            clipStartMs = ch.clipStartMs,
+                            clipEndMs = ch.clipEndMs,
                         )
                     },
                     bookmarks = bookmarksByBook[book.id].orEmpty().mapNotNull { mark ->
@@ -259,6 +261,8 @@ class BackupRepository @Inject constructor(
         completionState = completionState,
         completedAt = completedAt,
         remoteItemId = remoteItemId,
+        clipStartMs = clipStartMs,
+        clipEndMs = clipEndMs,
     )
 
     private fun BackupBookmark.toEntity(bookId: Long, chapterId: Long) = BookmarkEntity(

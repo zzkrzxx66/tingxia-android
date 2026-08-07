@@ -72,8 +72,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.input.pointer.pointerInput
 import com.tingxia.app.R
 import com.tingxia.app.player.PlaybackSpeeds
 import com.tingxia.app.player.PlayerUiState
@@ -113,6 +118,8 @@ fun FullPlayerScreen(
 ) {
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
+    var fineScrub by remember { mutableStateOf(false) }
+    var showBookRemaining by remember { mutableStateOf(false) }
     var speedMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
     var customSleepDialog by remember { mutableStateOf(false) }
@@ -270,27 +277,94 @@ fun FullPlayerScreen(
                                 modifier = Modifier.padding(vertical = 5.dp),
                             )
                         }
+                        // Fine-scrub hint: pulling down while scrubbing switches to
+                        // quarter sensitivity for long chapters.
+                        Text(
+                            text = stringResource(
+                                if (fineScrub) R.string.fine_scrub_active else R.string.fine_scrub_hint,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = if (fineScrub) 1f else 0.65f),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset(y = 26.dp),
+                        )
                     }
-                    Slider(
-                        value = if (duration > 0f) position.coerceIn(0f, duration) else 0f,
-                        onValueChange = {
-                            if (!scrubbing) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            scrubbing = true
-                            scrubValue = it
-                        },
-                        onValueChangeFinished = {
-                            onSeek(scrubValue.toLong())
-                            scrubbing = false
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        },
-                        valueRange = 0f..(duration.takeIf { it > 0f } ?: 1f),
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = Color.White,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.35f),
-                        ),
-                    )
+                    // Custom scrub area: a transparent drag surface over the Slider
+                    // visual. Horizontal drag scrubs; dragging downward past a
+                    // threshold drops sensitivity to 1/4 (fine mode), anchored at the
+                    // point fine mode was entered so the thumb doesn't jump.
+                    var dragAnchorX by remember { mutableFloatStateOf(0f) }
+                    var fineAnchorValue by remember { mutableFloatStateOf(0f) }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .pointerInput(duration) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    if (duration <= 0f) return@awaitEachGesture
+                                    scrubbing = true
+                                    fineScrub = false
+                                    dragAnchorX = down.position.x
+                                    val widthPx = size.width.coerceAtLeast(1)
+                                    scrubValue = (down.position.x / widthPx * duration).coerceIn(0f, duration)
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    val fineThresholdPx = 40.dp.toPx()
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                            ?: break
+                                        if (!change.pressed) break
+                                        val pos = change.position
+                                        val dy = pos.y - down.position.y
+                                        val dx = pos.x - dragAnchorX
+                                        val nowFine = dy > fineThresholdPx
+                                        if (nowFine != fineScrub) {
+                                            // Re-anchor when entering fine mode so the
+                                            // value continues smoothly at 1/4 speed.
+                                            fineScrub = nowFine
+                                            dragAnchorX = pos.x
+                                            fineAnchorValue = scrubValue
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
+                                        val effectiveDx = pos.x - dragAnchorX
+                                        val sensitivity = if (fineScrub) 0.25f else 1f
+                                        val base = if (fineScrub) fineAnchorValue else 0f
+                                        val delta = effectiveDx / widthPx * duration * sensitivity
+                                        scrubValue = if (fineScrub) {
+                                            (fineAnchorValue + delta).coerceIn(0f, duration)
+                                        } else {
+                                            (down.position.x / widthPx * duration +
+                                                (pos.x - down.position.x) / widthPx * duration * sensitivity
+                                                ).coerceIn(0f, duration)
+                                        }
+                                        change.consume()
+                                    }
+                                    onSeek(scrubValue.toLong())
+                                    scrubbing = false
+                                    fineScrub = false
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Slider(
+                            value = if (duration > 0f) position.coerceIn(0f, duration) else 0f,
+                            onValueChange = {},
+                            enabled = false,
+                            valueRange = 0f..(duration.takeIf { it > 0f } ?: 1f),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.White,
+                                activeTrackColor = Color.White,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.35f),
+                                disabledThumbColor = Color.White,
+                                disabledActiveTrackColor = Color.White,
+                                disabledInactiveTrackColor = Color.White.copy(alpha = 0.35f),
+                            ),
+                        )
+                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -304,13 +378,25 @@ fun FullPlayerScreen(
                         ),
                         color = Color.White.copy(alpha = 0.9f),
                     )
+                    val speed = state.speed.coerceAtLeast(0.25f)
+                    val chapterRemainingMs = ((duration - position) / speed).toLong().coerceAtLeast(0L)
+                    val bookRemainingMs = ((state.bookDurationMs - state.bookPositionMs) / speed)
+                        .toLong().coerceAtLeast(0L)
                     Text(
-                        text = formatDuration(state.durationMs),
+                        text = if (showBookRemaining && state.bookDurationMs > 0L) {
+                            stringResource(R.string.remaining_book, formatDuration(bookRemainingMs))
+                        } else {
+                            stringResource(R.string.remaining_chapter, formatDuration(chapterRemainingMs))
+                        },
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontFeatureSettings = "tnum",
                             shadow = onArtworkTextShadow,
                         ),
                         color = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { if (state.bookDurationMs > 0L) showBookRemaining = !showBookRemaining },
                     )
                 }
 

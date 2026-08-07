@@ -8,6 +8,7 @@ import com.tingxia.app.data.db.migration.MIGRATION_1_2
 import com.tingxia.app.data.db.migration.MIGRATION_2_3
 import com.tingxia.app.data.db.migration.MIGRATION_3_4
 import com.tingxia.app.data.db.migration.MIGRATION_4_5
+import com.tingxia.app.data.db.migration.MIGRATION_7_8
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -255,6 +256,51 @@ class MigrationTest {
                 assertTrue(c.moveToFirst())
                 assertEquals(0L, c.getLong(0))
                 assertEquals(0L, c.getLong(1))
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate7To8_addsChapterClipsAndListenSessions() {
+        helper.createDatabase(testDb, 7).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt,
+                    needsReauth, playbackSpeed, autoPlayNext, lastScannedAt, skipIntroMs,
+                    skipOutroMs, sourceType, description, category, wordCount
+                ) VALUES (
+                    1, 't', NULL, NULL, 'content://tree/m4b', 1000, 1,
+                    NULL, 0, 0, 0, 0, NULL, 1, 0, 0, 0, 'LOCAL', NULL, NULL, 0
+                )
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO chapters (
+                    id, bookId, title, uri, `index`, durationMs, fileName, relativePath,
+                    fileSize, completionState
+                ) VALUES (1, 1, 'c1', 'u1', 0, 1000, 'book.m4b', 'book.m4b', 100, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(testDb, 8, true, MIGRATION_7_8).apply {
+            query("SELECT clipStartMs, clipEndMs FROM chapters WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0))
+                assertTrue(c.isNull(1))
+            }
+            // listen_sessions must accept writes after migration.
+            execSQL(
+                "INSERT INTO listen_sessions (bookId, dayStartMs, listenedMs) VALUES (1, 0, 5000)",
+            )
+            query("SELECT listenedMs FROM listen_sessions WHERE bookId = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(5000L, c.getLong(0))
             }
             close()
         }

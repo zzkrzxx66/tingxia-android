@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
@@ -74,6 +75,7 @@ import com.tingxia.app.ui.theme.dynamicColorSupported
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenStats: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -258,6 +260,18 @@ fun SettingsScreen(
                         title = stringResource(R.string.import_backup),
                         subtitle = null,
                         onClick = { importBackup.launch(arrayOf("application/json", "text/json", "text/plain")) },
+                    )
+                }
+            }
+
+            // Listening stats
+            SettingsGroup(icon = Icons.Default.EmojiEvents, title = stringResource(R.string.stats_title)) {
+                Column {
+                    SettingsActionRow(
+                        icon = Icons.Default.EmojiEvents,
+                        title = stringResource(R.string.stats_open),
+                        subtitle = stringResource(R.string.stats_open_summary),
+                        onClick = onOpenStats,
                     )
                 }
             }

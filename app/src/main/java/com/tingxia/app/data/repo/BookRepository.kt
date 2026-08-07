@@ -63,6 +63,7 @@ class BookRepository @Inject constructor(
     private val bookDao: BookDao,
     private val chapterDao: ChapterDao,
     private val bookmarkDao: BookmarkDao,
+    private val listenSessionDao: com.tingxia.app.data.db.ListenSessionDao,
     private val folderScanner: FolderScanner,
 ) {
     private val offsetIndexCache = ConcurrentHashMap<Long, ChapterOffsetIndex>()
@@ -152,6 +153,8 @@ class BookRepository @Inject constructor(
         if (durationMs <= 0L) return
         database.withTransaction {
             val book = bookDao.getBook(bookId) ?: return@withTransaction
+            // Embedded-chapter (m4b) durations are already the clip-window length;
+            // overwriting them with the whole-file duration would corrupt progress.
             if (book.sourceType != "FQNOVEL") return@withTransaction
             if (chapterDao.setDurationIfUnknown(bookId, chapterId, durationMs) > 0) {
                 bookDao.updateTotalDuration(bookId, chapterDao.totalDuration(bookId))
@@ -219,6 +222,8 @@ class BookRepository @Inject constructor(
                         documentId = ch.documentId,
                         mimeType = ch.mimeType,
                         stableKey = ch.stableKey,
+                        clipStartMs = ch.clipStartMs,
+                        clipEndMs = ch.clipEndMs,
                     )
                 }
                 val ids = chapterDao.insertAll(chapters)
@@ -314,6 +319,8 @@ class BookRepository @Inject constructor(
                         documentId = ch.documentId,
                         mimeType = ch.mimeType,
                         stableKey = ch.stableKey,
+                        clipStartMs = ch.clipStartMs,
+                        clipEndMs = ch.clipEndMs,
                     )
                 },
             )
@@ -472,6 +479,8 @@ class BookRepository @Inject constructor(
                         documentId = sc.documentId,
                         mimeType = sc.mimeType,
                         stableKey = sc.stableKey,
+                        clipStartMs = sc.clipStartMs,
+                        clipEndMs = sc.clipEndMs,
                     ),
                 )
             }
@@ -493,6 +502,8 @@ class BookRepository @Inject constructor(
                             documentId = sc.documentId,
                             mimeType = sc.mimeType,
                             stableKey = sc.stableKey,
+                            clipStartMs = sc.clipStartMs,
+                            clipEndMs = sc.clipEndMs,
                         ),
                     )
                 }
@@ -667,6 +678,7 @@ class BookRepository @Inject constructor(
             emptyList()
         }
         bookDao.deleteBook(bookId)
+        listenSessionDao.deleteForBook(bookId)
         invalidateOffsetIndex(bookId)
         if (book.sourceType == "LOCAL" && !root.startsWith("multi://") && bookDao.countByRootUri(root) == 0) {
             releaseUriPermission(Uri.parse(root))

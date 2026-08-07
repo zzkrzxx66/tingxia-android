@@ -88,6 +88,54 @@ class ChapterClippingTest {
     }
 
     @Test
+    fun embeddedChapterWindow_clipsToWindow() {
+        val clip = chapterClip(
+            durationMs = 600_000L, skipIntroMs = 0L, skipOutroMs = 0L,
+            clipStartMs = 120_000L, clipEndMs = 300_000L,
+        )
+
+        assertEquals(120_000L, clip.startMs)
+        assertEquals(300_000L, clip.endMs)
+        assertEquals(180_000L, clip.playableDurationMs)
+    }
+
+    @Test
+    fun embeddedWindow_combinedWithSkipOffsets() {
+        val clip = chapterClip(
+            durationMs = 600_000L, skipIntroMs = 10_000L, skipOutroMs = 5_000L,
+            clipStartMs = 120_000L, clipEndMs = 300_000L,
+        )
+
+        assertEquals(130_000L, clip.startMs)
+        assertEquals(295_000L, clip.endMs)
+        assertEquals(165_000L, clip.playableDurationMs)
+    }
+
+    @Test
+    fun embeddedWindow_oversizedSkips_leaveMinimumPlayable() {
+        val clip = chapterClip(
+            durationMs = 600_000L, skipIntroMs = 300_000L, skipOutroMs = 300_000L,
+            clipStartMs = 120_000L, clipEndMs = 180_000L,
+        )
+
+        assertEquals(179_000L, clip.startMs)
+        assertEquals(180_000L, clip.endMs)
+        assertEquals(1_000L, clip.playableDurationMs)
+    }
+
+    @Test
+    fun embeddedWindow_positionConversion_isAbsoluteToSourceFile() {
+        val clip = chapterClip(
+            durationMs = 600_000L, skipIntroMs = 0L, skipOutroMs = 0L,
+            clipStartMs = 120_000L, clipEndMs = 300_000L,
+        )
+
+        assertEquals(150_000L, clipRelativeToAbsolute(30_000L, clip))
+        assertEquals(30_000L, absoluteToClipRelative(150_000L, clip, 600_000L))
+        assertEquals(180_000L, absoluteToClipRelative(999_000L, clip, 600_000L))
+    }
+
+    @Test
     fun growingIntro_keepsAbsolutePositionStable() {
         // Listener sits at 40s into the file with a 10s intro clip; raising the
         // intro to 30s must keep them at absolute 40s, not absolute 70s.

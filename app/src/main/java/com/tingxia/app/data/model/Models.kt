@@ -61,6 +61,8 @@ data class Chapter(
     val completionState: Int = 0,
     val completedAt: Long? = null,
     val remoteItemId: String? = null,
+    val clipStartMs: Long? = null,
+    val clipEndMs: Long? = null,
 ) {
     val displayTitle: String
         get() = customTitle?.takeIf { it.isNotBlank() } ?: title
@@ -159,6 +161,8 @@ fun ChapterEntity.toModel() = Chapter(
     completionState = completionState,
     completedAt = completedAt,
     remoteItemId = remoteItemId,
+    clipStartMs = clipStartMs,
+    clipEndMs = clipEndMs,
 )
 
 fun BookmarkEntity.toModel(

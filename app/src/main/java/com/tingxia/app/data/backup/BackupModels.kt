@@ -51,6 +51,8 @@ data class BackupChapter(
     val completionState: Int,
     val completedAt: Long?,
     val remoteItemId: String? = null,
+    val clipStartMs: Long? = null,
+    val clipEndMs: Long? = null,
 )
 
 data class BackupBookmark(
