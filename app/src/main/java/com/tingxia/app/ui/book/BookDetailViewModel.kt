@@ -340,6 +340,28 @@ class BookDetailViewModel @Inject constructor(
         _message.value = app.getString(R.string.cache_cancelled)
     }
 
+    /** Download one chapter into the offline cache. */
+    fun cacheChapter(chapter: Chapter) {
+        val book = book.value ?: return
+        if (!book.isRemote || chapter.remoteItemId.isNullOrBlank()) return
+        PrefetchService.cacheChapter(app, bookId, chapter.id)
+    }
+
+    /** Remove one chapter's bytes from the offline cache. */
+    fun clearChapterCache(chapter: Chapter) {
+        viewModelScope.launch {
+            val book = book.value ?: return@launch
+            val itemId = chapter.remoteItemId ?: return@launch
+            try {
+                cacheManager.cache.removeResource(
+                    cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId),
+                )
+            } catch (_: Exception) {
+            }
+            bookRepository.setChapterCached(chapter.id, false)
+        }
+    }
+
     fun clearBookCache() {
         viewModelScope.launch {
             try {
@@ -355,6 +377,7 @@ class BookDetailViewModel @Inject constructor(
                     } catch (_: Exception) {
                     }
                 }
+                bookRepository.clearCachedFlagForBook(bookId)
                 _message.value = app.getString(R.string.cache_cleared)
             } catch (e: Exception) {
                 _error.value = e.message

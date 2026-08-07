@@ -62,6 +62,8 @@ class PrefetchService : Service() {
         val failedCount: Int = 0,
         val finished: Boolean = false,
         val cancelled: Boolean = false,
+        /** Single-chapter downloads keyed by chapter id, for row spinners. */
+        val singleChapterIds: Set<Long> = emptySet(),
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -75,8 +77,73 @@ class PrefetchService : Service() {
                 val count = intent.getIntExtra(EXTRA_COUNT, -1) // -1 = all remaining
                 if (bookId > 0L) startJob(bookId, fromIndex, count)
             }
+            ACTION_CACHE_CHAPTER -> {
+                val bookId = intent.getLongExtra(EXTRA_BOOK_ID, 0L)
+                val chapterId = intent.getLongExtra(EXTRA_CHAPTER_ID, 0L)
+                if (bookId > 0L && chapterId > 0L) cacheSingleChapter(bookId, chapterId)
+            }
         }
         return START_NOT_STICKY
+    }
+
+    /** Download one chapter into the cache, without a foreground notification. */
+    private fun cacheSingleChapter(bookId: Long, chapterId: Long) {
+        scope.launch {
+            _state.value = _state.value.copy(
+                singleChapterIds = _state.value.singleChapterIds + chapterId,
+            )
+            try {
+                val book = withContext(Dispatchers.IO) { bookRepository.getBook(bookId) }
+                val chapter = withContext(Dispatchers.IO) { bookRepository.getChapter(chapterId) }
+                if (book != null && chapter != null && !chapter.remoteItemId.isNullOrBlank()) {
+                    val ok = withContext(Dispatchers.IO) {
+                        prefetchUrl(cacheUrlFor(book, chapter.remoteItemId!!), cacheKeyFor(book, chapter))
+                    }
+                    if (ok) {
+                        withContext(Dispatchers.IO) {
+                            bookRepository.setChapterCached(chapterId, true)
+                        }
+                    }
+                }
+            } finally {
+                _state.value = _state.value.copy(
+                    singleChapterIds = _state.value.singleChapterIds - chapterId,
+                )
+                if (job?.isActive != true && _state.value.singleChapterIds.isEmpty()) {
+                    stopSelf()
+                }
+            }
+        }
+    }
+
+    private fun cacheKeyFor(book: com.tingxia.app.data.model.Book, chapter: com.tingxia.app.data.model.Chapter): String =
+        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), chapter.remoteItemId.orEmpty())
+
+    private fun cacheUrlFor(book: com.tingxia.app.data.model.Book, remoteItemId: String): String =
+        "https://fq.logix.cc.cd/audio/stream/" +
+            "${book.remoteAudioBookId}/$remoteItemId?toneId=" +
+            (book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0")
+
+    /** Blocking download of one URL into the shared cache. Caller provides the dispatcher. */
+    private fun prefetchUrl(url: String, key: String): Boolean {
+        return try {
+            val dataSourceFactory = CacheDataSource.Factory()
+                .setCache(cacheManager.cache)
+                .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            val dataSpec = DataSpec.Builder().setUri(url).setKey(key).build()
+            val dataSource = dataSourceFactory.createDataSource()
+            val writer = CacheWriter(dataSource, dataSpec, null) { _, _, _ -> }
+            try {
+                writer.cache()
+                true
+            } finally {
+                runCatching { dataSource.close() }
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            false
+        }
     }
 
     private fun startJob(bookId: Long, fromIndex: Int, count: Int) {
@@ -104,23 +171,18 @@ class PrefetchService : Service() {
                 )
                 updateNotification()
 
-                val dataSourceFactory = CacheDataSource.Factory()
-                    .setCache(cacheManager.cache)
-                    .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
                 targets.forEach { chapter ->
                     currentCoroutineContext().ensureActive()
                     _state.value = _state.value.copy(currentChapterTitle = chapter.displayTitle)
                     updateNotification()
-                    val key = cacheManager.cacheKeyForChapter(
-                        book.remoteAudioBookId.orEmpty(),
-                        chapter.remoteItemId.orEmpty(),
-                    )
-                    val url = "https://fq.logix.cc.cd/audio/stream/" +
-                        "${book.remoteAudioBookId}/${chapter.remoteItemId}?toneId=" +
-                        (book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0")
-                    val ok = prefetchChapter(dataSourceFactory, url, key)
+                    val ok = withContext(Dispatchers.IO) {
+                        prefetchUrl(cacheUrlFor(book, chapter.remoteItemId!!), cacheKeyFor(book, chapter))
+                    }
+                    if (ok) {
+                        withContext(Dispatchers.IO) {
+                            bookRepository.setChapterCached(chapter.id, true)
+                        }
+                    }
                     _state.value = _state.value.copy(
                         doneCount = _state.value.doneCount + 1,
                         failedCount = _state.value.failedCount + if (ok) 0 else 1,
@@ -135,34 +197,6 @@ class PrefetchService : Service() {
                     finish(cancelled = false)
                 }
             }
-        }
-    }
-
-    private suspend fun prefetchChapter(
-        factory: CacheDataSource.Factory,
-        url: String,
-        key: String,
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val dataSpec = DataSpec.Builder()
-                .setUri(url)
-                .setKey(key)
-                .build()
-            val dataSource = factory.createDataSource()
-            val writer = CacheWriter(
-                dataSource,
-                dataSpec,
-                null,
-            ) { _, _, _ -> }
-            try {
-                writer.cache()
-                true
-            } finally {
-                runCatching { dataSource.close() }
-            }
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            false
         }
     }
 
@@ -262,7 +296,9 @@ class PrefetchService : Service() {
         private const val NOTIFICATION_ID = 42
         const val ACTION_START = "com.tingxia.app.prefetch.START"
         const val ACTION_CANCEL = "com.tingxia.app.prefetch.CANCEL"
+        const val ACTION_CACHE_CHAPTER = "com.tingxia.app.prefetch.CACHE_CHAPTER"
         const val EXTRA_BOOK_ID = "bookId"
+        const val EXTRA_CHAPTER_ID = "chapterId"
         const val EXTRA_FROM_INDEX = "fromIndex"
         const val EXTRA_COUNT = "count"
 
@@ -283,6 +319,16 @@ class PrefetchService : Service() {
             context.startService(
                 Intent(context, PrefetchService::class.java).setAction(ACTION_CANCEL),
             )
+        }
+
+        /** Download a single chapter into the cache (no notification, no queue). */
+        fun cacheChapter(context: Context, bookId: Long, chapterId: Long) {
+            val intent = Intent(context, PrefetchService::class.java).apply {
+                action = ACTION_CACHE_CHAPTER
+                putExtra(EXTRA_BOOK_ID, bookId)
+                putExtra(EXTRA_CHAPTER_ID, chapterId)
+            }
+            context.startService(intent)
         }
     }
 }

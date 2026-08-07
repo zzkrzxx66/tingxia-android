@@ -238,6 +238,12 @@ interface ChapterDao {
     )
     suspend fun setAllCompleted(bookId: Long, completed: Boolean, completedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE chapters SET isCached = :cached WHERE id = :chapterId")
+    suspend fun setChapterCached(chapterId: Long, cached: Boolean)
+
+    @Query("UPDATE chapters SET isCached = 0 WHERE bookId = :bookId")
+    suspend fun clearCachedFlagForBook(bookId: Long)
+
     @Query("UPDATE chapters SET customTitle = :customTitle WHERE id = :chapterId")
     suspend fun updateCustomTitle(chapterId: Long, customTitle: String?)
 

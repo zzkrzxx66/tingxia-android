@@ -9,6 +9,7 @@ import com.tingxia.app.data.db.migration.MIGRATION_2_3
 import com.tingxia.app.data.db.migration.MIGRATION_3_4
 import com.tingxia.app.data.db.migration.MIGRATION_4_5
 import com.tingxia.app.data.db.migration.MIGRATION_7_8
+import com.tingxia.app.data.db.migration.MIGRATION_8_9
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -301,6 +302,47 @@ class MigrationTest {
             query("SELECT listenedMs FROM listen_sessions WHERE bookId = 1").use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals(5000L, c.getLong(0))
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate8To9_addsCachedFlag() {
+        helper.createDatabase(testDb, 8).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt,
+                    needsReauth, playbackSpeed, autoPlayNext, lastScannedAt, skipIntroMs,
+                    skipOutroMs, sourceType, description, category, wordCount
+                ) VALUES (
+                    1, 't', NULL, NULL, 'content://tree/x', 1000, 1,
+                    NULL, 0, 0, 0, 0, NULL, 1, 0, 0, 0, 'LOCAL', NULL, NULL, 0
+                )
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO chapters (
+                    id, bookId, title, uri, `index`, durationMs, fileName, relativePath,
+                    fileSize, completionState
+                ) VALUES (1, 1, 'c1', 'u1', 0, 1000, 'a.mp3', 'a.mp3', 100, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(testDb, 9, true, MIGRATION_8_9).apply {
+            query("SELECT isCached FROM chapters WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0, c.getInt(0))
+            }
+            execSQL("UPDATE chapters SET isCached = 1 WHERE id = 1")
+            query("SELECT isCached FROM chapters WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(1, c.getInt(0))
             }
             close()
         }

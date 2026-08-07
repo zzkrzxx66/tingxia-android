@@ -237,3 +237,10 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_listen_sessions_dayStartMs` ON `listen_sessions` (`dayStartMs`)")
     }
 }
+
+/** v8 → v9: chapters remember whether their audio sits in the offline cache. */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE chapters ADD COLUMN isCached INTEGER NOT NULL DEFAULT 0")
+    }
+}

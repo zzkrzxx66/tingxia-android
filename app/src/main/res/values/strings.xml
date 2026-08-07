@@ -216,4 +216,6 @@
     <string name="cache_cleared_all">已清空全部缓存</string>
     <string name="cached_badge">已缓存</string>
     <string name="cache_usage_summary">在线有声书播放时自动缓存,LRU 上限 1GB;也可在书籍详情提前缓存整本。</string>
+    <string name="cache_chapter">缓存本章</string>
+    <string name="cache_clear_chapter">清除本章缓存</string>
 </resources>

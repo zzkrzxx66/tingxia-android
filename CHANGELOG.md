@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0
+
+- Chapter-level cache control in the chapter list: every online-book row gets a
+  download icon — tap to cache that chapter, spinner while it downloads, tap a
+  cached chapter to evict it. The long-press menu gains 缓存本章 / 清除本章缓存.
+  Cache state is persisted in the database (v9) so the list reflects reality.
+- Whole-book / next-20 prefetch stays in the book-detail menu, now marking
+  chapters as cached as each one lands; playing a book also backfills the
+  flags from whatever already sits in the on-disk cache.
+- Fix: mini player capsule lost its cover when the book used a local cover
+  file — artwork file: URIs are now restored to plain filesystem paths before
+  they reach the UI state.
+
 ## 0.11.0
 
 - Offline cache for online (fqnovel) audiobooks. Playback now streams through a

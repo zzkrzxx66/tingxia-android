@@ -82,6 +82,8 @@ class PlayerController @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    @Inject lateinit var cacheManager: CacheManager
+
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var positionJob: Job? = null
@@ -243,6 +245,18 @@ class PlayerController @Inject constructor(
         // autoPlayNext: Media3 continues by default; service enforces EndOfChapter sleep.
         c.prepare()
         c.play()
+        if (book.isRemote) {
+            // Pre-populate the cached flag from whatever is already on disk
+            // (playback itself fills the cache as it streams).
+            scope.launch {
+                chapters.forEach { ch ->
+                    val itemId = ch.remoteItemId ?: return@forEach
+                    if (!ch.isCached && isChapterFullyCached(book, itemId)) {
+                        bookRepository.setChapterCached(ch.id, true)
+                    }
+                }
+            }
+        }
 
         _state.value = _state.value.copy(
             bookId = book.id,
@@ -626,11 +640,25 @@ class PlayerController @Inject constructor(
             usesBookSpeedOverride = usesBookSpeedOverride,
             skipIntroMs = skipIntroMs,
             skipOutroMs = skipOutroMs,
-            coverPath = item.mediaMetadata.artworkUri?.toString() ?: _state.value.coverPath,
+            coverPath = item.mediaMetadata.artworkUri?.let { uri ->
+                // Restore plain filesystem paths from file: URIs so covers still resolve
+                // after process death (SAF file: persist permission is not guaranteed).
+                if (uri.scheme == "file") uri.path else uri.toString()
+            } ?: _state.value.coverPath,
             durationMs = controller?.duration?.coerceAtLeast(0L) ?: _state.value.durationMs,
             positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
         )
         updateBookPosition(chapterStartOffsetMs)
+    }
+
+    /** True when the whole chapter payload is already in the offline cache. */
+    fun isChapterFullyCached(book: Book, remoteItemId: String): Boolean {
+        return try {
+            val key = "fqnovel_${book.remoteAudioBookId}_$remoteItemId"
+            cacheManager.isFullyCached(key)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun updateBookPosition(chapterStartOffsetMs: Long? = null) {

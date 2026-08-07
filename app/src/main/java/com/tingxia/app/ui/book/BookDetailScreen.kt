@@ -31,6 +31,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MoreVert
@@ -115,6 +117,7 @@ fun BookDetailScreen(
 ) {
     val book by viewModel.book.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
+    val prefetchState by viewModel.prefetchState.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val reauthing by viewModel.reauthing.collectAsStateWithLifecycle()
     val reauthProgress by viewModel.reauthProgress.collectAsStateWithLifecycle()
@@ -314,7 +317,7 @@ fun BookDetailScreen(
                                         },
                                     )
                                     if (book?.isRemote == true) {
-                                        val pf by viewModel.prefetchState.collectAsStateWithLifecycle()
+                                        val pf = prefetchState
                                         val runningForThis = pf.running && pf.bookId == bookId
                                         DropdownMenuItem(
                                             text = {
@@ -716,6 +719,15 @@ fun BookDetailScreen(
                                 chapter = chapter,
                                 isCurrent = chapter.id == book?.currentChapterId,
                                 enabled = book?.needsReauth != true,
+                                showCacheAction = book?.isRemote == true,
+                                cacheInProgress = prefetchState.singleChapterIds.contains(chapter.id),
+                                onCacheClick = {
+                                    if (chapter.isCached) {
+                                        viewModel.clearChapterCache(chapter)
+                                    } else {
+                                        viewModel.cacheChapter(chapter)
+                                    }
+                                },
                                 onClick = { onPlayChapter(chapter.id) },
                                 onLongClick = { chapterMenuFor = chapter },
                             )
@@ -779,6 +791,26 @@ fun BookDetailScreen(
                     viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
                 },
             )
+            if (book?.isRemote == true && !chapter.remoteItemId.isNullOrBlank()) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                if (chapter.isCached) R.string.cache_clear_chapter
+                                else R.string.cache_chapter,
+                            ),
+                        )
+                    },
+                    onClick = {
+                        chapterMenuFor = null
+                        if (chapter.isCached) {
+                            viewModel.clearChapterCache(chapter)
+                        } else {
+                            viewModel.cacheChapter(chapter)
+                        }
+                    },
+                )
+            }
         }
     }
 
@@ -1061,6 +1093,9 @@ private fun ChapterRow(
     chapter: Chapter,
     isCurrent: Boolean,
     enabled: Boolean = true,
+    showCacheAction: Boolean = false,
+    cacheInProgress: Boolean = false,
+    onCacheClick: (() -> Unit)? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -1129,6 +1164,31 @@ private fun ChapterRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+        if (showCacheAction && !chapter.remoteItemId.isNullOrBlank()) {
+            Spacer(Modifier.width(4.dp))
+            if (cacheInProgress) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                IconButton(
+                    onClick = { onCacheClick?.invoke() },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        if (chapter.isCached) Icons.Default.CloudDone
+                        else Icons.Default.CloudDownload,
+                        contentDescription = stringResource(
+                            if (chapter.isCached) R.string.cached_badge else R.string.cache_menu,
+                        ),
+                        tint = if (chapter.isCached) MaterialTheme.colorScheme.secondary
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
         Icon(

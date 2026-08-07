@@ -72,6 +72,8 @@ data class ChapterEntity(
     /** Embedded-chapter clip window inside the source file (m4b). null = whole file. */
     val clipStartMs: Long? = null,
     val clipEndMs: Long? = null,
+    /** Fully present in the offline audio cache (online books only). */
+    val isCached: Boolean = false,
 )
 
 @Entity(

@@ -46,6 +46,21 @@ class CacheManager @Inject constructor(
     fun cacheKeyForChapter(bookRemoteAudioBookId: String, remoteItemId: String): String =
         "fqnovel_${bookRemoteAudioBookId}_$remoteItemId"
 
+    /** True when every byte of [key] is already cached. */
+    fun isFullyCached(key: String): Boolean {
+        return try {
+            val meta = cache.getContentMetadata(key)
+            val length = meta.get(
+                androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH,
+                Long.MIN_VALUE,
+            )
+            if (length == Long.MIN_VALUE) return false
+            cache.getCachedBytes(key, 0, length) >= length
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     /** Sum of all cached bytes, in the app's cache directory. */
     suspend fun cachedBytes(): Long = withContext(Dispatchers.IO) {
         cache.cacheSpace

@@ -63,6 +63,8 @@ data class Chapter(
     val remoteItemId: String? = null,
     val clipStartMs: Long? = null,
     val clipEndMs: Long? = null,
+    /** Fully present in the offline audio cache (online books only). */
+    val isCached: Boolean = false,
 ) {
     val displayTitle: String
         get() = customTitle?.takeIf { it.isNotBlank() } ?: title
@@ -163,6 +165,7 @@ fun ChapterEntity.toModel() = Chapter(
     remoteItemId = remoteItemId,
     clipStartMs = clipStartMs,
     clipEndMs = clipEndMs,
+    isCached = isCached,
 )
 
 fun BookmarkEntity.toModel(

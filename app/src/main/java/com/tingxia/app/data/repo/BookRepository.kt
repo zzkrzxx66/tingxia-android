@@ -710,6 +710,12 @@ class BookRepository @Inject constructor(
         }
     }
 
+    suspend fun setChapterCached(chapterId: Long, cached: Boolean) =
+        chapterDao.setChapterCached(chapterId, cached)
+
+    suspend fun clearCachedFlagForBook(bookId: Long) =
+        chapterDao.clearCachedFlagForBook(bookId)
+
     suspend fun setChapterCompleted(chapterId: Long, completed: Boolean) {
         chapterDao.setCompleted(chapterId, completed)
     }
