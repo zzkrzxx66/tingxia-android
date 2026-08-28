@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Visual pass over the shelf and shared surfaces:
+  - Softer corner ladder (cards 16dp, sheets/buttons 20–28dp, artwork 8–18dp) replaces the
+    near-rectangular print look, and cards lost their hairline outline in favour of a soft
+    shadow — at the new radii the outline made every card read as a form field.
+  - Shelf tiles are larger (adaptive 108dp instead of 88dp) and carry a play button in the
+    bottom-right corner: one tap resumes that book, the rest of the tile still opens the book
+    page. The progress line moved beside it so the two never overlap.
+  - New 继续收听 hero card at the top of the shelf — last book, percent listened, time left and a
+    big resume button. It scrolls away with the grid, as does the filter/sort row.
+  - Mini player is a floating capsule instead of a full-width bar, with chapter progress drawn
+    as a ring around the play button rather than a hairline across the top.
+  - The online page shows shimmering placeholder tiles while the hot list is still loading.
+
 ## 0.13.1
 
 - Chapter-title alignment for online metadata sync no longer assumes both sides start at the same

@@ -1,5 +1,13 @@
 package com.tingxia.app.ui.shelf
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.ui.graphics.Brush
+import com.tingxia.app.ui.components.CoverPlayButton
+import com.tingxia.app.ui.components.SectionCard
+import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
+import com.tingxia.app.ui.theme.CoverCorner
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -82,10 +90,13 @@ fun ShelfScreen(
     onOpenBook: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onGoOnline: () -> Unit,
+    onPlayBook: (Long) -> Unit = {},
     playingBookId: Long? = null,
+    isPlaying: Boolean = false,
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
+    val recent by viewModel.recent.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
@@ -207,91 +218,55 @@ fun ShelfScreen(
                             focusedContainerColor = MaterialTheme.colorScheme.surface,
                         ),
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val filterOptions = listOf(
-                            ShelfFilter.ALL to stringResource(R.string.filter_all),
-                            ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
-                            ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
-                            ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
-                            ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
-                        )
-                        LazyRow(
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(
-                                filterOptions,
-                                key = { it.first.name },
-                            ) { (value, label) ->
-                                FilterChip(
-                                    selected = filter == value,
-                                    onClick = { viewModel.setFilter(value) },
-                                    label = { Text(label) },
-                                )
-                            }
-                        }
-                        Box {
-                            AssistChip(
-                                onClick = { sortMenu = true },
-                                label = { Text(sortLabel(sort), maxLines = 1) },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.Sort,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                },
-                            )
-                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                                listOf(
-                                    ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
-                                    ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
-                                    ShelfSort.TITLE to stringResource(R.string.book_title),
-                                    ShelfSort.PROGRESS to stringResource(R.string.progress),
-                                ).forEach { (value, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            viewModel.setSort(value)
-                                            sortMenu = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.width(16.dp))
-                    }
-
-                    if (books.isEmpty() && !importing) {
+                    if (books.isEmpty() && !importing && (query.isNotBlank() || filter != ShelfFilter.ALL)) {
+                        EmptyShelf(filtered = true, onImport = {}, onGoOnline = onGoOnline)
+                    } else if (books.isEmpty() && !importing && recent == null) {
                         EmptyShelf(
-                            filtered = query.isNotBlank() || filter != ShelfFilter.ALL,
+                            filtered = false,
                             onImport = { openTree.launch(null) },
                             onGoOnline = onGoOnline,
                         )
                     } else {
+                        // Hero card and the filter row scroll with the grid, so the shelf reads as
+                        // one continuous surface instead of a fixed toolbar stack.
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 88.dp),
+                            columns = GridCells.Adaptive(minSize = 108.dp),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 8.dp,
+                                top = 12.dp,
                                 bottom = 24.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(18.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
+                            recent?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }?.let { book ->
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    ContinueListeningCard(
+                                        book = book,
+                                        isPlaying = isPlaying && book.id == playingBookId,
+                                        onOpen = { onOpenBook(book.id) },
+                                        onPlay = { onPlayBook(book.id) },
+                                    )
+                                }
+                            }
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                ShelfFilterRow(
+                                    filter = filter,
+                                    sort = sort,
+                                    sortMenuOpen = sortMenu,
+                                    onSortMenuChange = { sortMenu = it },
+                                    onFilterChange = viewModel::setFilter,
+                                    onSortChange = viewModel::setSort,
+                                )
+                            }
                             items(books, key = { it.id }) { book ->
                                 BookGridItem(
                                     book = book,
                                     isPlaying = book.id == playingBookId,
                                     onClick = { onOpenBook(book.id) },
+                                    onPlay = { onPlayBook(book.id) },
                                 )
                             }
                         }
@@ -373,7 +348,12 @@ private fun EmptyShelf(
 }
 
 @Composable
-private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> Unit) {
+private fun BookGridItem(
+    book: Book,
+    isPlaying: Boolean = false,
+    onClick: () -> Unit,
+    onPlay: () -> Unit = {},
+) {
     BookGridTile(
         title = book.title,
         coverPath = book.coverPath,
@@ -429,6 +409,18 @@ private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> 
                     )
                 }
             }
+            if (!book.needsReauth) {
+                // One-tap continue straight from the shelf; the rest of the tile still opens the
+                // book page.
+                CoverPlayButton(
+                    onClick = onPlay,
+                    isPlaying = isPlaying,
+                    contentDescription = stringResource(R.string.shelf_play_book, book.title),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp),
+                )
+            }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
                 // Progress rides the artwork itself so every tile keeps the same height.
                 // The track needs real contrast against dark covers; theme scrim at low
@@ -436,10 +428,10 @@ private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> 
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp)
-                        .padding(bottom = 6.dp)
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(0.62f)
+                        .padding(start = 6.dp)
+                        .padding(bottom = 12.dp)
                         .height(3.dp)
                         .clip(MaterialTheme.shapes.extraSmall),
                     color = MaterialTheme.colorScheme.primary,
@@ -472,4 +464,167 @@ private fun sortLabel(sort: ShelfSort): String = when (sort) {
     ShelfSort.IMPORTED -> stringResource(R.string.sort_recent_import)
     ShelfSort.TITLE -> stringResource(R.string.book_title)
     ShelfSort.PROGRESS -> stringResource(R.string.progress)
+}
+
+/**
+ * Shelf hero: the book the listener was last on, with a one-tap resume. Ximalaya-style entry point
+ * so the most likely action is not buried inside the grid.
+ */
+@Composable
+private fun ContinueListeningCard(
+    book: Book,
+    isPlaying: Boolean,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    SectionCard(
+        onClick = onOpen,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box {
+            // A whisper of primary behind the artwork side ties the card to the brand colour
+            // without turning it into a coloured block.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            0f to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                            0.75f to MaterialTheme.colorScheme.surface,
+                        ),
+                    ),
+            )
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BookCover(
+                    title = book.title,
+                    coverPath = book.coverPath,
+                    size = 62.dp,
+                    ratio = COVER_RATIO_PORTRAIT,
+                    corner = CoverCorner.Card,
+                    realistic = true,
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.shelf_continue_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        book.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
+                    Text(
+                        if (book.lastPlayedAt > 0) {
+                            stringResource(
+                                R.string.shelf_continue_progress,
+                                (book.progressFraction * 100).toInt(),
+                                formatDuration(remainingMs),
+                            )
+                        } else {
+                            stringResource(
+                                R.string.shelf_continue_fresh,
+                                formatDuration(book.totalDurationMs),
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { book.progressFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(MaterialTheme.shapes.extraSmall),
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                CoverPlayButton(
+                    onClick = onPlay,
+                    isPlaying = isPlaying,
+                    size = 46.dp,
+                    contentDescription = stringResource(R.string.shelf_play_book, book.title),
+                )
+            }
+        }
+    }
+}
+
+/** Filter chips + sort picker, kept in one row so it can ride inside the shelf grid. */
+@Composable
+private fun ShelfFilterRow(
+    filter: ShelfFilter,
+    sort: ShelfSort,
+    sortMenuOpen: Boolean,
+    onSortMenuChange: (Boolean) -> Unit,
+    onFilterChange: (ShelfFilter) -> Unit,
+    onSortChange: (ShelfSort) -> Unit,
+) {
+    val filterOptions = listOf(
+        ShelfFilter.ALL to stringResource(R.string.filter_all),
+        ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
+        ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
+        ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
+        ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(filterOptions, key = { it.first.name }) { (value, label) ->
+                FilterChip(
+                    selected = filter == value,
+                    onClick = { onFilterChange(value) },
+                    label = { Text(label) },
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Box {
+            AssistChip(
+                onClick = { onSortMenuChange(true) },
+                label = { Text(sortLabel(sort), maxLines = 1) },
+                leadingIcon = {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                },
+            )
+            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { onSortMenuChange(false) }) {
+                listOf(
+                    ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
+                    ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
+                    ShelfSort.TITLE to stringResource(R.string.book_title),
+                    ShelfSort.PROGRESS to stringResource(R.string.progress),
+                ).forEach { (value, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            onSortChange(value)
+                            onSortMenuChange(false)
+                        },
+                    )
+                }
+            }
+        }
+    }
 }

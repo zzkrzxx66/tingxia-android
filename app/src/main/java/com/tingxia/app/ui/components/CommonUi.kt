@@ -1,6 +1,15 @@
 package com.tingxia.app.ui.components
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -309,14 +318,9 @@ fun SectionCard(
     color: Color = MaterialTheme.colorScheme.surface,
     content: @Composable () -> Unit,
 ) {
-    // Light mode: hairline outline + whisper of shadow reads crisper on the near-white
-    // canvas than shadow alone. Dark mode keeps pure shadow; outlines go muddy there.
-    val border = if (!isSystemInDarkTheme()) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    } else {
-        null
-    }
-    val shadow = if (border != null) 1.dp else 2.dp
+    // Borderless with a soft shadow: the old hairline outline made every card read as a form
+    // field once the corner radii grew. Dark mode leans on the shadow alone, as before.
+    val shadow = if (isSystemInDarkTheme()) 2.dp else 3.dp
     if (onClick != null) {
         Surface(
             onClick = onClick,
@@ -324,7 +328,6 @@ fun SectionCard(
             shape = shape,
             color = color,
             shadowElevation = shadow,
-            border = border,
             content = content,
         )
     } else {
@@ -333,7 +336,6 @@ fun SectionCard(
             shape = shape,
             color = color,
             shadowElevation = shadow,
-            border = border,
             content = content,
         )
     }
@@ -571,4 +573,82 @@ fun formatWordCount(count: Long): String {
     if (count < 10_000L) return count.toString()
     val wan = count / 10_000.0
     return if (wan >= 100) "%d".format(wan.toLong()) else "%.1f".format(wan)
+}
+
+/**
+ * Circular play affordance laid on top of cover art. Tapping it starts playback directly instead
+ * of routing through the book page, which is the one-tap path a shelf is for.
+ */
+@Composable
+fun CoverPlayButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isPlaying: Boolean = false,
+    size: Dp = 30.dp,
+    contentDescription: String? = null,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.94f),
+        shadowElevation = 4.dp,
+        modifier = modifier.size(size),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(size * 0.6f),
+            )
+        }
+    }
+}
+
+/**
+ * Cover-shaped placeholder with a travelling sheen, used while a network list is still loading so
+ * the online page shows its layout instead of an empty screen.
+ */
+@Composable
+fun ShimmerTile(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
+        label = "shimmerSweep",
+    )
+    val base = MaterialTheme.colorScheme.surfaceVariant
+    val sheen = MaterialTheme.colorScheme.surfaceContainerHighest
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(COVER_RATIO_PORTRAIT)
+                .clip(RoundedCornerShape(CoverCorner.Grid))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(base, sheen, base),
+                        start = Offset(progress * 600f - 300f, 0f),
+                        end = Offset(progress * 600f, 300f),
+                    ),
+                ),
+        )
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.8f)
+                .height(12.dp)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(base),
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.5f)
+                .height(10.dp)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(base),
+        )
+    }
 }

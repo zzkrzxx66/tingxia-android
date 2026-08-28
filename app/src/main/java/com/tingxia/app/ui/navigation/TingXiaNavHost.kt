@@ -224,6 +224,20 @@ fun TingXiaNavHost(
                                 }
                             },
                             playingBookId = playerState.bookId,
+                            isPlaying = playerState.isPlaying,
+                            onPlayBook = { id ->
+                                // Same book already loaded: the shelf button is a play/pause
+                                // toggle, so tapping it twice does not restart the chapter.
+                                if (playerState.bookId == id && playerState.isPlaying) {
+                                    playerViewModel.togglePlayPause()
+                                } else {
+                                    startPlayback {
+                                        playerViewModel.playBook(id) { ok ->
+                                            if (ok) navController.navigate(Routes.PLAYER)
+                                        }
+                                    }
+                                }
+                            },
                         )
                     }
                     composable(Routes.ONLINE) {

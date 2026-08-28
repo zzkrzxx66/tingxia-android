@@ -60,6 +60,7 @@ import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.BookGridTile
 import com.tingxia.app.ui.components.EmptyState
 import com.tingxia.app.ui.components.SectionCard
+import com.tingxia.app.ui.components.ShimmerTile
 import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
@@ -280,6 +281,16 @@ private fun OnlineWelcome(
                     realistic = false,
                 )
             }
+        } else {
+            // Hot books arrive over the network; show the layout instead of an empty screen.
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    stringResource(R.string.online_hot_books),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
+            items(6) { ShimmerTile() }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
