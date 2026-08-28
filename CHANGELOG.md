@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.13.0
+
+- Chapter picker in the player (选集 x/N in the tool row): a bottom sheet that switches chapter
+  without leaving playback and without rebuilding the queue, so the play/pause state survives
+  the tap. Previously the only way to change chapter mid-listen was to back out to the book page.
+  - Header stays put while the list scrolls: total / filtered counts, cached counter for online
+    books, search by title or chapter number, ascending↔descending, 未听完 / 已缓存 filters,
+    and one-tap 定位到在听.
+  - Every chapter is its own lazy item with sticky 第 x–y 章 headers, so a 1000-chapter book only
+    composes what is on screen and jumping to the current chapter no longer relies on an
+    estimated row height.
+  - Long-press starts multi-select: batch cache (one foreground job and one notification for the
+    whole selection), clear cache, mark listened / clear listened.
+  - Chapter rows moved to a shared component and gained a real third state — started-but-
+    unfinished chapters no longer look identical to never-played ones — plus a progress bar on
+    the chapter that is actually loaded in the player.
+- Book-detail chapter list rebuilt on the same components as the picker:
+  - The tab row and the chapter toolbar are pinned (sticky), so search, order, filter, 定位在听
+    and the 选集 block strip stay reachable 300 rows down instead of scrolling out of view.
+  - One lazy item per chapter with sticky 第 x–y 章 headers replaces the 100-rows-per-card
+    layout that composed a whole block at once, and the jump-to-current-chapter scroll now
+    addresses an exact index instead of multiplying an assumed 64dp row height.
+  - Long-press starts multi-select here too, with the same batch actions plus 编辑章节标题 when a
+    single chapter is selected; back exits the selection instead of leaving the screen. The old
+    per-row long-press menu is gone, so both lists now behave the same way.
+
+- Online metadata sync for imported local audiobooks (书籍详情 › 同步在线信息): search the
+  fqnovel catalogue, pick the matching entry, and its blurb, author, category, word count,
+  cover and chapter titles are written onto the local book. Nothing is applied until a
+  candidate is confirmed, and audio files are never touched.
+  - Chapter titles land in `customTitle`, so the scanned filenames survive underneath.
+    A chapter-count mismatch asks whether to align the leading chapters or sync book fields
+    only, instead of silently misaligning a shorter or longer online table of contents.
+  - 清除在线信息 restores the pre-sync author, cover and chapter titles from a snapshot kept
+    in Room v10 (`books.metaSyncSourceId` / `metaSyncedAt` / `metaSyncBackup`). A cover the
+    user picked after syncing is kept rather than rolled back. Backups do not carry the
+    snapshot, so a restored book keeps the synced values as plain metadata.
+
 ## 0.12.0
 
 - Chapter-level cache control in the chapter list: every online-book row gets a

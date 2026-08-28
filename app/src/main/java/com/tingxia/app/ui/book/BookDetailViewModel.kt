@@ -10,10 +10,15 @@ import com.tingxia.app.data.importer.ScanProgress
 import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
+import com.tingxia.app.data.model.ChapterFilter
+import com.tingxia.app.ui.chapters.ChapterListControls
 import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.BookmarkRepository
 import com.tingxia.app.data.repo.RescanPreview
 import com.tingxia.app.data.repo.ReauthDecisionRequiredException
+import com.tingxia.app.data.remote.FqNovelApi
+import com.tingxia.app.data.remote.FqSearchBook
+import com.tingxia.app.data.policy.OnlineMetaSyncPolicy
 import com.tingxia.app.player.CacheManager
 import com.tingxia.app.player.LibraryMutationSnapshot
 import com.tingxia.app.player.PlayerController
@@ -25,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -37,6 +43,7 @@ class BookDetailViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val playerController: PlayerController,
+    private val fqNovelApi: FqNovelApi,
     val cacheManager: CacheManager,
 ) : ViewModel() {
 
@@ -79,6 +86,211 @@ class BookDetailViewModel @Inject constructor(
 
     /** Online-book prefetch progress, mirrored from the foreground service. */
     val prefetchState: StateFlow<PrefetchService.PrefetchState> = PrefetchService.state
+
+    // ---- chapter list controls (search / order / filter / multi-select) ---------------------
+
+    private val _chapterControls = MutableStateFlow(ChapterListControls())
+    val chapterControls: StateFlow<ChapterListControls> = combine(
+        _chapterControls,
+        chapters,
+    ) { controls, list ->
+        controls.retainExisting(list.mapTo(mutableSetOf()) { it.id })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChapterListControls())
+
+    private fun updateControls(transform: (ChapterListControls) -> ChapterListControls) {
+        _chapterControls.value = transform(_chapterControls.value)
+    }
+
+    fun setChapterQuery(value: String) = updateControls { it.withQuery(value) }
+    fun toggleChapterSearch() = updateControls { it.toggleSearch() }
+    fun toggleChapterOrder() = updateControls { it.toggleOrder() }
+    fun setChapterFilter(filter: ChapterFilter) = updateControls { it.withFilter(filter) }
+    fun startChapterSelection(chapterId: Long) = updateControls { it.startSelection(chapterId) }
+    fun toggleChapterSelection(chapterId: Long) = updateControls { it.toggleSelection(chapterId) }
+    fun clearChapterSelection() = updateControls { it.clearSelection() }
+    fun selectAllVisibleChapters(ids: List<Long>) = updateControls { it.selectAll(ids) }
+
+    fun cacheSelectedChapters() {
+        val ids = _chapterControls.value.selection
+        if (ids.isEmpty() || book.value?.isRemote != true) return
+        PrefetchService.cacheChapters(app, bookId, ids)
+        _message.value = app.getString(R.string.cache_started)
+        clearChapterSelection()
+    }
+
+    fun clearCacheForSelectedChapters() {
+        val ids = _chapterControls.value.selection.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val book = book.value ?: return@launch
+            ids.forEach { chapterId ->
+                val itemId = chapters.value.firstOrNull { it.id == chapterId }?.remoteItemId
+                    ?: return@forEach
+                try {
+                    cacheManager.cache.removeResource(
+                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId),
+                    )
+                } catch (_: Exception) {
+                }
+                bookRepository.setChapterCached(chapterId, false)
+            }
+            _message.value = app.getString(R.string.cache_cleared)
+            clearChapterSelection()
+        }
+    }
+
+    fun markSelectedChapters(completed: Boolean) {
+        val ids = _chapterControls.value.selection
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                bookRepository.setChaptersCompleted(ids, completed)
+                _message.value = app.getString(
+                    if (completed) R.string.chapters_marked_done else R.string.chapters_marked_undone,
+                    ids.size,
+                )
+                clearChapterSelection()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "更新章节状态失败"
+            }
+        }
+    }
+
+    // ---- online metadata sync (local books) ------------------------------------------------
+
+    private val _metaSync = MutableStateFlow(OnlineMetaSyncUiState())
+    val metaSync: StateFlow<OnlineMetaSyncUiState> = _metaSync.asStateFlow()
+
+    /** Open the sync sheet, pre-filled with the book title, and search straight away. */
+    fun openMetaSync() {
+        val title = book.value?.title.orEmpty()
+        _metaSync.value = OnlineMetaSyncUiState(visible = true, query = title)
+        if (title.isNotBlank()) searchMetaCandidates(title)
+    }
+
+    fun closeMetaSync() {
+        _metaSync.value = OnlineMetaSyncUiState()
+    }
+
+    fun setMetaSyncQuery(value: String) {
+        _metaSync.value = _metaSync.value.copy(query = value)
+    }
+
+    fun setMetaSyncCover(enabled: Boolean) {
+        _metaSync.value = _metaSync.value.copy(syncCover = enabled)
+    }
+
+    fun setMetaSyncChapterTitles(enabled: Boolean) {
+        _metaSync.value = _metaSync.value.copy(syncChapterTitles = enabled)
+    }
+
+    fun searchMetaCandidates(keyword: String) {
+        val normalized = keyword.trim()
+        if (normalized.isEmpty()) return
+        viewModelScope.launch {
+            _metaSync.value = _metaSync.value.copy(query = normalized, loading = true, searched = false)
+            try {
+                val results = fqNovelApi.search(normalized)
+                _metaSync.value = _metaSync.value.copy(candidates = results, loading = false, searched = true)
+            } catch (e: Exception) {
+                _metaSync.value = _metaSync.value.copy(loading = false, searched = true)
+                _error.value = e.message ?: "在线搜索失败"
+            }
+        }
+    }
+
+    /**
+     * Apply one candidate. Chapter titles need the remote table of contents, whose length only
+     * shows up once fetched — a mismatch parks the sync in [OnlineMetaSyncUiState.mismatch] and
+     * waits for [confirmMismatch].
+     */
+    fun applyMetaCandidate(candidate: FqSearchBook) {
+        if (_metaSync.value.applying) return
+        viewModelScope.launch {
+            _metaSync.value = _metaSync.value.copy(applying = true)
+            try {
+                val wantTitles = _metaSync.value.syncChapterTitles
+                val remoteTitles = if (wantTitles) fetchRemoteChapterTitles(candidate) else emptyList()
+                val localCount = chapters.value.size
+                val alignment = OnlineMetaSyncPolicy.alignment(localCount, remoteTitles.size)
+                if (wantTitles && alignment == OnlineMetaSyncPolicy.TitleAlignment.TRUNCATED) {
+                    _metaSync.value = _metaSync.value.copy(
+                        applying = false,
+                        mismatch = ChapterCountMismatch(
+                            candidate = candidate,
+                            localCount = localCount,
+                            remoteCount = remoteTitles.size,
+                            remoteTitles = remoteTitles,
+                        ),
+                    )
+                    return@launch
+                }
+                commitMetaSync(candidate, remoteTitles)
+            } catch (e: Exception) {
+                _metaSync.value = _metaSync.value.copy(applying = false)
+                _error.value = e.message ?: "同步在线信息失败"
+            }
+        }
+    }
+
+    /**
+     * Resolve a chapter-count mismatch: [alignAnyway] aligns the leading chapters, otherwise only
+     * the book-level fields are synced.
+     */
+    fun confirmMismatch(alignAnyway: Boolean) {
+        val pending = _metaSync.value.mismatch ?: return
+        viewModelScope.launch {
+            _metaSync.value = _metaSync.value.copy(mismatch = null, applying = true)
+            try {
+                commitMetaSync(
+                    candidate = pending.candidate,
+                    remoteTitles = if (alignAnyway) pending.remoteTitles else emptyList(),
+                )
+            } catch (e: Exception) {
+                _metaSync.value = _metaSync.value.copy(applying = false)
+                _error.value = e.message ?: "同步在线信息失败"
+            }
+        }
+    }
+
+    fun dismissMismatch() {
+        _metaSync.value = _metaSync.value.copy(mismatch = null, applying = false)
+    }
+
+    fun clearOnlineMeta() {
+        viewModelScope.launch {
+            try {
+                bookRepository.clearOnlineMeta(bookId)
+                playerController.refreshQueueMetadata(bookId)
+                _message.value = app.getString(R.string.meta_sync_cleared)
+            } catch (e: Exception) {
+                _error.value = e.message ?: app.getString(R.string.meta_sync_clear_failed)
+            }
+        }
+    }
+
+    private suspend fun commitMetaSync(candidate: FqSearchBook, remoteTitles: List<String>) {
+        val overwriteCover = _metaSync.value.syncCover
+        val outcome = bookRepository.applyOnlineMeta(
+            bookId = bookId,
+            remote = candidate,
+            remoteChapterTitles = remoteTitles,
+            overwriteCover = overwriteCover,
+        )
+        playerController.refreshQueueMetadata(bookId)
+        closeMetaSync()
+        _message.value = if (outcome.chapterTitlesApplied > 0) {
+            app.getString(R.string.meta_sync_done_with_titles, outcome.chapterTitlesApplied)
+        } else {
+            app.getString(R.string.meta_sync_done)
+        }
+    }
+
+    /** Chapter titles live on the audio edition, so the tone list has to be resolved first. */
+    private suspend fun fetchRemoteChapterTitles(candidate: FqSearchBook): List<String> {
+        val tone = fqNovelApi.tones(candidate.bookId).firstOrNull() ?: return emptyList()
+        return fqNovelApi.chapters(tone.audioBookId).sortedBy { it.index }.map { it.title }
+    }
 
     init {
         viewModelScope.launch {

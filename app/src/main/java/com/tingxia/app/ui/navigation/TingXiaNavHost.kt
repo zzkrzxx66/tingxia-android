@@ -54,6 +54,7 @@ import androidx.navigation.navArgument
 import com.tingxia.app.ui.book.BookDetailScreen
 import com.tingxia.app.R
 import com.tingxia.app.ui.player.FullPlayerScreen
+import com.tingxia.app.ui.player.ChapterPickerSheet
 import com.tingxia.app.ui.player.MiniPlayerBar
 import com.tingxia.app.ui.player.PlayerViewModel
 import com.tingxia.app.ui.settings.SettingsScreen
@@ -292,6 +293,8 @@ fun TingXiaNavHost(
                             slideOutVertically(tween(260)) { it } + fadeOut(tween(200))
                         },
                     ) {
+                        val chapterPicker by playerViewModel.picker.collectAsStateWithLifecycle()
+                        val cachingIds by playerViewModel.cachingChapterIds.collectAsStateWithLifecycle()
                         FullPlayerScreen(
                             state = playerState,
                             onBack = { navController.popBackStack() },
@@ -309,6 +312,30 @@ fun TingXiaNavHost(
                             onSaveSkipOffsets = { intro, outro ->
                                 playerViewModel.setSkipOffsets(intro, outro)
                             },
+                            onOpenChapters = { playerViewModel.openChapterPicker() },
+                        )
+                        ChapterPickerSheet(
+                            state = chapterPicker,
+                            currentChapterId = playerState.chapterId,
+                            currentProgressFraction = playerState.durationMs
+                                .takeIf { it > 0L }
+                                ?.let { playerState.positionMs.toFloat() / it.toFloat() },
+                            cachingChapterIds = cachingIds,
+                            onDismiss = { playerViewModel.closeChapterPicker() },
+                            onQueryChange = { playerViewModel.setPickerQuery(it) },
+                            onToggleSearch = { playerViewModel.togglePickerSearch() },
+                            onToggleOrder = { playerViewModel.togglePickerOrder() },
+                            onFilterChange = { playerViewModel.setPickerFilter(it) },
+                            onPlayChapter = { playerViewModel.playChapter(it) },
+                            onStartSelection = { playerViewModel.startSelection(it) },
+                            onToggleSelection = { playerViewModel.toggleSelection(it) },
+                            onClearSelection = { playerViewModel.clearSelection() },
+                            onSelectAllVisible = { playerViewModel.selectAllVisible(it) },
+                            onCacheSelection = { playerViewModel.cacheSelection() },
+                            onClearCacheSelection = { playerViewModel.clearCacheForSelection() },
+                            onMarkSelection = { playerViewModel.markSelection(it) },
+                            onCacheChapter = { playerViewModel.cacheChapter(it) },
+                            onClearChapterCache = { playerViewModel.clearChapterCache(it) },
                         )
                     }
                     composable(Routes.SETTINGS) {

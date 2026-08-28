@@ -82,6 +82,11 @@ class PrefetchService : Service() {
                 val chapterId = intent.getLongExtra(EXTRA_CHAPTER_ID, 0L)
                 if (bookId > 0L && chapterId > 0L) cacheSingleChapter(bookId, chapterId)
             }
+            ACTION_CACHE_SELECTION -> {
+                val bookId = intent.getLongExtra(EXTRA_BOOK_ID, 0L)
+                val ids = intent.getLongArrayExtra(EXTRA_CHAPTER_IDS)?.toList().orEmpty()
+                if (bookId > 0L && ids.isNotEmpty()) startJob(bookId, chapterIds = ids)
+            }
         }
         return START_NOT_STICKY
     }
@@ -146,7 +151,16 @@ class PrefetchService : Service() {
         }
     }
 
-    private fun startJob(bookId: Long, fromIndex: Int, count: Int) {
+    /**
+     * Queue a prefetch job. Either a window of the book ([fromIndex] / [count]) or an explicit
+     * [chapterIds] selection, which wins when non-empty.
+     */
+    private fun startJob(
+        bookId: Long,
+        fromIndex: Int = 0,
+        count: Int = -1,
+        chapterIds: List<Long> = emptyList(),
+    ) {
         job?.cancel()
         job = scope.launch {
             _state.value = PrefetchState(running = true, bookId = bookId)
@@ -158,12 +172,17 @@ class PrefetchService : Service() {
                     finish(cancelled = true)
                     return@launch
                 }
+                val selection = chapterIds.toSet()
                 val targets = chapters
                     .filter { !it.remoteItemId.isNullOrBlank() }
                     .sortedBy { it.index }
                     .let { list ->
-                        val tail = if (fromIndex > 0) list.filter { it.index >= fromIndex } else list
-                        if (count > 0) tail.take(count) else tail
+                        if (selection.isNotEmpty()) {
+                            list.filter { it.id in selection }
+                        } else {
+                            val tail = if (fromIndex > 0) list.filter { it.index >= fromIndex } else list
+                            if (count > 0) tail.take(count) else tail
+                        }
                     }
                 _state.value = _state.value.copy(
                     bookTitle = book.title,
@@ -297,8 +316,10 @@ class PrefetchService : Service() {
         const val ACTION_START = "com.tingxia.app.prefetch.START"
         const val ACTION_CANCEL = "com.tingxia.app.prefetch.CANCEL"
         const val ACTION_CACHE_CHAPTER = "com.tingxia.app.prefetch.CACHE_CHAPTER"
+        const val ACTION_CACHE_SELECTION = "com.tingxia.app.prefetch.CACHE_SELECTION"
         const val EXTRA_BOOK_ID = "bookId"
         const val EXTRA_CHAPTER_ID = "chapterId"
+        const val EXTRA_CHAPTER_IDS = "chapterIds"
         const val EXTRA_FROM_INDEX = "fromIndex"
         const val EXTRA_COUNT = "count"
 
@@ -329,6 +350,20 @@ class PrefetchService : Service() {
                 putExtra(EXTRA_CHAPTER_ID, chapterId)
             }
             context.startService(intent)
+        }
+
+        /**
+         * Download an explicit chapter selection as one foreground job, so a 50-chapter batch
+         * shows a single progress notification instead of 50 silent downloads.
+         */
+        fun cacheChapters(context: Context, bookId: Long, chapterIds: Collection<Long>) {
+            if (chapterIds.isEmpty()) return
+            val intent = Intent(context, PrefetchService::class.java).apply {
+                action = ACTION_CACHE_SELECTION
+                putExtra(EXTRA_BOOK_ID, bookId)
+                putExtra(EXTRA_CHAPTER_IDS, chapterIds.toLongArray())
+            }
+            context.startForegroundService(intent)
         }
     }
 }

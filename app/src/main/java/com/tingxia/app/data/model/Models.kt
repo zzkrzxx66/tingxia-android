@@ -32,8 +32,14 @@ data class Book(
     val description: String? = null,
     val category: String? = null,
     val wordCount: Long = 0L,
+    /** Online catalogue book id this book's metadata was synced from. */
+    val metaSyncSourceId: String? = null,
+    val metaSyncedAt: Long = 0L,
 ) {
     val isRemote: Boolean get() = sourceType != BookSourceType.LOCAL
+
+    /** A local book carrying metadata pulled from the online catalogue. */
+    val hasSyncedOnlineMeta: Boolean get() = !isRemote && metaSyncedAt > 0L
     val progressFraction: Float
         get() {
             if (totalDurationMs <= 0L) return 0f
@@ -144,6 +150,8 @@ fun BookEntity.toModel() = Book(
     description = description,
     category = category,
     wordCount = wordCount,
+    metaSyncSourceId = metaSyncSourceId,
+    metaSyncedAt = metaSyncedAt,
 )
 
 fun ChapterEntity.toModel() = Chapter(

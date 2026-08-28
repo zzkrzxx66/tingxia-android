@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
@@ -115,6 +116,7 @@ fun FullPlayerScreen(
     onExtendSleep: () -> Unit = {},
     onAddBookmark: () -> Unit = {},
     onSaveSkipOffsets: (Long, Long) -> Unit = { _, _ -> },
+    onOpenChapters: () -> Unit = {},
 ) {
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
@@ -465,11 +467,27 @@ fun FullPlayerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     PlayerToolButton(
+                        onClick = onOpenChapters,
+                        icon = Icons.Default.FormatListNumbered,
+                        label = if (state.chapterCount > 0) {
+                            stringResource(
+                                R.string.chapter_picker_button,
+                                state.chapterIndex + 1,
+                                state.chapterCount,
+                            )
+                        } else {
+                            stringResource(R.string.chapter_picker_title)
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = state.chapterCount > 0,
+                    )
+                    PlayerToolButton(
                         onClick = onAddBookmark,
                         icon = Icons.Default.BookmarkAdd,
                         label = stringResource(R.string.bookmark),
+                        modifier = Modifier.weight(1f),
                     )
-                    Box {
+                    Box(modifier = Modifier.weight(1f)) {
                         val speedActive = state.speed != 1.0f
                         PlayerToolButton(
                             onClick = { speedMenu = true },
@@ -479,6 +497,7 @@ fun FullPlayerScreen(
                             } else {
                                 stringResource(R.string.playback_speed)
                             },
+                            modifier = Modifier.fillMaxWidth(),
                             active = speedActive,
                         )
                         DropdownMenu(expanded = speedMenu, onDismissRequest = { speedMenu = false }) {
@@ -507,7 +526,7 @@ fun FullPlayerScreen(
                             }
                         }
                     }
-                    Box {
+                    Box(modifier = Modifier.weight(1f)) {
                         val sleepActive = state.sleepRemainingMs != null ||
                             state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter
                         val sleepLabel = when {
@@ -525,6 +544,7 @@ fun FullPlayerScreen(
                             onClick = { sleepMenu = true },
                             icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
                             label = sleepLabel,
+                            modifier = Modifier.fillMaxWidth(),
                             active = sleepActive,
                         )
                         DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
@@ -575,6 +595,7 @@ fun FullPlayerScreen(
                         } else {
                             stringResource(R.string.skip_offsets)
                         },
+                        modifier = Modifier.weight(1f),
                         active = skipActive,
                     )
                 }
@@ -632,6 +653,7 @@ private fun PlayerToolButton(
     onClick: () -> Unit,
     icon: ImageVector,
     label: String,
+    modifier: Modifier = Modifier,
     active: Boolean = false,
     enabled: Boolean = true,
 ) {
@@ -642,7 +664,9 @@ private fun PlayerToolButton(
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.size(72.dp, 64.dp),
+        // Width comes from the caller (a weight in the 5-up tool row); a fixed 72dp made the
+        // row overflow on narrow phones once 选集 joined it.
+        modifier = modifier.height(64.dp),
     ) {
         // Active tools sit on a soft halo; on the blurred artwork backdrop a plain
         // colour shift alone was too subtle to read as "on".

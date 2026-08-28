@@ -218,4 +218,44 @@
     <string name="cache_usage_summary">在线有声书播放时自动缓存,LRU 上限 1GB;也可在书籍详情提前缓存整本。</string>
     <string name="cache_chapter">缓存本章</string>
     <string name="cache_clear_chapter">清除本章缓存</string>
+    <!-- Online metadata sync for local books -->
+    <string name="meta_sync_menu">同步在线信息</string>
+    <string name="meta_sync_menu_synced">已关联在线条目,可重新匹配</string>
+    <string name="meta_sync_clear">清除在线信息</string>
+    <string name="meta_sync_title">同步在线信息</string>
+    <string name="meta_sync_subtitle">从在线书库匹配简介、作者、分类与字数,不会改动本地音频文件。</string>
+    <string name="meta_sync_cover">覆盖封面</string>
+    <string name="meta_sync_chapter_titles">同步章节标题</string>
+    <string name="meta_sync_local_chapters">本地 %1$d 章</string>
+    <string name="meta_sync_use_result">使用此结果</string>
+    <string name="meta_sync_done">已同步在线信息</string>
+    <string name="meta_sync_done_with_titles">已同步在线信息与 %1$d 个章节标题</string>
+    <string name="meta_sync_cleared">已清除在线信息</string>
+    <string name="meta_sync_clear_failed">清除在线信息失败</string>
+    <string name="meta_sync_mismatch_title">章节数不一致</string>
+    <string name="meta_sync_mismatch_body">本地 %1$d 章,在线 %2$d 章。按顺序对齐只能覆盖前 %3$d 章,且中间缺章时会错位;原始文件名始终保留,可随时清除在线信息还原。</string>
+    <string name="meta_sync_mismatch_align">仍按顺序对齐</string>
+    <string name="meta_sync_mismatch_book_only">只同步书籍信息</string>
+    <!-- Chapter picker (player sheet) -->
+    <string name="chapter_picker_title">选集</string>
+    <string name="chapter_picker_button">选集 %1$d/%2$d</string>
+    <string name="chapter_picker_empty">没有符合条件的章节</string>
+    <string name="chapter_count_total">共 %1$d 章</string>
+    <string name="chapter_count_filtered">显示 %1$d / %2$d 章</string>
+    <string name="chapter_cached_count">已缓存 %1$d</string>
+    <string name="chapter_search">搜章节</string>
+    <string name="chapter_filter">筛选章节</string>
+    <string name="chapter_search_hint">章节名或章号</string>
+    <string name="chapter_order_toggle">正序 / 倒序</string>
+    <string name="chapter_locate_current">定位到在听</string>
+    <string name="chapter_group_block">第 %1$d–%2$d 章</string>
+    <string name="chapter_filter_all">全部</string>
+    <string name="chapter_filter_unfinished">未听完</string>
+    <string name="chapter_filter_cached">已缓存</string>
+    <string name="chapters_selected">已选 %1$d 章</string>
+    <string name="select_all_visible">全选当前</string>
+    <string name="cache_selected">缓存所选</string>
+    <string name="cache_clear_selected">清除所选缓存</string>
+    <string name="chapters_marked_done">已将 %1$d 章标为已听</string>
+    <string name="chapters_marked_undone">已清除 %1$d 章的完成状态</string>
 </resources>

@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -43,7 +42,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +60,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +70,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -85,6 +83,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.R
 import com.tingxia.app.data.model.Bookmark
 import com.tingxia.app.data.model.Chapter
+import com.tingxia.app.data.model.ChapterPicker
+import com.tingxia.app.ui.chapters.ChapterSelectionBar
+import com.tingxia.app.ui.chapters.ChapterToolbar
+import com.tingxia.app.ui.chapters.chapterGroupItems
 import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.EmptyState
@@ -97,14 +99,10 @@ import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.playerScrim
 import kotlinx.coroutines.launch
 
-/** Chapters per card/选集 block. */
-private const val CHAPTER_GROUP_SIZE = 100
+// Lazy items placed before the chapter rows: the book header and the sticky tab/toolbar block.
+private const val CHAPTER_ITEMS_OFFSET = 2
 
-// Approximate height of one ChapterRow (10dp vertical padding × 2 + ~44dp content),
-// used to scroll the current chapter into view inside its 100-row group card.
-private val CHAPTER_ROW_HEIGHT = 64.dp
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 @androidx.annotation.OptIn(UnstableApi::class)
 fun BookDetailScreen(
@@ -126,6 +124,8 @@ fun BookDetailScreen(
     val rescanPreview by viewModel.rescanPreview.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val metaSync by viewModel.metaSync.collectAsStateWithLifecycle()
+    val controls by viewModel.chapterControls.collectAsStateWithLifecycle()
     var confirmRemove by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var editBook by remember { mutableStateOf(false) }
@@ -133,7 +133,6 @@ fun BookDetailScreen(
     var editAuthor by remember { mutableStateOf("") }
     var editChapter by remember { mutableStateOf<Chapter?>(null) }
     var editChapterTitle by remember { mutableStateOf("") }
-    var chapterMenuFor by remember { mutableStateOf<Chapter?>(null) }
     var editBookmark by remember { mutableStateOf<Bookmark?>(null) }
     var editBookmarkNote by remember { mutableStateOf("") }
     var bookmarkMenuFor by remember { mutableStateOf<Bookmark?>(null) }
@@ -167,35 +166,61 @@ fun BookDetailScreen(
         if (uri != null) viewModel.updateBookCover(uri)
     }
 
-    // Chapters render in 100-per-card groups so the lazy list only composes the
-    // visible group; the 选集 strip and the initial scroll both target group items.
-    val chapterGroups = remember(chapters) {
-        chapters.sortedBy { it.index }.chunked(CHAPTER_GROUP_SIZE)
+    // Chapter rows are one lazy item each (真惰性), grouped into sticky 100-chapter blocks.
+    // The 选集 strip and the jump-to-current scroll both address the flat lazy index.
+    val chapterGroups = remember(chapters, controls.query, controls.filter, controls.order) {
+        ChapterPicker.group(
+            visible = ChapterPicker.visible(
+                chapters = chapters,
+                query = controls.query,
+                filter = controls.filter,
+                order = controls.order,
+            ),
+            grouped = ChapterPicker.shouldGroup(controls.query, controls.filter),
+        )
     }
-    var selectedGroupIndex by remember { mutableIntStateOf(0) }
+    val visibleChapters = remember(chapterGroups) { chapterGroups.flatMap { it.chapters } }
 
     // Jump straight to the chapter in progress on first load; long books otherwise
-    // open at chapter 1 and force a manual hunt. The scroll is per-group (one lazy
-    // item per 100-chapter card), so the estimated row height offsets into the card.
+    // open at chapter 1 and force a manual hunt. One item per chapter means the exact
+    // lazy index is known, so no row-height estimate is involved any more.
     // Runs once per book, never again, so the user's own scrolling is never yanked back.
-    // Item 0 is the header, so chapter groups start at lazy index 1.
     val listState = rememberLazyListState()
     var scrolledToCurrent by remember { mutableStateOf(false) }
-    val chapterRowOffsetPx = with(LocalDensity.current) { CHAPTER_ROW_HEIGHT.roundToPx() }
-    LaunchedEffect(chapters, book?.currentChapterId) {
+    LaunchedEffect(chapterGroups, book?.currentChapterId) {
         if (scrolledToCurrent || chapters.isEmpty()) return@LaunchedEffect
         // Wait for the book flow before declaring failure: marking the jump as done
         // while book is still null would permanently skip it when the book arrives late.
         val currentChapterId = book?.currentChapterId ?: return@LaunchedEffect
-        val idx = chapters.indexOfFirst { it.id == currentChapterId }
-        if (idx < 0) return@LaunchedEffect // chapter may be mid-reshuffle; retry on next emission
-        val groupIndex = idx / CHAPTER_GROUP_SIZE
-        selectedGroupIndex = groupIndex
-        listState.scrollToItem(
-            1 + groupIndex,
-            scrollOffset = (idx % CHAPTER_GROUP_SIZE) * chapterRowOffsetPx,
-        )
+        val target = ChapterPicker.flatIndexOf(chapterGroups, currentChapterId)
+            ?: return@LaunchedEffect // chapter may be mid-reshuffle; retry on next emission
+        listState.scrollToItem(CHAPTER_ITEMS_OFFSET + target)
         scrolledToCurrent = true
+    }
+
+    // Which 选集 chip reads as active: the block the list is parked on.
+    val activeGroupIndex by remember(chapterGroups) {
+        derivedStateOf {
+            val position = (listState.firstVisibleItemIndex - CHAPTER_ITEMS_OFFSET).coerceAtLeast(0)
+            var offset = 0
+            chapterGroups.indexOfFirst { group ->
+                val size = (if (group.label != null) 1 else 0) + group.chapters.size
+                val contains = position < offset + size
+                offset += size
+                contains
+            }.coerceAtLeast(0)
+        }
+    }
+
+    val chapterHeaderColor = MaterialTheme.colorScheme.background
+
+    // Back leaves multi-select first; it should not drop the whole screen mid-selection.
+    androidx.activity.compose.BackHandler(enabled = controls.selectionMode) {
+        viewModel.clearChapterSelection()
+    }
+
+    fun scrollToChapterIndex(target: Int) {
+        scope.launch { listState.animateScrollToItem(CHAPTER_ITEMS_OFFSET + target) }
     }
 
     Scaffold(
@@ -370,6 +395,33 @@ fun BookDetailScreen(
                                         )
                                     }
                                     if (book?.isRemote != true) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(stringResource(R.string.meta_sync_menu))
+                                                    if (book?.hasSyncedOnlineMeta == true) {
+                                                        Text(
+                                                            stringResource(R.string.meta_sync_menu_synced),
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                menu = false
+                                                viewModel.openMetaSync()
+                                            },
+                                        )
+                                        if (book?.hasSyncedOnlineMeta == true) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.meta_sync_clear)) },
+                                                onClick = {
+                                                    menu = false
+                                                    viewModel.clearOnlineMeta()
+                                                },
+                                            )
+                                        }
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.rescan_folder)) },
                                             onClick = {
@@ -653,85 +705,120 @@ fun BookDetailScreen(
                         )
                     }
                     Spacer(Modifier.height(20.dp))
-                    SecondaryTabRow(
-                        selectedTabIndex = selectedTab,
-                        containerColor = MaterialTheme.colorScheme.background,
-                        divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
-                    ) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            text = { Text(stringResource(R.string.chapters_with_count, chapters.size)) },
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            text = { Text(stringResource(R.string.bookmarks_with_count, bookmarks.size)) },
-                        )
-                    }
-                    if (selectedTab == 0 && chapterGroups.size > 1) {
-                        // 选集 strip: jump straight to a 100-chapter block instead of
-                        // scrolling through hundreds of rows.
-                        Spacer(Modifier.height(10.dp))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                }
+            }
+            // Tabs + chapter toolbar stay pinned: on a 400-chapter book the old in-header strip
+            // scrolled away and switching blocks meant scrolling all the way back up.
+            stickyHeader(key = "chapter-controls") {
+                Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        SecondaryTabRow(
+                            selectedTabIndex = selectedTab,
+                            containerColor = MaterialTheme.colorScheme.background,
+                            divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
                         ) {
-                            items(chapterGroups.size) { groupIndex ->
-                                val group = chapterGroups[groupIndex]
-                                FilterChip(
-                                    selected = groupIndex == selectedGroupIndex,
-                                    onClick = {
-                                        selectedGroupIndex = groupIndex
-                                        scope.launch { listState.scrollToItem(1 + groupIndex) }
+                            Tab(
+                                selected = selectedTab == 0,
+                                onClick = { selectedTab = 0 },
+                                text = { Text(stringResource(R.string.chapters_with_count, chapters.size)) },
+                            )
+                            Tab(
+                                selected = selectedTab == 1,
+                                onClick = { selectedTab = 1 },
+                                text = { Text(stringResource(R.string.bookmarks_with_count, bookmarks.size)) },
+                            )
+                        }
+                        if (selectedTab == 0) {
+                            if (controls.selectionMode) {
+                                ChapterSelectionBar(
+                                    selectedCount = controls.selection.size,
+                                    supportsCache = book?.isRemote == true,
+                                    onSelectAllVisible = {
+                                        viewModel.selectAllVisibleChapters(visibleChapters.map { it.id })
                                     },
-                                    label = {
-                                        Text(
-                                            stringResource(
-                                                R.string.chapter_group_range,
-                                                group.first().index + 1,
-                                                group.last().index + 1,
-                                            ),
-                                        )
+                                    onCache = { viewModel.cacheSelectedChapters() },
+                                    onClearCache = { viewModel.clearCacheForSelectedChapters() },
+                                    onMark = { viewModel.markSelectedChapters(it) },
+                                    onCancel = { viewModel.clearChapterSelection() },
+                                    onRenameSingle = {
+                                        val only = chapters.firstOrNull { it.id == controls.selection.first() }
+                                        if (only != null) {
+                                            editChapter = only
+                                            editChapterTitle = only.displayTitle
+                                        }
                                     },
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            } else {
+                                ChapterToolbar(
+                                    controls = controls,
+                                    visibleCount = visibleChapters.size,
+                                    totalCount = chapters.size,
+                                    cachedCount = if (book?.isRemote == true) {
+                                        chapters.count { it.isCached }
+                                    } else {
+                                        null
+                                    },
+                                    groups = chapterGroups,
+                                    onQueryChange = { viewModel.setChapterQuery(it) },
+                                    onToggleSearch = { viewModel.toggleChapterSearch() },
+                                    onToggleOrder = { viewModel.toggleChapterOrder() },
+                                    onFilterChange = { viewModel.setChapterFilter(it) },
+                                    onLocateCurrent = {
+                                        val id = book?.currentChapterId
+                                        val target = id?.let { ChapterPicker.flatIndexOf(chapterGroups, it) }
+                                        if (target != null) scrollToChapterIndex(target)
+                                    },
+                                    onJumpToGroup = { index ->
+                                        val first = chapterGroups[index].chapters.firstOrNull()?.id
+                                        val target = first?.let { ChapterPicker.flatIndexOf(chapterGroups, it) }
+                                        if (target != null) {
+                                            scrollToChapterIndex((target - 1).coerceAtLeast(0))
+                                        }
+                                    },
+                                    activeGroupIndex = activeGroupIndex,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
                                 )
                             }
                         }
                     }
-                    Spacer(Modifier.height(4.dp))
                 }
             }
             if (selectedTab == 0) {
-                // One card per 100-chapter group keeps the list lazy: only the
-                // visible group's card is composed, and scrollToItem can land on
-                // the group containing the chapter in progress.
-                chapterGroups.forEachIndexed { groupIndex, group ->
-                    item(key = "chapter-group-${group.first().id}") {
-                        ListSectionCard(
-                            rowCount = group.size,
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .padding(top = if (groupIndex == 0) 0.dp else 10.dp),
-                            dividerStartIndent = 46.dp,
-                        ) { index ->
-                            val chapter = group[index]
-                            ChapterRow(
-                                chapter = chapter,
-                                isCurrent = chapter.id == book?.currentChapterId,
-                                enabled = book?.needsReauth != true,
-                                showCacheAction = book?.isRemote == true,
-                                cacheInProgress = prefetchState.singleChapterIds.contains(chapter.id),
-                                onCacheClick = {
-                                    if (chapter.isCached) {
-                                        viewModel.clearChapterCache(chapter)
-                                    } else {
-                                        viewModel.cacheChapter(chapter)
-                                    }
-                                },
-                                onClick = { onPlayChapter(chapter.id) },
-                                onLongClick = { chapterMenuFor = chapter },
-                            )
+                chapterGroupItems(
+                    groups = chapterGroups,
+                    currentChapterId = book?.currentChapterId,
+                    controls = controls,
+                    enabled = book?.needsReauth != true,
+                    showCacheAction = book?.isRemote == true,
+                    cachingChapterIds = prefetchState.singleChapterIds,
+                    currentProgressFraction = null,
+                    headerColor = chapterHeaderColor,
+                    onChapterClick = { chapter ->
+                        if (controls.selectionMode) {
+                            viewModel.toggleChapterSelection(chapter.id)
+                        } else {
+                            onPlayChapter(chapter.id)
                         }
+                    },
+                    onChapterLongClick = { viewModel.startChapterSelection(it.id) },
+                    onCacheClick = { chapter ->
+                        if (chapter.isCached) {
+                            viewModel.clearChapterCache(chapter)
+                        } else {
+                            viewModel.cacheChapter(chapter)
+                        }
+                    },
+                    rowPadding = PaddingValues(horizontal = 16.dp),
+                )
+                if (visibleChapters.isEmpty()) {
+                    item(key = "chapters-empty") {
+                        Text(
+                            stringResource(R.string.chapter_picker_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                        )
                     }
                 }
             } else if (bookmarks.isEmpty()) {
@@ -765,55 +852,6 @@ fun BookDetailScreen(
     }
 
     // Long-press menus
-    chapterMenuFor?.let { chapter ->
-        DropdownMenu(
-            expanded = true,
-            onDismissRequest = { chapterMenuFor = null },
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.edit_chapter_title)) },
-                onClick = {
-                    chapterMenuFor = null
-                    editChapter = chapter
-                    editChapterTitle = chapter.displayTitle
-                },
-            )
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        stringResource(
-                            if (chapter.completionState == 2) R.string.mark_incomplete else R.string.mark_completed,
-                        ),
-                    )
-                },
-                onClick = {
-                    chapterMenuFor = null
-                    viewModel.setChapterCompleted(chapter.id, chapter.completionState != 2)
-                },
-            )
-            if (book?.isRemote == true && !chapter.remoteItemId.isNullOrBlank()) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            stringResource(
-                                if (chapter.isCached) R.string.cache_clear_chapter
-                                else R.string.cache_chapter,
-                            ),
-                        )
-                    },
-                    onClick = {
-                        chapterMenuFor = null
-                        if (chapter.isCached) {
-                            viewModel.clearChapterCache(chapter)
-                        } else {
-                            viewModel.cacheChapter(chapter)
-                        }
-                    },
-                )
-            }
-        }
-    }
-
     bookmarkMenuFor?.let { bookmark ->
         DropdownMenu(
             expanded = true,
@@ -841,6 +879,19 @@ fun BookDetailScreen(
             )
         }
     }
+
+    OnlineMetaSyncSheet(
+        state = metaSync,
+        localChapterCount = chapters.size,
+        onQueryChange = viewModel::setMetaSyncQuery,
+        onSearch = viewModel::searchMetaCandidates,
+        onToggleCover = viewModel::setMetaSyncCover,
+        onToggleChapterTitles = viewModel::setMetaSyncChapterTitles,
+        onApply = viewModel::applyMetaCandidate,
+        onConfirmMismatch = viewModel::confirmMismatch,
+        onDismissMismatch = viewModel::dismissMismatch,
+        onDismiss = viewModel::closeMetaSync,
+    )
 
     rescanPreview?.let { preview ->
         AlertDialog(
@@ -1029,12 +1080,14 @@ fun BookDetailScreen(
                 TextButton(onClick = {
                     viewModel.updateChapterTitle(chapter.id, editChapterTitle)
                     editChapter = null
+                    viewModel.clearChapterSelection()
                 }) { Text(stringResource(R.string.save)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     viewModel.updateChapterTitle(chapter.id, null)
                     editChapter = null
+                    viewModel.clearChapterSelection()
                 }) { Text(stringResource(R.string.restore_filename)) }
             },
         )
@@ -1084,122 +1137,6 @@ private fun HeaderIconButton(
                 content()
             }
         }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ChapterRow(
-    chapter: Chapter,
-    isCurrent: Boolean,
-    enabled: Boolean = true,
-    showCacheAction: Boolean = false,
-    cacheInProgress: Boolean = false,
-    onCacheClick: (() -> Unit)? = null,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val completed = chapter.completionState == 2
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            // The current chapter gets a full-row tint, not just a coloured number tile,
-            // so it stays findable while scrolling a long list.
-            .background(
-                if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                else Color.Transparent,
-            )
-            .combinedClickable(
-                enabled = enabled,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            )
-            .padding(vertical = 10.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Surface(
-            color = if (isCurrent) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.extraSmall,
-            modifier = Modifier.size(34.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                if (isCurrent) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                } else {
-                    Text(
-                        text = "%02d".format(chapter.index + 1),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                chapter.displayTitle,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                color = when {
-                    isCurrent -> MaterialTheme.colorScheme.primary
-                    completed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (chapter.durationMs > 0) {
-                Text(
-                    formatDuration(chapter.durationMs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        if (showCacheAction && !chapter.remoteItemId.isNullOrBlank()) {
-            Spacer(Modifier.width(4.dp))
-            if (cacheInProgress) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                IconButton(
-                    onClick = { onCacheClick?.invoke() },
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        if (chapter.isCached) Icons.Default.CloudDone
-                        else Icons.Default.CloudDownload,
-                        contentDescription = stringResource(
-                            if (chapter.isCached) R.string.cached_badge else R.string.cache_menu,
-                        ),
-                        tint = if (chapter.isCached) MaterialTheme.colorScheme.secondary
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-        }
-        Icon(
-            if (completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-            contentDescription = stringResource(
-                if (completed) R.string.mark_incomplete else R.string.mark_completed,
-            ),
-            tint = if (completed) MaterialTheme.colorScheme.secondary
-            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.size(20.dp),
-        )
     }
 }
 

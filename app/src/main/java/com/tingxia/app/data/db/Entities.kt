@@ -34,6 +34,12 @@ data class BookEntity(
     val description: String? = null,
     val category: String? = null,
     val wordCount: Long = 0L,
+    /** Online catalogue book id this local book is linked to, null when never synced. */
+    val metaSyncSourceId: String? = null,
+    /** Epoch ms of the last online-metadata sync; 0 = never synced. */
+    val metaSyncedAt: Long = 0L,
+    /** JSON snapshot of the pre-sync fields, used to undo the sync. */
+    val metaSyncBackup: String? = null,
 )
 
 @Entity(

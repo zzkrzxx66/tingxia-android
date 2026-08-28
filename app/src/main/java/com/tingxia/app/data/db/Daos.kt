@@ -238,6 +238,20 @@ interface ChapterDao {
     )
     suspend fun setAllCompleted(bookId: Long, completed: Boolean, completedAt: Long = System.currentTimeMillis())
 
+    @Query(
+        """
+        UPDATE chapters SET
+            completionState = CASE WHEN :completed THEN 2 ELSE 0 END,
+            completedAt = CASE WHEN :completed THEN :completedAt ELSE NULL END
+        WHERE id IN (:chapterIds)
+        """
+    )
+    suspend fun setCompletedForIds(
+        chapterIds: List<Long>,
+        completed: Boolean,
+        completedAt: Long = System.currentTimeMillis(),
+    )
+
     @Query("UPDATE chapters SET isCached = :cached WHERE id = :chapterId")
     suspend fun setChapterCached(chapterId: Long, cached: Boolean)
 

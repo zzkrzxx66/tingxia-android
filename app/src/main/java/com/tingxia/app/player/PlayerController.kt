@@ -301,6 +301,22 @@ class PlayerController @Inject constructor(
         updateFromMediaItem(c.currentMediaItem)
     }
 
+    /**
+     * Switch to another chapter of the book that is already loaded, without rebuilding the queue.
+     * Keeps the current play/pause state — tapping a chapter while paused should not start audio.
+     * Returns false when the book is not the live one, so the caller can fall back to [playBook].
+     */
+    fun playChapterInCurrentBook(chapterId: Long): Boolean {
+        val bookId = _state.value.bookId ?: return false
+        val c = controller ?: return false
+        val targetId = "${bookId}_$chapterId"
+        val index = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == targetId }
+            ?: return false
+        c.seekTo(index, 0L)
+        updateFromMediaItem(c.getMediaItemAt(index))
+        return true
+    }
+
     /** Flushes Service progress before chapters are changed or a book is removed. */
     suspend fun prepareLibraryMutation(
         bookId: Long,

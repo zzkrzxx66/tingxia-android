@@ -22,6 +22,7 @@ import com.tingxia.app.data.model.ChapterOffsetIndex
 import com.tingxia.app.data.model.ShelfFilter
 import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.data.model.toModel
+import com.tingxia.app.data.policy.OnlineMetaSyncPolicy
 import com.tingxia.app.data.policy.SafPermissionPolicy
 import com.tingxia.app.data.remote.FqAudioChapter
 import com.tingxia.app.data.remote.FqAudioTone
@@ -55,6 +56,11 @@ data class RescanApplyResult(
 class ReauthDecisionRequiredException(val preview: RescanPreview) : Exception("请确认重新授权后的章节对应关系")
 class PersistablePermissionException : Exception("无法保存该目录的长期读取权限，请尝试其他文件管理器或目录")
 class StaleRescanPreviewException : Exception("目录内容已发生变化，请重新扫描后再应用")
+
+data class OnlineMetaSyncOutcome(
+    val chapterTitlesApplied: Int,
+    val coverReplaced: Boolean,
+)
 
 @Singleton
 class BookRepository @Inject constructor(
@@ -724,10 +730,98 @@ class BookRepository @Inject constructor(
         chapterDao.setAllCompleted(bookId, completed)
     }
 
+    /** Batch completion toggle for a multi-select action. */
+    suspend fun setChaptersCompleted(chapterIds: Collection<Long>, completed: Boolean) {
+        if (chapterIds.isEmpty()) return
+        chapterDao.setCompletedForIds(chapterIds.toList(), completed)
+    }
+
     suspend fun updateBookMetadata(bookId: Long, title: String, author: String?) {
         val cleanTitle = title.trim()
         require(cleanTitle.isNotEmpty()) { "书名不能为空" }
         bookDao.updateMetadata(bookId, cleanTitle, author?.trim()?.takeIf { it.isNotEmpty() })
+    }
+
+    /**
+     * Write online catalogue metadata onto a local book. Blurb, category and word count are
+     * always taken from [remote]; the author only when the remote one is non-blank. The cover is
+     * replaced when [overwriteCover] is set — the previous cover file is kept on disk so
+     * [clearOnlineMeta] can put it back.
+     *
+     * [remoteChapterTitles] are aligned positionally onto the local chapters' custom titles; pass
+     * an empty list to leave chapter names alone. The original scanned titles always survive in
+     * `chapters.title`, so a bad match is never destructive.
+     */
+    suspend fun applyOnlineMeta(
+        bookId: Long,
+        remote: FqSearchBook,
+        remoteChapterTitles: List<String> = emptyList(),
+        overwriteCover: Boolean = true,
+    ): OnlineMetaSyncOutcome = database.withTransaction {
+        val book = bookDao.getBook(bookId) ?: error("书籍不存在")
+        require(book.sourceType == "LOCAL") { "在线书籍无需同步在线信息" }
+        val chapters = chapterDao.getChapters(bookId).sortedBy { it.index }
+        val titleUpdates = OnlineMetaSyncPolicy.chapterTitleUpdates(
+            localChapterIds = chapters.map { it.id },
+            remoteTitles = remoteChapterTitles,
+        )
+        val newCover = remote.coverUrl?.takeIf { overwriteCover && it.isNotBlank() }
+        val backup = OnlineMetaSyncPolicy.mergeBackup(
+            existing = OnlineMetaSyncPolicy.decode(book.metaSyncBackup),
+            currentAuthor = book.author,
+            currentCoverPath = book.coverPath,
+            currentDescription = book.description,
+            currentCategory = book.category,
+            currentWordCount = book.wordCount,
+            chaptersAboutToChange = chapters
+                .filter { it.id in titleUpdates }
+                .associate { it.id to it.customTitle },
+        )
+        bookDao.updateBook(
+            book.copy(
+                author = remote.author?.trim()?.takeIf { it.isNotEmpty() } ?: book.author,
+                coverPath = newCover ?: book.coverPath,
+                description = remote.description?.trim()?.takeIf { it.isNotEmpty() },
+                category = remote.category?.trim()?.takeIf { it.isNotEmpty() },
+                wordCount = remote.wordCount.coerceAtLeast(0L),
+                metaSyncSourceId = remote.bookId,
+                metaSyncedAt = System.currentTimeMillis(),
+                metaSyncBackup = OnlineMetaSyncPolicy.encode(backup),
+            ),
+        )
+        titleUpdates.forEach { (chapterId, title) ->
+            chapterDao.updateCustomTitle(chapterId, title)
+        }
+        OnlineMetaSyncOutcome(
+            chapterTitlesApplied = titleUpdates.size,
+            coverReplaced = newCover != null && newCover != book.coverPath,
+        )
+    }
+
+    /** Undo [applyOnlineMeta], restoring the pre-sync author, cover, blurb and chapter titles. */
+    suspend fun clearOnlineMeta(bookId: Long) {
+        database.withTransaction {
+            val book = bookDao.getBook(bookId) ?: return@withTransaction
+            val backup = OnlineMetaSyncPolicy.decode(book.metaSyncBackup)
+            // Only take the cover back if the synced online artwork is still in place; a cover the
+            // user picked after the sync stays.
+            val coverStillFromSync = book.coverPath == null || book.coverPath.startsWith("http")
+            bookDao.updateBook(
+                book.copy(
+                    author = backup?.author,
+                    coverPath = if (coverStillFromSync) backup?.coverPath else book.coverPath,
+                    description = null,
+                    category = null,
+                    wordCount = 0L,
+                    metaSyncSourceId = null,
+                    metaSyncedAt = 0L,
+                    metaSyncBackup = null,
+                ),
+            )
+            backup?.chapterCustomTitles?.forEach { (chapterId, title) ->
+                chapterDao.updateCustomTitle(chapterId, title)
+            }
+        }
     }
 
     suspend fun updateBookCover(bookId: Long, source: Uri?) {

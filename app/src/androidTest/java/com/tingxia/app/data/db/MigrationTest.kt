@@ -10,6 +10,7 @@ import com.tingxia.app.data.db.migration.MIGRATION_3_4
 import com.tingxia.app.data.db.migration.MIGRATION_4_5
 import com.tingxia.app.data.db.migration.MIGRATION_7_8
 import com.tingxia.app.data.db.migration.MIGRATION_8_9
+import com.tingxia.app.data.db.migration.MIGRATION_9_10
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -343,6 +344,45 @@ class MigrationTest {
             query("SELECT isCached FROM chapters WHERE id = 1").use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals(1, c.getInt(0))
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate9To10_addsOnlineMetaSyncColumns() {
+        helper.createDatabase(testDb, 9).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt,
+                    needsReauth, playbackSpeed, autoPlayNext, lastScannedAt, skipIntroMs,
+                    skipOutroMs, sourceType, description, category, wordCount
+                ) VALUES (
+                    1, 't', NULL, NULL, 'content://tree/x', 1000, 1,
+                    NULL, 0, 0, 0, 0, NULL, 1, 0, 0, 0, 'LOCAL', NULL, NULL, 0
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(testDb, 10, true, MIGRATION_9_10).apply {
+            query("SELECT metaSyncSourceId, metaSyncedAt, metaSyncBackup FROM books WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0))
+                assertEquals(0L, c.getLong(1))
+                assertTrue(c.isNull(2))
+            }
+            execSQL(
+                "UPDATE books SET metaSyncSourceId = '7143', metaSyncedAt = 99, " +
+                    "metaSyncBackup = 'tx-meta-backup/1' WHERE id = 1",
+            )
+            query("SELECT metaSyncSourceId, metaSyncedAt FROM books WHERE id = 1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("7143", c.getString(0))
+                assertEquals(99L, c.getLong(1))
             }
             close()
         }

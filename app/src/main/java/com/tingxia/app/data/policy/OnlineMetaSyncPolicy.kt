@@ -1,0 +1,178 @@
+package com.tingxia.app.data.policy
+
+/**
+ * Rules and undo bookkeeping for syncing online catalogue metadata onto a local book.
+ *
+ * Everything here is pure Kotlin (no Android / org.json) so it can be unit tested on the JVM,
+ * mirroring [com.tingxia.app.data.backup.BackupCodec]'s hand-rolled serialisation.
+ */
+object OnlineMetaSyncPolicy {
+
+    /** How the remote chapter list lines up with the local one. */
+    enum class TitleAlignment {
+        /** Same chapter count: titles map one-to-one. */
+        EXACT,
+
+        /** Counts differ: only the leading min(local, remote) chapters can be aligned. */
+        TRUNCATED,
+
+        /** Nothing usable (one side is empty). */
+        NONE,
+    }
+
+    fun alignment(localCount: Int, remoteCount: Int): TitleAlignment = when {
+        localCount <= 0 || remoteCount <= 0 -> TitleAlignment.NONE
+        localCount == remoteCount -> TitleAlignment.EXACT
+        else -> TitleAlignment.TRUNCATED
+    }
+
+    /**
+     * Chapter id → online title, aligned by position over the leading
+     * `min(local, remote)` chapters. Blank remote titles are skipped so a hole in the
+     * online table of contents never wipes a local chapter name.
+     *
+     * [localChapterIds] must already be in playback order.
+     */
+    fun chapterTitleUpdates(
+        localChapterIds: List<Long>,
+        remoteTitles: List<String>,
+    ): Map<Long, String> {
+        val result = LinkedHashMap<Long, String>()
+        localChapterIds.zip(remoteTitles).forEach { (id, title) ->
+            val clean = title.trim()
+            if (clean.isNotEmpty()) result[id] = clean
+        }
+        return result
+    }
+
+    /** Snapshot of everything a sync overwrites, so the sync can be undone exactly. */
+    data class Backup(
+        val author: String?,
+        val coverPath: String?,
+        val description: String?,
+        val category: String?,
+        val wordCount: Long,
+        /** chapter id → custom title before the first sync touched it (null = had none). */
+        val chapterCustomTitles: Map<Long, String?>,
+    )
+
+    /**
+     * The snapshot to persist when syncing. An existing snapshot always wins for book fields —
+     * re-syncing must not record already-synced values as "original". Chapters absent from the
+     * previous snapshot contribute their current title, which is still their pre-sync value.
+     */
+    fun mergeBackup(
+        existing: Backup?,
+        currentAuthor: String?,
+        currentCoverPath: String?,
+        currentDescription: String?,
+        currentCategory: String?,
+        currentWordCount: Long,
+        chaptersAboutToChange: Map<Long, String?>,
+    ): Backup {
+        val chapters = LinkedHashMap<Long, String?>()
+        existing?.chapterCustomTitles?.let(chapters::putAll)
+        chaptersAboutToChange.forEach { (id, title) ->
+            if (!chapters.containsKey(id)) chapters[id] = title
+        }
+        return Backup(
+            // An existing snapshot is authoritative even where its fields are null — "the author was
+            // empty before the first sync" is exactly the state to restore.
+            author = if (existing != null) existing.author else currentAuthor,
+            coverPath = if (existing != null) existing.coverPath else currentCoverPath,
+            description = if (existing != null) existing.description else currentDescription,
+            category = if (existing != null) existing.category else currentCategory,
+            wordCount = existing?.wordCount ?: currentWordCount,
+            chapterCustomTitles = chapters,
+        )
+    }
+
+    // ---- serialisation -------------------------------------------------------------------
+
+    private const val VERSION_LINE = "tx-meta-backup/1"
+    private const val NULL = "-"
+    private const val PRESENT = "!"
+
+    fun encode(backup: Backup): String = buildString {
+        append(VERSION_LINE)
+        appendField("author", backup.author)
+        appendField("cover", backup.coverPath)
+        appendField("description", backup.description)
+        appendField("category", backup.category)
+        appendField("wordCount", backup.wordCount.toString())
+        backup.chapterCustomTitles.forEach { (id, title) ->
+            append('\n').append("ch\t").append(id).append('\t').append(marker(title))
+        }
+    }
+
+    fun decode(raw: String?): Backup? {
+        if (raw.isNullOrBlank()) return null
+        val lines = raw.split('\n')
+        if (lines.firstOrNull() != VERSION_LINE) return null
+        var author: String? = null
+        var cover: String? = null
+        var description: String? = null
+        var category: String? = null
+        var wordCount = 0L
+        val chapters = LinkedHashMap<Long, String?>()
+        lines.drop(1).forEach { line ->
+            val parts = line.split('\t')
+            when {
+                parts.size == 2 -> {
+                    val value = unmarker(parts[1])
+                    when (parts[0]) {
+                        "author" -> author = value
+                        "cover" -> cover = value
+                        "description" -> description = value
+                        "category" -> category = value
+                        "wordCount" -> wordCount = value?.toLongOrNull() ?: 0L
+                    }
+                }
+                parts.size == 3 && parts[0] == "ch" -> {
+                    val id = parts[1].toLongOrNull() ?: return@forEach
+                    chapters[id] = unmarker(parts[2])
+                }
+            }
+        }
+        return Backup(author, cover, description, category, wordCount, chapters)
+    }
+
+    private fun StringBuilder.appendField(key: String, value: String?) {
+        append('\n').append(key).append('\t').append(marker(value))
+    }
+
+    private fun marker(value: String?): String =
+        if (value == null) NULL else PRESENT + escape(value)
+
+    private fun unmarker(token: String): String? = when {
+        token == NULL -> null
+        token.startsWith(PRESENT) -> unescape(token.substring(1))
+        else -> null
+    }
+
+    private fun escape(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+
+    private fun unescape(value: String): String {
+        val out = StringBuilder(value.length)
+        var i = 0
+        while (i < value.length) {
+            val c = value[i]
+            if (c == '\\' && i + 1 < value.length) {
+                when (val next = value[i + 1]) {
+                    'n' -> out.append('\n')
+                    't' -> out.append('\t')
+                    '\\' -> out.append('\\')
+                    else -> out.append(next)
+                }
+                i += 2
+            } else {
+                out.append(c)
+                i++
+            }
+        }
+        return out.toString()
+    }
+}

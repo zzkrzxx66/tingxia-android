@@ -244,3 +244,12 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         db.execSQL("ALTER TABLE chapters ADD COLUMN isCached INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/** v9 → v10: local books can be linked to an online catalogue entry for metadata sync. */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN metaSyncSourceId TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN metaSyncedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE books ADD COLUMN metaSyncBackup TEXT")
+    }
+}
