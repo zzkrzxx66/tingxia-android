@@ -888,8 +888,11 @@ fun BookDetailScreen(
         onToggleCover = viewModel::setMetaSyncCover,
         onToggleChapterTitles = viewModel::setMetaSyncChapterTitles,
         onApply = viewModel::applyMetaCandidate,
-        onConfirmMismatch = viewModel::confirmMismatch,
-        onDismissMismatch = viewModel::dismissMismatch,
+        onAlignmentModeChange = viewModel::setAlignmentMode,
+        onAlignmentOffsetChange = viewModel::setAlignmentOffset,
+        onConfirmAlignment = viewModel::confirmAlignment,
+        onBookFieldsOnly = viewModel::confirmBookFieldsOnly,
+        onDismissAlignment = viewModel::dismissAlignment,
         onDismiss = viewModel::closeMetaSync,
     )
 

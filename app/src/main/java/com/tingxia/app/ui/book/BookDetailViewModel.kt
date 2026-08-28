@@ -18,7 +18,7 @@ import com.tingxia.app.data.repo.RescanPreview
 import com.tingxia.app.data.repo.ReauthDecisionRequiredException
 import com.tingxia.app.data.remote.FqNovelApi
 import com.tingxia.app.data.remote.FqSearchBook
-import com.tingxia.app.data.policy.OnlineMetaSyncPolicy
+import com.tingxia.app.data.policy.ChapterTitleAligner
 import com.tingxia.app.player.CacheManager
 import com.tingxia.app.player.LibraryMutationSnapshot
 import com.tingxia.app.player.PlayerController
@@ -200,51 +200,35 @@ class BookDetailViewModel @Inject constructor(
     }
 
     /**
-     * Apply one candidate. Chapter titles need the remote table of contents, whose length only
-     * shows up once fetched — a mismatch parks the sync in [OnlineMetaSyncUiState.mismatch] and
-     * waits for [confirmMismatch].
+     * Apply one candidate. Chapter titles need the remote table of contents, so the flow stops at
+     * an alignment step ([OnlineMetaSyncUiState.alignment]) where the number-based pairing can be
+     * reviewed and, if the parser came up short, replaced by a manual drift.
      */
     fun applyMetaCandidate(candidate: FqSearchBook) {
         if (_metaSync.value.applying) return
         viewModelScope.launch {
             _metaSync.value = _metaSync.value.copy(applying = true)
             try {
-                val wantTitles = _metaSync.value.syncChapterTitles
-                val remoteTitles = if (wantTitles) fetchRemoteChapterTitles(candidate) else emptyList()
-                val localCount = chapters.value.size
-                val alignment = OnlineMetaSyncPolicy.alignment(localCount, remoteTitles.size)
-                if (wantTitles && alignment == OnlineMetaSyncPolicy.TitleAlignment.TRUNCATED) {
-                    _metaSync.value = _metaSync.value.copy(
-                        applying = false,
-                        mismatch = ChapterCountMismatch(
-                            candidate = candidate,
-                            localCount = localCount,
-                            remoteCount = remoteTitles.size,
-                            remoteTitles = remoteTitles,
-                        ),
-                    )
+                if (!_metaSync.value.syncChapterTitles) {
+                    commitMetaSync(candidate, emptyMap())
                     return@launch
                 }
-                commitMetaSync(candidate, remoteTitles)
-            } catch (e: Exception) {
-                _metaSync.value = _metaSync.value.copy(applying = false)
-                _error.value = e.message ?: "同步在线信息失败"
-            }
-        }
-    }
-
-    /**
-     * Resolve a chapter-count mismatch: [alignAnyway] aligns the leading chapters, otherwise only
-     * the book-level fields are synced.
-     */
-    fun confirmMismatch(alignAnyway: Boolean) {
-        val pending = _metaSync.value.mismatch ?: return
-        viewModelScope.launch {
-            _metaSync.value = _metaSync.value.copy(mismatch = null, applying = true)
-            try {
-                commitMetaSync(
-                    candidate = pending.candidate,
-                    remoteTitles = if (alignAnyway) pending.remoteTitles else emptyList(),
+                val remoteTitles = fetchRemoteChapterTitles(candidate)
+                if (remoteTitles.isEmpty()) {
+                    commitMetaSync(candidate, emptyMap())
+                    return@launch
+                }
+                val local = chapters.value
+                val plan = ChapterTitleAligner.byNumber(local, remoteTitles)
+                _metaSync.value = _metaSync.value.copy(
+                    applying = false,
+                    alignment = ChapterAlignmentState(
+                        candidate = candidate,
+                        remoteTitles = remoteTitles,
+                        localCount = local.size,
+                        plan = plan,
+                        suggestedOffset = ChapterTitleAligner.suggestedOffset(local, remoteTitles),
+                    ),
                 )
             } catch (e: Exception) {
                 _metaSync.value = _metaSync.value.copy(applying = false)
@@ -253,8 +237,59 @@ class BookDetailViewModel @Inject constructor(
         }
     }
 
-    fun dismissMismatch() {
-        _metaSync.value = _metaSync.value.copy(mismatch = null, applying = false)
+    /** Switch the alignment step between number matching and manual drift. */
+    fun setAlignmentMode(mode: ChapterTitleAligner.Mode) {
+        val current = _metaSync.value.alignment ?: return
+        if (current.plan.mode == mode) return
+        val plan = when (mode) {
+            ChapterTitleAligner.Mode.BY_NUMBER ->
+                ChapterTitleAligner.byNumber(chapters.value, current.remoteTitles)
+            // Entering manual mode starts from the drift the number matches imply, not from 0.
+            ChapterTitleAligner.Mode.BY_OFFSET ->
+                ChapterTitleAligner.byOffset(chapters.value, current.remoteTitles, current.suggestedOffset)
+        }
+        _metaSync.value = _metaSync.value.copy(alignment = current.copy(plan = plan))
+    }
+
+    /** Nudge the manual drift; the preview under it updates immediately. */
+    fun setAlignmentOffset(offset: Int) {
+        val current = _metaSync.value.alignment ?: return
+        val range = ChapterTitleAligner.offsetRange(current.localCount, current.remoteTitles.size)
+        val clamped = offset.coerceIn(range)
+        val plan = ChapterTitleAligner.byOffset(chapters.value, current.remoteTitles, clamped)
+        _metaSync.value = _metaSync.value.copy(alignment = current.copy(plan = plan))
+    }
+
+    /** Write the reviewed alignment. */
+    fun confirmAlignment() {
+        val current = _metaSync.value.alignment ?: return
+        viewModelScope.launch {
+            _metaSync.value = _metaSync.value.copy(alignment = null, applying = true)
+            try {
+                commitMetaSync(current.candidate, current.plan.updates)
+            } catch (e: Exception) {
+                _metaSync.value = _metaSync.value.copy(applying = false)
+                _error.value = e.message ?: "同步在线信息失败"
+            }
+        }
+    }
+
+    /** Skip chapter titles entirely and sync only the book-level fields. */
+    fun confirmBookFieldsOnly() {
+        val current = _metaSync.value.alignment ?: return
+        viewModelScope.launch {
+            _metaSync.value = _metaSync.value.copy(alignment = null, applying = true)
+            try {
+                commitMetaSync(current.candidate, emptyMap())
+            } catch (e: Exception) {
+                _metaSync.value = _metaSync.value.copy(applying = false)
+                _error.value = e.message ?: "同步在线信息失败"
+            }
+        }
+    }
+
+    fun dismissAlignment() {
+        _metaSync.value = _metaSync.value.copy(alignment = null, applying = false)
     }
 
     fun clearOnlineMeta() {
@@ -269,12 +304,12 @@ class BookDetailViewModel @Inject constructor(
         }
     }
 
-    private suspend fun commitMetaSync(candidate: FqSearchBook, remoteTitles: List<String>) {
+    private suspend fun commitMetaSync(candidate: FqSearchBook, titleUpdates: Map<Long, String>) {
         val overwriteCover = _metaSync.value.syncCover
         val outcome = bookRepository.applyOnlineMeta(
             bookId = bookId,
             remote = candidate,
-            remoteChapterTitles = remoteTitles,
+            chapterTitleUpdates = titleUpdates,
             overwriteCover = overwriteCover,
         )
         playerController.refreshQueueMetadata(bookId)

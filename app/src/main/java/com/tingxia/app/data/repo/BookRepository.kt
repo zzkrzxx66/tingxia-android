@@ -748,23 +748,23 @@ class BookRepository @Inject constructor(
      * replaced when [overwriteCover] is set — the previous cover file is kept on disk so
      * [clearOnlineMeta] can put it back.
      *
-     * [remoteChapterTitles] are aligned positionally onto the local chapters' custom titles; pass
-     * an empty list to leave chapter names alone. The original scanned titles always survive in
-     * `chapters.title`, so a bad match is never destructive.
+     * [chapterTitleUpdates] (chapter id → title) comes from
+     * [com.tingxia.app.data.policy.ChapterTitleAligner]; alignment decisions belong to the caller,
+     * which can pair by chapter number or by a manual drift. Chapters absent from the map keep
+     * their titles, and the original scanned titles always survive in `chapters.title`, so a bad
+     * match is never destructive.
      */
     suspend fun applyOnlineMeta(
         bookId: Long,
         remote: FqSearchBook,
-        remoteChapterTitles: List<String> = emptyList(),
+        chapterTitleUpdates: Map<Long, String> = emptyMap(),
         overwriteCover: Boolean = true,
     ): OnlineMetaSyncOutcome = database.withTransaction {
         val book = bookDao.getBook(bookId) ?: error("书籍不存在")
         require(book.sourceType == "LOCAL") { "在线书籍无需同步在线信息" }
         val chapters = chapterDao.getChapters(bookId).sortedBy { it.index }
-        val titleUpdates = OnlineMetaSyncPolicy.chapterTitleUpdates(
-            localChapterIds = chapters.map { it.id },
-            remoteTitles = remoteChapterTitles,
-        )
+        val known = chapters.mapTo(mutableSetOf()) { it.id }
+        val titleUpdates = chapterTitleUpdates.filterKeys { it in known }
         val newCover = remote.coverUrl?.takeIf { overwriteCover && it.isNotBlank() }
         val backup = OnlineMetaSyncPolicy.mergeBackup(
             existing = OnlineMetaSyncPolicy.decode(book.metaSyncBackup),

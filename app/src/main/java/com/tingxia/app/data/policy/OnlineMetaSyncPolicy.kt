@@ -1,49 +1,13 @@
 package com.tingxia.app.data.policy
 
 /**
- * Rules and undo bookkeeping for syncing online catalogue metadata onto a local book.
+ * Undo bookkeeping for syncing online catalogue metadata onto a local book. Chapter-title
+ * alignment lives in [ChapterTitleAligner].
  *
  * Everything here is pure Kotlin (no Android / org.json) so it can be unit tested on the JVM,
  * mirroring [com.tingxia.app.data.backup.BackupCodec]'s hand-rolled serialisation.
  */
 object OnlineMetaSyncPolicy {
-
-    /** How the remote chapter list lines up with the local one. */
-    enum class TitleAlignment {
-        /** Same chapter count: titles map one-to-one. */
-        EXACT,
-
-        /** Counts differ: only the leading min(local, remote) chapters can be aligned. */
-        TRUNCATED,
-
-        /** Nothing usable (one side is empty). */
-        NONE,
-    }
-
-    fun alignment(localCount: Int, remoteCount: Int): TitleAlignment = when {
-        localCount <= 0 || remoteCount <= 0 -> TitleAlignment.NONE
-        localCount == remoteCount -> TitleAlignment.EXACT
-        else -> TitleAlignment.TRUNCATED
-    }
-
-    /**
-     * Chapter id → online title, aligned by position over the leading
-     * `min(local, remote)` chapters. Blank remote titles are skipped so a hole in the
-     * online table of contents never wipes a local chapter name.
-     *
-     * [localChapterIds] must already be in playback order.
-     */
-    fun chapterTitleUpdates(
-        localChapterIds: List<Long>,
-        remoteTitles: List<String>,
-    ): Map<Long, String> {
-        val result = LinkedHashMap<Long, String>()
-        localChapterIds.zip(remoteTitles).forEach { (id, title) ->
-            val clean = title.trim()
-            if (clean.isNotEmpty()) result[id] = clean
-        }
-        return result
-    }
 
     /** Snapshot of everything a sync overwrites, so the sync can be undone exactly. */
     data class Backup(

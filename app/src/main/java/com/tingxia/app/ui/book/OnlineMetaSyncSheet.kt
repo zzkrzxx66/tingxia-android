@@ -1,5 +1,8 @@
 package com.tingxia.app.ui.book
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tingxia.app.R
+import com.tingxia.app.data.policy.ChapterTitleAligner
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.SectionCard
@@ -47,12 +51,14 @@ import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 
-/** A candidate whose online chapter count does not match the local one. */
-data class ChapterCountMismatch(
+/** Chapter-title alignment awaiting review before anything is written. */
+data class ChapterAlignmentState(
     val candidate: FqSearchBook,
-    val localCount: Int,
-    val remoteCount: Int,
     val remoteTitles: List<String>,
+    val localCount: Int,
+    val plan: ChapterTitleAligner.Plan,
+    /** Drift implied by the number matches, used to seed manual mode. */
+    val suggestedOffset: Int = 0,
 )
 
 data class OnlineMetaSyncUiState(
@@ -64,7 +70,7 @@ data class OnlineMetaSyncUiState(
     val applying: Boolean = false,
     val syncCover: Boolean = true,
     val syncChapterTitles: Boolean = true,
-    val mismatch: ChapterCountMismatch? = null,
+    val alignment: ChapterAlignmentState? = null,
 )
 
 /**
@@ -82,8 +88,11 @@ fun OnlineMetaSyncSheet(
     onToggleCover: (Boolean) -> Unit,
     onToggleChapterTitles: (Boolean) -> Unit,
     onApply: (FqSearchBook) -> Unit,
-    onConfirmMismatch: (alignAnyway: Boolean) -> Unit,
-    onDismissMismatch: () -> Unit,
+    onAlignmentModeChange: (ChapterTitleAligner.Mode) -> Unit,
+    onAlignmentOffsetChange: (Int) -> Unit,
+    onConfirmAlignment: () -> Unit,
+    onBookFieldsOnly: () -> Unit,
+    onDismissAlignment: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     if (!state.visible) return
@@ -178,34 +187,129 @@ fun OnlineMetaSyncSheet(
         }
     }
 
-    state.mismatch?.let { mismatch ->
-        // Aligning a different number of chapters is the one lossy-looking step, so it needs a
-        // decision instead of a silent best effort.
-        AlertDialog(
-            onDismissRequest = onDismissMismatch,
-            title = { Text(stringResource(R.string.meta_sync_mismatch_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.meta_sync_mismatch_body,
-                        mismatch.localCount,
-                        mismatch.remoteCount,
-                        minOf(mismatch.localCount, mismatch.remoteCount),
-                    ),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { onConfirmMismatch(true) }) {
-                    Text(stringResource(R.string.meta_sync_mismatch_align))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onConfirmMismatch(false) }) {
-                    Text(stringResource(R.string.meta_sync_mismatch_book_only))
-                }
-            },
+    state.alignment?.let { alignment ->
+        ChapterAlignmentDialog(
+            alignment = alignment,
+            onModeChange = onAlignmentModeChange,
+            onOffsetChange = onAlignmentOffsetChange,
+            onConfirm = onConfirmAlignment,
+            onBookFieldsOnly = onBookFieldsOnly,
+            onDismiss = onDismissAlignment,
         )
     }
+}
+
+/**
+ * Review step for chapter titles. Number matching is the default because position-only alignment
+ * breaks whenever the two sides start differently; the manual drift is the escape hatch, and both
+ * show a live preview so a wrong pairing is visible before it is written.
+ */
+@Composable
+private fun ChapterAlignmentDialog(
+    alignment: ChapterAlignmentState,
+    onModeChange: (ChapterTitleAligner.Mode) -> Unit,
+    onOffsetChange: (Int) -> Unit,
+    onConfirm: () -> Unit,
+    onBookFieldsOnly: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val plan = alignment.plan
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.meta_sync_align_title)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    stringResource(
+                        R.string.meta_sync_align_counts,
+                        alignment.localCount,
+                        alignment.remoteTitles.size,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = plan.mode == ChapterTitleAligner.Mode.BY_NUMBER,
+                        onClick = { onModeChange(ChapterTitleAligner.Mode.BY_NUMBER) },
+                        label = { Text(stringResource(R.string.meta_sync_align_by_number)) },
+                    )
+                    FilterChip(
+                        selected = plan.mode == ChapterTitleAligner.Mode.BY_OFFSET,
+                        onClick = { onModeChange(ChapterTitleAligner.Mode.BY_OFFSET) },
+                        label = { Text(stringResource(R.string.meta_sync_align_by_offset)) },
+                    )
+                }
+                if (plan.mode == ChapterTitleAligner.Mode.BY_OFFSET) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        listOf(-10, -1).forEach { step ->
+                            TextButton(onClick = { onOffsetChange(plan.offset + step) }) {
+                                Text("$step")
+                            }
+                        }
+                        Text(
+                            stringResource(R.string.meta_sync_align_offset_pair, plan.offset + 1),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        listOf(1, 10).forEach { step ->
+                            TextButton(onClick = { onOffsetChange(plan.offset + step) }) {
+                                Text("+$step")
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(
+                        R.string.meta_sync_align_matched,
+                        plan.matchedCount,
+                        plan.unmatchedCount,
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (plan.matchedCount == 0) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                plan.preview.forEach { row ->
+                    Text(
+                        row.localLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        row.remoteTitle?.let { "→ $it" }
+                            ?: stringResource(R.string.meta_sync_align_keep),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (row.remoteTitle == null) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 12.dp, bottom = 6.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = plan.matchedCount > 0) {
+                Text(stringResource(R.string.apply))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onBookFieldsOnly) {
+                Text(stringResource(R.string.meta_sync_mismatch_book_only))
+            }
+        },
+    )
 }
 
 @Composable

@@ -236,6 +236,13 @@
     <string name="meta_sync_mismatch_body">本地 %1$d 章,在线 %2$d 章。按顺序对齐只能覆盖前 %3$d 章,且中间缺章时会错位;原始文件名始终保留,可随时清除在线信息还原。</string>
     <string name="meta_sync_mismatch_align">仍按顺序对齐</string>
     <string name="meta_sync_mismatch_book_only">只同步书籍信息</string>
+    <string name="meta_sync_align_title">对齐章节标题</string>
+    <string name="meta_sync_align_counts">本地 %1$d 章,在线 %2$d 章</string>
+    <string name="meta_sync_align_by_number">按章号匹配</string>
+    <string name="meta_sync_align_by_offset">手动漂移</string>
+    <string name="meta_sync_align_offset_pair">本地第 1 章 ↔ 在线第 %1$d 章</string>
+    <string name="meta_sync_align_matched">已匹配 %1$d 章,%2$d 章保留原标题</string>
+    <string name="meta_sync_align_keep">→ 保留原标题</string>
     <!-- Chapter picker (player sheet) -->
     <string name="chapter_picker_title">选集</string>
     <string name="chapter_picker_button">选集 %1$d/%2$d</string>

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.1
+
+- Chapter-title alignment for online metadata sync no longer assumes both sides start at the same
+  place. A 片头 file, a missing 序章 or a folder that begins at chapter 30 used to shift every
+  title by a fixed amount.
+  - Default is now number matching: the chapter number is parsed from both the local filename
+    /title and the online title (Arabic, full-width and Chinese numerals, `第412章`, `EP412`,
+    `001_第412章`), then paired by number. Gaps, extra intro files, mid-book folders and 上/下
+    splits all fall out of this for free; chapters whose number cannot be read keep their titles.
+  - Manual 漂移 mode is the fallback, seeded with the drift the number matches imply and adjusted
+    in ±1 / ±10 steps.
+  - Both modes show 已匹配 x / y 章 plus a live preview of the first rows before anything is
+    written, and 只同步书籍信息 remains one tap away.
+
 ## 0.13.0
 
 - Chapter picker in the player (选集 x/N in the tool row): a bottom sheet that switches chapter

@@ -7,24 +7,6 @@ import org.junit.Test
 class OnlineMetaSyncPolicyTest {
 
     @Test
-    fun alignment_reportsExactTruncatedAndNone() {
-        assertEquals(OnlineMetaSyncPolicy.TitleAlignment.EXACT, OnlineMetaSyncPolicy.alignment(12, 12))
-        assertEquals(OnlineMetaSyncPolicy.TitleAlignment.TRUNCATED, OnlineMetaSyncPolicy.alignment(12, 400))
-        assertEquals(OnlineMetaSyncPolicy.TitleAlignment.NONE, OnlineMetaSyncPolicy.alignment(12, 0))
-        assertEquals(OnlineMetaSyncPolicy.TitleAlignment.NONE, OnlineMetaSyncPolicy.alignment(0, 5))
-    }
-
-    @Test
-    fun chapterTitleUpdates_alignsLeadingChaptersAndSkipsBlanks() {
-        val updates = OnlineMetaSyncPolicy.chapterTitleUpdates(
-            localChapterIds = listOf(7L, 8L, 9L),
-            remoteTitles = listOf("第一章 起势", "   ", "第三章 收束", "第四章 多余"),
-        )
-
-        assertEquals(mapOf(7L to "第一章 起势", 9L to "第三章 收束"), updates)
-    }
-
-    @Test
     fun mergeBackup_keepsOriginalValuesAcrossRepeatedSyncs() {
         val first = OnlineMetaSyncPolicy.mergeBackup(
             existing = null,
