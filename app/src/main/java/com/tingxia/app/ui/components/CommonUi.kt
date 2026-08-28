@@ -522,15 +522,16 @@ fun BookGridTile(
             )
             if (overlay != null) overlay()
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             title,
             style = MaterialTheme.typography.titleSmall,
+            // No reserved second line: a grid row already levels its tiles, so single-line
+            // titles used to leave a visible blank gap above the subtitle for nothing.
             maxLines = 2,
-            minLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(1.dp))
         Text(
             subtitle,
             style = MaterialTheme.typography.bodySmall,

@@ -1,5 +1,9 @@
 package com.tingxia.app.ui.shelf
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.ui.graphics.Brush
@@ -153,6 +157,35 @@ fun ShelfScreen(
                 ),
                 actions = {
                     Box {
+                        IconButton(onClick = { sortMenu = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = stringResource(R.string.sort_books),
+                            )
+                        }
+                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                            listOf(
+                                ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
+                                ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
+                                ShelfSort.TITLE to stringResource(R.string.book_title),
+                                ShelfSort.PROGRESS to stringResource(R.string.progress),
+                            ).forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    leadingIcon = {
+                                        if (sort == value) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setSort(value)
+                                        sortMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Box {
                         IconButton(onClick = { importMenu = true }) {
                             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_audio))
                         }
@@ -195,9 +228,18 @@ fun ShelfScreen(
                         onValueChange = viewModel::setQuery,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
+                            .padding(horizontal = 16.dp)
+                            // A 56dp field plus the hero card and the chip row left room for a
+                            // single book on the first screen; 46dp keeps the shelf the subject.
+                            .height(46.dp),
+                        textStyle = MaterialTheme.typography.bodyMedium,
                         singleLine = true,
-                        placeholder = { Text(stringResource(R.string.search_books_hint)) },
+                        placeholder = {
+                            Text(
+                                stringResource(R.string.search_books_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        },
                         leadingIcon = {
                             Icon(Icons.Default.Search, contentDescription = null)
                         },
@@ -229,16 +271,28 @@ fun ShelfScreen(
                     } else {
                         // Hero card and the filter row scroll with the grid, so the shelf reads as
                         // one continuous surface instead of a fixed toolbar stack.
+                        // Explicit column counts: GridCells.Adaptive divides with integer
+                        // truncation, so a 108dp minimum silently produced two half-screen tiles
+                        // on a normal phone instead of three.
+                        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val columns = when {
+                            maxWidth < 600.dp -> 3
+                            maxWidth < 840.dp -> 4
+                            else -> 6
+                        }
+                        // Tile width drives the on-cover play button, which otherwise stayed a
+                        // 30dp dot no matter how large the artwork got.
+                        val tileWidth = (maxWidth - 32.dp - 12.dp * (columns - 1)) / columns
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 108.dp),
+                            columns = GridCells.Fixed(columns),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 12.dp,
+                                top = 10.dp,
                                 bottom = 24.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(18.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             recent?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }?.let { book ->
@@ -254,21 +308,19 @@ fun ShelfScreen(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ShelfFilterRow(
                                     filter = filter,
-                                    sort = sort,
-                                    sortMenuOpen = sortMenu,
-                                    onSortMenuChange = { sortMenu = it },
                                     onFilterChange = viewModel::setFilter,
-                                    onSortChange = viewModel::setSort,
                                 )
                             }
                             items(books, key = { it.id }) { book ->
                                 BookGridItem(
                                     book = book,
                                     isPlaying = book.id == playingBookId,
+                                    tileWidth = tileWidth,
                                     onClick = { onOpenBook(book.id) },
                                     onPlay = { onPlayBook(book.id) },
                                 )
                             }
+                        }
                         }
                     }
                 }
@@ -351,9 +403,11 @@ private fun EmptyShelf(
 private fun BookGridItem(
     book: Book,
     isPlaying: Boolean = false,
+    tileWidth: Dp = 110.dp,
     onClick: () -> Unit,
     onPlay: () -> Unit = {},
 ) {
+    val playSize = (tileWidth * 0.30f).coerceIn(28.dp, 44.dp)
     BookGridTile(
         title = book.title,
         coverPath = book.coverPath,
@@ -409,12 +463,33 @@ private fun BookGridItem(
                     )
                 }
             }
+            // Artwork is unpredictable, so the bottom band gets a scrim: without it the progress
+            // line and the play button disappeared into busy covers.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(playSize + 16.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            bottomStart = CoverCorner.Grid,
+                            bottomEnd = CoverCorner.Grid,
+                        ),
+                    )
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.45f),
+                        ),
+                    ),
+            )
             if (!book.needsReauth) {
                 // One-tap continue straight from the shelf; the rest of the tile still opens the
                 // book page.
                 CoverPlayButton(
                     onClick = onPlay,
                     isPlaying = isPlaying,
+                    size = playSize,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -429,13 +504,13 @@ private fun BookGridItem(
                     progress = { book.progressFraction },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .fillMaxWidth(0.62f)
-                        .padding(start = 6.dp)
-                        .padding(bottom = 12.dp)
+                        .fillMaxWidth()
+                        .padding(start = 8.dp, end = playSize + 12.dp)
+                        .padding(bottom = 6.dp + (playSize - 3.dp) / 2)
                         .height(3.dp)
                         .clip(MaterialTheme.shapes.extraSmall),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.Black.copy(alpha = 0.38f),
+                    trackColor = Color.White.copy(alpha = 0.35f),
                 )
             }
         },
@@ -497,13 +572,13 @@ private fun ContinueListeningCard(
                     ),
             )
             Row(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BookCover(
                     title = book.title,
                     coverPath = book.coverPath,
-                    size = 62.dp,
+                    size = 72.dp,
                     ratio = COVER_RATIO_PORTRAIT,
                     corner = CoverCorner.Card,
                     realistic = true,
@@ -558,7 +633,7 @@ private fun ContinueListeningCard(
                 CoverPlayButton(
                     onClick = onPlay,
                     isPlaying = isPlaying,
-                    size = 46.dp,
+                    size = 42.dp,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                 )
             }
@@ -566,15 +641,14 @@ private fun ContinueListeningCard(
     }
 }
 
-/** Filter chips + sort picker, kept in one row so it can ride inside the shelf grid. */
+/**
+ * Filter chips only. Sorting moved to the app bar: sitting at the end of this row it read as a
+ * fifth filter, and it pushed the real filters off-screen.
+ */
 @Composable
 private fun ShelfFilterRow(
     filter: ShelfFilter,
-    sort: ShelfSort,
-    sortMenuOpen: Boolean,
-    onSortMenuChange: (Boolean) -> Unit,
     onFilterChange: (ShelfFilter) -> Unit,
-    onSortChange: (ShelfSort) -> Unit,
 ) {
     val filterOptions = listOf(
         ShelfFilter.ALL to stringResource(R.string.filter_all),
@@ -583,48 +657,13 @@ private fun ShelfFilterRow(
         ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
         ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        LazyRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(filterOptions, key = { it.first.name }) { (value, label) ->
-                FilterChip(
-                    selected = filter == value,
-                    onClick = { onFilterChange(value) },
-                    label = { Text(label) },
-                )
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        Box {
-            AssistChip(
-                onClick = { onSortMenuChange(true) },
-                label = { Text(sortLabel(sort), maxLines = 1) },
-                leadingIcon = {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Sort,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                },
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(filterOptions, key = { it.first.name }) { (value, label) ->
+            FilterChip(
+                selected = filter == value,
+                onClick = { onFilterChange(value) },
+                label = { Text(label) },
             )
-            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { onSortMenuChange(false) }) {
-                listOf(
-                    ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
-                    ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
-                    ShelfSort.TITLE to stringResource(R.string.book_title),
-                    ShelfSort.PROGRESS to stringResource(R.string.progress),
-                ).forEach { (value, label) ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            onSortChange(value)
-                            onSortMenuChange(false)
-                        },
-                    )
-                }
-            }
         }
     }
 }
