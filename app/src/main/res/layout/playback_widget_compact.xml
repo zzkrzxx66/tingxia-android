@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The strip: cover, then a text block that keeps the title and the progress line, then the controls
-  grouped at the end. Two columns rather than three stacked full-width rows, because at this height
-  spreading the controls across the whole panel left the title floating alone above them.
+  The strip, stacked: title, controls, then the progress line with elapsed/total. Three rows in flow
+  rather than two columns — at this height a text column beside a control column made both cramped.
+  Controls keep fixed sizes and sit as one centred group: weights used to push previous/next out to
+  the panel edges, where the gaps read as accidental.
 
-  The panel's colour comes from the cover at render time (see PlaybackWidgetUpdater.panelTint), so
-  the background here is only the shape and the alpha gradient that tint is poured into.
+  The panel's colour comes from the cover at render time (see PlaybackWidgetUpdater.widgetPanelTint),
+  so the background here is only the shape and the alpha gradient that tint is poured into.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -20,75 +21,36 @@
         android:background="@drawable/widget_background"
         android:baselineAligned="false"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:paddingStart="18dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="8dp">
+        android:paddingTop="6dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="6dp">
 
-        <LinearLayout
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/widget_book_title"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:ellipsize="end"
+            android:fontFamily="serif"
+            android:maxLines="1"
+            android:text="@string/app_name"
+            android:textColor="@color/widget_on_surface"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/widget_book_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:fontFamily="serif"
-                android:maxLines="1"
-                android:text="@string/app_name"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+        <TextView
+            android:id="@+id/widget_chapter_title"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:text="@string/widget_no_media"
+            android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/widget_chapter_title"
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:text="@string/widget_no_media"
-                android:visibility="gone" />
-
-            <!-- Bar and elapsed/total on one line: the hairline alone said "somewhere in the middle"
-                 and nothing more. -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <ProgressBar
-                    android:id="@+id/widget_progress"
-                    style="@android:style/Widget.ProgressBar.Horizontal"
-                    android:layout_width="0dp"
-                    android:layout_height="2dp"
-                    android:layout_weight="1"
-                    android:indeterminate="false"
-                    android:progressDrawable="@drawable/widget_progress" />
-
-                <TextView
-                    android:id="@+id/widget_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:fontFamily="sans-serif"
-                    android:maxLines="1"
-                    android:text="@string/widget_tap_to_resume"
-                    android:textColor="@color/widget_on_surface_variant"
-                    android:textSize="11sp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- Fixed sizes, grouped at the end: weights spread three glyphs across the panel and the
-             gaps between them read as accidental. -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_marginStart="10dp"
-            android:gravity="center_vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
             android:orientation="horizontal">
 
             <ImageButton
@@ -104,9 +66,9 @@
 
             <ImageButton
                 android:id="@+id/widget_play_pause"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="4dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="26dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="@string/play"
                 android:padding="2dp"
@@ -117,13 +79,43 @@
                 android:id="@+id/widget_next"
                 android:layout_width="34dp"
                 android:layout_height="34dp"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="26dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="@string/next_chapter"
                 android:padding="6dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_widget_next"
                 android:tint="@color/widget_on_control" />
+        </LinearLayout>
+
+        <!-- Bar and elapsed/total on one line: the hairline alone said "somewhere in the middle" and
+             nothing more. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="2dp"
+                android:layout_weight="1"
+                android:indeterminate="false"
+                android:progressDrawable="@drawable/widget_progress" />
+
+            <TextView
+                android:id="@+id/widget_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:text="@string/widget_tap_to_resume"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
 
