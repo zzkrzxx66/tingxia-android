@@ -109,6 +109,7 @@ import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.playerScrim
+import com.tingxia.app.ui.theme.rememberCoverAccent
 import kotlinx.coroutines.launch
 
 // Lazy items placed before the chapter rows: the book header and the sticky tab/toolbar block.
@@ -551,10 +552,10 @@ fun BookDetailScreen(
                                     size = 112.dp,
                                     ratio = COVER_RATIO_PORTRAIT,
                                     corner = CoverCorner.Detail,
-                                    realistic = true,
+                                    framed = true,
                                 )
                             }
-                            Spacer(Modifier.width(18.dp))
+                            Spacer(Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     book?.title.orEmpty(),
@@ -587,7 +588,7 @@ fun BookDetailScreen(
                                                 modifier = Modifier.size(15.dp),
                                                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             )
-                                            Spacer(Modifier.width(6.dp))
+                                            Spacer(Modifier.width(8.dp))
                                             Text(
                                                 stringResource(R.string.online_narrated),
                                                 style = MaterialTheme.typography.labelMedium,
@@ -596,7 +597,7 @@ fun BookDetailScreen(
                                         }
                                     }
                                 }
-                                Spacer(Modifier.height(10.dp))
+                                Spacer(Modifier.height(8.dp))
                                 Text(
                                     stringResource(
                                         R.string.book_chapter_duration,
@@ -642,7 +643,7 @@ fun BookDetailScreen(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             description.trim(),
                             style = MaterialTheme.typography.bodyMedium,
@@ -683,13 +684,14 @@ fun BookDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(
                             progress = { book?.progressFraction ?: 0f },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(4.dp)
                                 .clip(MaterialTheme.shapes.extraSmall),
+                            color = rememberCoverAccent(book?.coverPath),
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
                         )
                     }

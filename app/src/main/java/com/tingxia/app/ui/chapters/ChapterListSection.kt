@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +45,7 @@ import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.data.model.ChapterFilter
 import com.tingxia.app.data.model.ChapterGroup
 import com.tingxia.app.data.model.ChapterOrder
+import com.tingxia.app.ui.components.TxChip
 
 /**
  * Search / order / filter / locate bar plus the 选集 jump strip, shared by the book-detail list
@@ -184,12 +184,10 @@ fun ChapterToolbar(
             ) {
                 items(groups.size) { index ->
                     val label = groups[index].label ?: return@items
-                    FilterChip(
+                    TxChip(
+                        label = stringResource(R.string.chapter_group_range, label.first, label.last),
                         selected = index == activeGroupIndex,
                         onClick = { onJumpToGroup(index) },
-                        label = {
-                            Text(stringResource(R.string.chapter_group_range, label.first, label.last))
-                        },
                     )
                 }
             }

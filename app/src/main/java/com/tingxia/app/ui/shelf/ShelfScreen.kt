@@ -8,6 +8,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.ui.graphics.Brush
 import com.tingxia.app.ui.components.CoverPlayButton
+import com.tingxia.app.ui.components.TxChip
+import com.tingxia.app.ui.theme.BookType
+import com.tingxia.app.ui.theme.rememberCoverAccent
 import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
@@ -143,7 +146,7 @@ fun ShelfScreen(
                             stringResource(R.string.app_name),
                             style = MaterialTheme.typography.titleLarge,
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             stringResource(R.string.shelf_book_count, books.size),
                             style = MaterialTheme.typography.labelMedium,
@@ -293,7 +296,7 @@ fun ShelfScreen(
                                 bottom = 24.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             // Skipped when the bottom capsule is already showing this book (a
@@ -353,7 +356,7 @@ fun ShelfScreen(
                                 strokeWidth = 2.5.dp,
                                 color = MaterialTheme.colorScheme.primary,
                             )
-                            Spacer(Modifier.width(14.dp))
+                            Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(stringResource(R.string.importing), style = MaterialTheme.typography.titleSmall)
                                 importProgress?.let {
@@ -395,7 +398,7 @@ private fun EmptyShelf(
             {
                 Button(onClick = onImport, shape = MaterialTheme.shapes.medium) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.empty_shelf_action))
                 }
                 Spacer(Modifier.height(8.dp))
@@ -418,6 +421,7 @@ private fun BookGridItem(
     onPlay: () -> Unit = {},
 ) {
     val playSize = (tileWidth * 0.30f).coerceIn(28.dp, 44.dp)
+    val accent = rememberCoverAccent(book.coverPath)
     BookGridTile(
         title = book.title,
         coverPath = book.coverPath,
@@ -425,7 +429,7 @@ private fun BookGridItem(
             ?: if (book.isRemote) stringResource(R.string.online_narrated)
             else formatDuration(book.totalDurationMs),
         onClick = onClick,
-        realistic = true,
+        framed = true,
         overlay = {
             if (book.isRemote) {
                 OnlineBadge(modifier = Modifier.align(Alignment.TopStart))
@@ -440,8 +444,8 @@ private fun BookGridItem(
                     shadowElevation = 3.dp,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(6.dp)
-                        .padding(start = if (book.isRemote) 46.dp else 0.dp),
+                        .padding(8.dp)
+                        .padding(start = if (book.isRemote) 44.dp else 0.dp),
                 ) {
                     Icon(
                         Icons.Default.PlayArrow,
@@ -501,7 +505,7 @@ private fun BookGridItem(
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 6.dp, bottom = 8.dp),
+                        .padding(end = 8.dp, bottom = 8.dp),
                 )
             }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
@@ -516,7 +520,7 @@ private fun BookGridItem(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(3.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = accent,
                     trackColor = Color.White.copy(alpha = 0.30f),
                 )
             }
@@ -566,10 +570,10 @@ private fun ContinueListeningBar(
     onOpen: () -> Unit,
     onPlay: () -> Unit,
 ) {
+    val accent = rememberCoverAccent(book.coverPath)
     SectionCard(
         onClick = onOpen,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
@@ -584,7 +588,7 @@ private fun ContinueListeningBar(
                     coverPath = book.coverPath,
                     size = 38.dp,
                     corner = CoverCorner.Mini,
-                    realistic = false,
+                    framed = false,
                 )
                 Spacer(Modifier.width(12.dp))
                 // Title over position, with the button flush right: the old single line left the
@@ -593,7 +597,7 @@ private fun ContinueListeningBar(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         book.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = BookType.title,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -624,6 +628,7 @@ private fun ContinueListeningBar(
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier.fillMaxWidth().height(3.dp),
+                    color = accent,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }

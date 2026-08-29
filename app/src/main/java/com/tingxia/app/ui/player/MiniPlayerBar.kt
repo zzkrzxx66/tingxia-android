@@ -31,6 +31,8 @@ import androidx.compose.ui.res.stringResource
 import com.tingxia.app.R
 import com.tingxia.app.player.PlayerUiState
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.theme.BookType
+import com.tingxia.app.ui.theme.rememberCoverAccent
 import com.tingxia.app.ui.theme.CoverCorner
 
 @Composable
@@ -52,6 +54,7 @@ fun MiniPlayerBar(
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .clickable(onClick = onOpen),
     ) {
+        val accent = rememberCoverAccent(state.coverPath)
         val progress = if (state.durationMs > 0) {
             (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
         } else {
@@ -73,7 +76,7 @@ fun MiniPlayerBar(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = state.bookTitle.orEmpty(),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = BookType.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -92,7 +95,7 @@ fun MiniPlayerBar(
                     progress = { progress },
                     modifier = Modifier.size(42.dp),
                     strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = accent,
                     trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     strokeCap = StrokeCap.Round,
                 )

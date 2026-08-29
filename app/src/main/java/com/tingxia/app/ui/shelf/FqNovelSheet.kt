@@ -278,7 +278,7 @@ private fun OnlineWelcome(
                     onClick = { onSelectBook(book) },
                     // Online artwork already reads as cover art; the paperback
                     // overlay is reserved for owned shelf items.
-                    realistic = false,
+                    framed = false,
                 )
             }
         } else {
