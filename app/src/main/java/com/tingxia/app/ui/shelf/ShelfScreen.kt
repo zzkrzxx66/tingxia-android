@@ -101,6 +101,7 @@ fun ShelfScreen(
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
     val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val hasReauthBooks by viewModel.hasReauthBooks.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
@@ -313,6 +314,7 @@ fun ShelfScreen(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ShelfFilterRow(
                                     filter = filter,
+                                    showReauthFilter = hasReauthBooks,
                                     onFilterChange = viewModel::setFilter,
                                 )
                             }
@@ -426,9 +428,7 @@ private fun BookGridItem(
         realistic = true,
         overlay = {
             if (book.isRemote) {
-                OnlineBadge(
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
-                )
+                OnlineBadge(modifier = Modifier.align(Alignment.TopStart))
             }
             if (isCurrent) {
                 // Play dot marks the book loaded in the player, so the shelf answers
@@ -441,7 +441,7 @@ private fun BookGridItem(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(6.dp)
-                        .padding(start = if (book.isRemote) 52.dp else 0.dp),
+                        .padding(start = if (book.isRemote) 46.dp else 0.dp),
                 ) {
                     Icon(
                         Icons.Default.PlayArrow,
@@ -501,24 +501,23 @@ private fun BookGridItem(
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(6.dp),
+                        .padding(end = 6.dp, bottom = 8.dp),
                 )
             }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
                 // Progress rides the artwork itself so every tile keeps the same height.
                 // The track needs real contrast against dark covers; theme scrim at low
                 // alpha vanished entirely there, so a fixed dark wash is used instead.
+                // One unbroken line hugging the bottom edge; the old segment stopped short of the
+                // play button and read as a rendering glitch.
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(start = 8.dp, end = playSize + 12.dp)
-                        .padding(bottom = 6.dp + (playSize - 3.dp) / 2)
-                        .height(3.dp)
-                        .clip(MaterialTheme.shapes.extraSmall),
+                        .height(3.dp),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.White.copy(alpha = 0.35f),
+                    trackColor = Color.White.copy(alpha = 0.30f),
                 )
             }
         },
@@ -529,7 +528,14 @@ private fun BookGridItem(
 private fun OnlineBadge(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = MaterialTheme.shapes.extraSmall,
+        // Follows the artwork's corner so the badge does not look like a square sticker peeling
+        // off a rounded cover.
+        shape = RoundedCornerShape(
+            topStart = CoverCorner.Grid,
+            topEnd = 4.dp,
+            bottomEnd = 8.dp,
+            bottomStart = 4.dp,
+        ),
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Text(
@@ -566,16 +572,17 @@ private fun ContinueListeningBar(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Box {
+        Column {
             Row(
                 modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Square thumb, not a 3:4 one: a portrait cover at this height reached the card's
+                // top and bottom edges and collided with the progress line.
                 BookCover(
                     title = book.title,
                     coverPath = book.coverPath,
-                    size = 36.dp,
-                    ratio = COVER_RATIO_PORTRAIT,
+                    size = 38.dp,
                     corner = CoverCorner.Mini,
                     realistic = false,
                 )
@@ -613,11 +620,8 @@ private fun ContinueListeningBar(
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(3.dp),
-                    trackColor = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }
         }
@@ -631,16 +635,24 @@ private fun ContinueListeningBar(
 @Composable
 private fun ShelfFilterRow(
     filter: ShelfFilter,
+    showReauthFilter: Boolean,
     onFilterChange: (ShelfFilter) -> Unit,
 ) {
-    val filterOptions = listOf(
-        ShelfFilter.ALL to stringResource(R.string.filter_all),
-        ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
-        ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
-        ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
-        ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
-    )
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    val filterOptions = buildList {
+        add(ShelfFilter.ALL to stringResource(R.string.filter_all))
+        add(ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started))
+        add(ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress))
+        add(ShelfFilter.COMPLETED to stringResource(R.string.filter_completed))
+        // Only offered when something actually lost its folder permission; otherwise it was a
+        // permanent fifth chip hanging half off the screen edge.
+        if (showReauthFilter || filter == ShelfFilter.NEEDS_REAUTH) {
+            add(ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization))
+        }
+    }
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(end = 4.dp),
+    ) {
         items(filterOptions, key = { it.first.name }) { (value, label) ->
             FilterChip(
                 selected = filter == value,

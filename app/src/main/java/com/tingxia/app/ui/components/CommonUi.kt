@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -107,7 +108,11 @@ fun BookCover(
     } else {
         sized
     }
-    Box(boxMod.clearAndSetSemantics { }.clip(shape)) {
+    BoxWithConstraints(boxMod.clearAndSetSemantics { }.clip(shape)) {
+        // Compact treatment follows the measured width, not the optional size argument: grid tiles
+        // lay themselves out with fillMaxWidth, so they used to get the full paperback treatment
+        // (6dp spine, page block, cut-page hairlines) on a 118dp cover, which just read as stripes.
+        val compact = maxWidth < 104.dp
         val model: Any? = when {
             coverPath.isNullOrBlank() -> null
             coverPath.startsWith("content:") || coverPath.startsWith("file:") ||
@@ -122,10 +127,10 @@ fun BookCover(
                 contentScale = ContentScale.Crop,
             )
         } else {
-            FallbackCover(title = title, compact = size != null && size < 80.dp)
+            FallbackCover(title = title, compact = compact)
         }
         if (realistic) {
-            RealisticBookOverlay(compact = size != null && size < 80.dp)
+            RealisticBookOverlay(compact = compact)
         }
     }
 }
