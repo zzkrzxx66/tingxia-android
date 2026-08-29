@@ -15,24 +15,18 @@ class PlaybackWidgetSnapshotTest {
     }
 
     @Test
-    fun coverSpec_followsTheSlotRatioSoTheCoverMeetsThePanel() {
-        // A 68dp x 72dp strip slot: the bitmap must be squarer than 3:4, or fitting it leaves the
-        // gap between cover and panel that this replaces.
-        val strip = widgetCoverSpec(slotWidthDp = 68, slotHeightDp = 72)
+    fun coverSpec_isTheExactRatioOfTheFixedSlot() {
+        // The strip's cover box is a fixed 60x72dp, so the bitmap is rendered at exactly that ratio:
+        // nothing is left for the ImageView to crop or letterbox.
+        val strip = widgetCoverSpec(slotWidthDp = 60, slotHeightDp = 72)
         assertEquals(330, strip.widthPx)
-        assertEquals(349, strip.heightPx) // 72dp bucketed to 72 -> 330 * 72 / 68
-        assertEquals(14f * 330 / 68, strip.radiusPx, 0.01f)
+        assertEquals(396, strip.heightPx) // 330 * 72 / 60
+        assertEquals(14f * 330 / 60, strip.radiusPx, 0.01f)
 
-        // The expanded panel is a fixed 100dp x 132dp tile, so its cover stays near 3:4.
+        // The tall size's tile is a fixed 100x132dp, which is close to a book's 3:4.
         val panel = widgetCoverSpec(slotWidthDp = 100, slotHeightDp = 132)
-        assertEquals(330, panel.widthPx)
-        assertEquals(448, panel.heightPx) // 132dp bucketed to 136 -> 330 * 136 / 100
-
-        // Heights are bucketed to 8dp, so nearby slots share one cached bitmap.
-        assertEquals(
-            widgetCoverSpec(68, 74).heightPx,
-            widgetCoverSpec(68, 71).heightPx,
-        )
+        assertEquals(436, panel.heightPx) // 330 * 132 / 100
+        assertEquals(14f * 330 / 100, panel.radiusPx, 0.01f)
     }
 
     @Test

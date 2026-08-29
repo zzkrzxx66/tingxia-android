@@ -136,7 +136,7 @@ object PlaybackWidgetUpdater {
                 // ratio misses the slot got letterboxed by the ImageView, and that empty column
                 // was the gap between cover and panel.
                 val spec = if (singleLine) {
-                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, heightDp)
+                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, COMPACT_STRIP_HEIGHT_DP)
                 } else {
                     widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, EXPANDED_COVER_HEIGHT_DP)
                 }
@@ -418,9 +418,10 @@ object PlaybackWidgetUpdater {
     private const val COVER_CACHE_BYTES = 4 * 1_024 * 1_024
     private const val ARTWORK_DECODE_SIZE_PX = 480
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
-    // Slot widths from the two layouts; the expanded panel is a fixed-height strip, the compact one
-    // fills whatever height the launcher hands out.
-    private const val COMPACT_COVER_WIDTH_DP = 68
+    // Slot sizes from the two layouts. Both are fixed there, so these are the real on-screen boxes
+    // rather than the launcher's estimate of them.
+    private const val COMPACT_COVER_WIDTH_DP = 60
+    private const val COMPACT_STRIP_HEIGHT_DP = 72
     private const val EXPANDED_COVER_WIDTH_DP = 100
     private const val EXPANDED_COVER_HEIGHT_DP = 132
     private const val COLOR_SAMPLE_SIZE = 16
@@ -457,20 +458,22 @@ internal data class WidgetCoverSpec(val widthPx: Int, val heightPx: Int, val rad
  * left a gap before the panel) nor crops it hard. Heights are bucketed to 8dp: regenerating the
  * bitmap for every reported pixel would thrash the cache on each resize tick.
  */
+/**
+ * Sizes the cover bitmap to the slot it will occupy. Both slot sizes are fixed in the layouts on
+ * purpose: the launcher reports a height some dp larger than the box it actually hands out, and every
+ * attempt to render the cover for that reported height ended either cropping the artwork or leaving
+ * a band of background around it. A fixed strip means the ratio here is exactly the ratio on screen.
+ */
 internal fun widgetCoverSpec(
     slotWidthDp: Int,
     slotHeightDp: Int,
     widthPx: Int = 330,
     cornerDp: Int = 14,
-): WidgetCoverSpec {
-    val bucketed = ((slotHeightDp.coerceIn(56, 320) + 4) / 8) * 8
-    val heightPx = (widthPx.toFloat() * bucketed / slotWidthDp).toInt().coerceAtLeast(1)
-    return WidgetCoverSpec(
-        widthPx = widthPx,
-        heightPx = heightPx,
-        radiusPx = widthPx.toFloat() * cornerDp / slotWidthDp,
-    )
-}
+): WidgetCoverSpec = WidgetCoverSpec(
+    widthPx = widthPx,
+    heightPx = Math.round(widthPx.toFloat() * slotHeightDp / slotWidthDp).coerceAtLeast(1),
+    radiusPx = widthPx.toFloat() * cornerDp / slotWidthDp,
+)
 
 /**
  * Chapter line: the chapter title with its position in the book appended, so the tall size can carry
