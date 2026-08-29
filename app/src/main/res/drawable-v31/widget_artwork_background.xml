@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  White on purpose: tinted at render time with the same colour as the panel (setBackgroundTintList,
+  API 31+), so the few dp left over around a fitted cover read as the panel's frame. Rounded on the
+  outer (start) edge, square where it meets the panel.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_panel_scrim" />
+    <corners
+        android:bottomLeftRadius="@dimen/widget_corner"
+        android:bottomRightRadius="0dp"
+        android:topLeftRadius="@dimen/widget_corner"
+        android:topRightRadius="0dp" />
+</shape>

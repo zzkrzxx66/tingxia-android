@@ -158,15 +158,15 @@ object PlaybackWidgetUpdater {
                 // average, poured into the white alpha gradient in drawable-v31. A flat grey slab
                 // beside a red-and-black cover read as two unrelated objects.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    setColorStateList(
-                        R.id.widget_panel,
-                        "setBackgroundTintList",
-                        ColorStateList.valueOf(
-                            widgetPanelTint(
-                                source?.let(::averageColor) ?: fallbackBase(state.bookTitle),
-                            ),
+                    val tint = ColorStateList.valueOf(
+                        widgetPanelTint(
+                            source?.let(::averageColor) ?: fallbackBase(state.bookTitle),
                         ),
                     )
+                    setColorStateList(R.id.widget_panel, "setBackgroundTintList", tint)
+                    // The plate behind the cover takes the same tint, so the few dp a fitted cover
+                    // leaves over read as the panel's frame instead of letterboxing.
+                    setColorStateList(R.id.widget_artwork, "setBackgroundTintList", tint)
                 }
                 setViewVisibility(
                     R.id.widget_progress,

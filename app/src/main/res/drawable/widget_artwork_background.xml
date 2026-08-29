@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Transparent: any plate behind the bitmap showed around it and read as part of the seam. -->
+<!--
+  The plate the cover sits on: same shape language as the panel, mirrored — rounded on the outer
+  (start) edge, square where it meets the panel.
+
+  Why a plate at all: the launcher's reported height is a few dp off the slot it actually hands out,
+  so a cover scaled to cover that slot got its top and bottom cropped (and lost its rounded corners
+  with them). The cover is fitted inside the slot instead, and whatever few dp are left over show this
+  plate. Pre-Android 12 it is the neutral panel colour; the v31 copy takes the cover's tint.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@android:color/transparent" />
+    <solid android:color="@color/widget_surface" />
+    <corners
+        android:bottomLeftRadius="@dimen/widget_corner"
+        android:bottomRightRadius="0dp"
+        android:topLeftRadius="@dimen/widget_corner"
+        android:topRightRadius="0dp" />
 </shape>
