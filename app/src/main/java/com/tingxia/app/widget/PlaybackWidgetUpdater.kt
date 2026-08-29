@@ -6,17 +6,19 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Shader
-import android.net.Uri
 import android.util.LruCache
 import android.view.View
 import android.widget.RemoteViews
 import androidx.media3.common.Player
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.tingxia.app.MainActivity
 import com.tingxia.app.R
 import com.tingxia.app.player.PlayerController
@@ -25,7 +27,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
-import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
 object PlaybackWidgetUpdater {
@@ -149,40 +150,41 @@ object PlaybackWidgetUpdater {
         }
     }
 
-    private fun decodeArtwork(context: Context, value: String): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        openArtwork(context, value)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-        var sampleSize = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > ARTWORK_DECODE_SIZE_PX) {
-            sampleSize *= 2
+    /**
+     * Loads artwork through Coil, which brings http(s) support and the app's own disk cache with
+     * it. The hand-rolled decoder this replaces only understood content/file/local paths, so every
+     * online book — whose cover is an https URL — fell back to the generated placeholder.
+     */
+    private suspend fun decodeArtwork(context: Context, value: String): Bitmap? {
+        val model: Any = when {
+            value.startsWith("content:") || value.startsWith("file:") ||
+                value.startsWith("android.resource:") || value.startsWith("http") -> value
+            else -> File(value).takeIf(File::isFile) ?: return null
         }
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-        val decoded = openArtwork(context, value)?.use {
-            BitmapFactory.decodeStream(it, null, options)
-        } ?: return null
-        return roundedSquareArtwork(decoded)
+        val request = ImageRequest.Builder(context)
+            .data(model)
+            .size(ARTWORK_DECODE_SIZE_PX)
+            .allowHardware(false)
+            .build()
+        val result = context.imageLoader.execute(request)
+        val decoded = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: return null
+        return portraitArtwork(decoded)
     }
 
-    private fun roundedSquareArtwork(source: Bitmap): Bitmap {
-        val output = Bitmap.createBitmap(
-            ARTWORK_OUTPUT_SIZE_PX,
-            ARTWORK_OUTPUT_SIZE_PX,
-            Bitmap.Config.ARGB_8888,
-        )
+    /** Books are portrait, so the widget crops 3:4 rather than squaring the artwork off. */
+    private fun portraitArtwork(source: Bitmap): Bitmap {
+        val width = ARTWORK_OUTPUT_WIDTH_PX
+        val height = ARTWORK_OUTPUT_HEIGHT_PX
+        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val scale = maxOf(
-            ARTWORK_OUTPUT_SIZE_PX.toFloat() / source.width,
-            ARTWORK_OUTPUT_SIZE_PX.toFloat() / source.height,
+            width.toFloat() / source.width,
+            height.toFloat() / source.height,
         )
         val matrix = Matrix().apply {
             setScale(scale, scale)
             postTranslate(
-                (ARTWORK_OUTPUT_SIZE_PX - source.width * scale) / 2f,
-                (ARTWORK_OUTPUT_SIZE_PX - source.height * scale) / 2f,
+                (width - source.width * scale) / 2f,
+                (height - source.height * scale) / 2f,
             )
         }
         val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
@@ -192,13 +194,12 @@ object PlaybackWidgetUpdater {
         Canvas(output).drawRoundRect(
             0f,
             0f,
-            ARTWORK_OUTPUT_SIZE_PX.toFloat(),
-            ARTWORK_OUTPUT_SIZE_PX.toFloat(),
+            width.toFloat(),
+            height.toFloat(),
             ARTWORK_CORNER_RADIUS_PX,
             ARTWORK_CORNER_RADIUS_PX,
             paint,
         )
-        source.recycle()
         return output
     }
 
@@ -216,16 +217,17 @@ object PlaybackWidgetUpdater {
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val key = "$dark|${title.ifBlank { "?" }}"
         fallbackCache.get(key)?.let { return it }
-        val size = ARTWORK_OUTPUT_SIZE_PX
+        val width = ARTWORK_OUTPUT_WIDTH_PX
+        val height = ARTWORK_OUTPUT_HEIGHT_PX
         val base = FALLBACK_PALETTE[kotlin.math.abs(title.hashCode()) % FALLBACK_PALETTE.size]
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawRoundRect(
-            0f, 0f, size.toFloat(), size.toFloat(),
+            0f, 0f, width.toFloat(), height.toFloat(),
             ARTWORK_CORNER_RADIUS_PX, ARTWORK_CORNER_RADIUS_PX,
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = android.graphics.LinearGradient(
-                    0f, 0f, size.toFloat(), size.toFloat(),
+                    0f, 0f, width.toFloat(), height.toFloat(),
                     intArrayOf(base.lightened(0.12f), base, base.darkened(0.14f)),
                     floatArrayOf(0f, 0.5f, 1f),
                     Shader.TileMode.CLAMP,
@@ -234,22 +236,21 @@ object PlaybackWidgetUpdater {
         )
         // Spine band.
         canvas.drawRect(
-            0f, 0f, size * 0.09f, size.toFloat(),
+            0f, 0f, width * 0.09f, height.toFloat(),
             Paint().apply { color = 0x1F000000 },
         )
         // Book initial, optically centred.
-        val initial = title.trim().firstOrNull()?.toString() ?: "听"
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xF5FFFFFF.toInt()
-            textSize = size * 0.42f
+            textSize = width * 0.44f
             textAlign = Paint.Align.CENTER
             typeface = android.graphics.Typeface.create(
-                android.graphics.Typeface.DEFAULT,
+                android.graphics.Typeface.SERIF,
                 android.graphics.Typeface.BOLD,
             )
         }
-        val textY = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
-        canvas.drawText(initial, size / 2f, textY, textPaint)
+        val textY = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(widgetCoverInitial(title), width / 2f, textY, textPaint)
         fallbackCache.put(key, bitmap)
         return bitmap
     }
@@ -276,32 +277,25 @@ object PlaybackWidgetUpdater {
         )
     }
 
-    private fun openArtwork(context: Context, value: String): InputStream? {
-        val uri = Uri.parse(value)
-        return when (uri.scheme) {
-            "content", "file", "android.resource" -> context.contentResolver.openInputStream(uri)
-            else -> File(value).takeIf(File::isFile)?.inputStream()
-        }
-    }
-
     private fun statusText(context: Context, state: PlaybackWidgetSnapshot): String {
         if (!state.hasMedia) return context.getString(R.string.widget_tap_to_resume)
         val parts = buildList {
-            if (state.chapterCount > 0) {
-                add(
-                    context.getString(
-                        R.string.widget_chapter_progress,
-                        state.chapterIndex.coerceAtLeast(0) + 1,
-                        state.chapterCount,
-                    ),
-                )
-            }
+            // Time first: it answers "how far in am I" at a glance; the chapter count is context.
             if (state.durationMs > 0L) {
                 add(
                     context.getString(
                         R.string.widget_time_progress,
                         formatWidgetDuration(state.positionMs),
                         formatWidgetDuration(state.durationMs),
+                    ),
+                )
+            }
+            if (state.chapterCount > 0) {
+                add(
+                    context.getString(
+                        R.string.widget_chapter_progress,
+                        state.chapterIndex.coerceAtLeast(0) + 1,
+                        state.chapterCount,
                     ),
                 )
             }
@@ -331,9 +325,10 @@ object PlaybackWidgetUpdater {
     private const val REQUEST_TOGGLE = 42
     private const val REQUEST_NEXT = 43
     private const val ARTWORK_CACHE_BYTES = 512 * 1_024
-    private const val ARTWORK_DECODE_SIZE_PX = 192
-    private const val ARTWORK_OUTPUT_SIZE_PX = 160
-    private const val ARTWORK_CORNER_RADIUS_PX = 14f
+    private const val ARTWORK_DECODE_SIZE_PX = 256
+    private const val ARTWORK_OUTPUT_WIDTH_PX = 168
+    private const val ARTWORK_OUTPUT_HEIGHT_PX = 224
+    private const val ARTWORK_CORNER_RADIUS_PX = 12f
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
@@ -348,6 +343,13 @@ object PlaybackWidgetUpdater {
         0xFF53613F.toInt(),
     )
 }
+
+/**
+ * First character worth drawing on a placeholder cover: 《10日终焉》 used to render as 《, because the
+ * old code took `first()` and Chinese titles often open with a bracket or quote.
+ */
+internal fun widgetCoverInitial(title: String): String =
+    title.firstOrNull { it.isLetterOrDigit() }?.toString() ?: "听"
 
 internal fun widgetLayoutForHeight(heightDp: Int): Int =
     if (heightDp in 1 until 120) {

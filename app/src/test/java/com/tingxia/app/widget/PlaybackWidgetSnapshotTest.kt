@@ -14,6 +14,16 @@ class PlaybackWidgetSnapshotTest {
     }
 
     @Test
+    fun coverInitial_skipsPunctuationAndBrackets() {
+        // 《10日终焉》番茄唱… used to render its opening bracket as the cover initial.
+        assertEquals("1", widgetCoverInitial("《10日终焉》番茄唱工"))
+        assertEquals("三", widgetCoverInitial("三体"))
+        assertEquals("A", widgetCoverInitial("\"A Study in Scarlet\""))
+        assertEquals("听", widgetCoverInitial(""))
+        assertEquals("听", widgetCoverInitial("《》 —— ·"))
+    }
+
+    @Test
     fun progressPermille_clampsPositionToDuration() {
         assertEquals(
             250,

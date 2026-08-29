@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Expanded home-screen widget.
+
+  Proportions follow the app: portrait 3:4 artwork (a book is not square), one type ramp for
+  title/chapter/status, and a single visual language for the controls — bare glyphs with only the
+  play button filled, instead of two grey discs flanking a green one.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -10,8 +17,8 @@
 
     <ImageView
         android:id="@+id/widget_artwork"
-        android:layout_width="112dp"
-        android:layout_height="112dp"
+        android:layout_width="64dp"
+        android:layout_height="85dp"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
         android:scaleType="centerCrop"
@@ -27,46 +34,43 @@
         <TextView
             android:id="@+id/widget_book_title"
             android:layout_width="match_parent"
-            android:layout_height="25dp"
+            android:layout_height="wrap_content"
             android:ellipsize="end"
-            android:fontFamily="sans"
-            android:gravity="center_vertical"
+            android:fontFamily="serif"
             android:maxLines="1"
             android:text="@string/app_name"
             android:textColor="@color/widget_on_surface"
-            android:textSize="18sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_chapter_title"
             android:layout_width="match_parent"
-            android:layout_height="20dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
-            android:fontFamily="sans"
-            android:gravity="center_vertical"
+            android:fontFamily="sans-serif"
             android:maxLines="1"
             android:text="@string/widget_no_media"
             android:textColor="@color/widget_on_surface_variant"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
         <ProgressBar
             android:id="@+id/widget_progress"
             style="@android:style/Widget.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="4dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="10dp"
             android:indeterminate="false"
-            android:progressBackgroundTint="@color/widget_progress_track"
-            android:progressTint="@color/widget_accent" />
+            android:progressDrawable="@drawable/widget_progress" />
 
         <TextView
             android:id="@+id/widget_status"
             android:layout_width="match_parent"
-            android:layout_height="18dp"
-            android:layout_marginTop="7dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
             android:ellipsize="end"
-            android:fontFamily="sans"
-            android:gravity="center_vertical"
+            android:fontFamily="sans-serif"
             android:maxLines="1"
             android:text="@string/widget_tap_to_resume"
             android:textColor="@color/widget_on_surface_variant"
@@ -74,27 +78,27 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:layout_marginTop="8dp"
-            android:gravity="end|center_vertical"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="start|center_vertical"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/widget_previous"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/widget_control_background"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
                 android:contentDescription="@string/previous_chapter"
-                android:padding="8dp"
+                android:padding="6dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_widget_previous"
                 android:tint="@color/widget_on_control" />
 
             <ImageButton
                 android:id="@+id/widget_play_pause"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/widget_primary_control_background"
                 android:contentDescription="@string/play"
                 android:padding="9dp"
@@ -104,12 +108,12 @@
 
             <ImageButton
                 android:id="@+id/widget_next"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/widget_control_background"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
+                android:background="@android:color/transparent"
                 android:contentDescription="@string/next_chapter"
-                android:padding="8dp"
+                android:padding="6dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_widget_next"
                 android:tint="@color/widget_on_control" />
