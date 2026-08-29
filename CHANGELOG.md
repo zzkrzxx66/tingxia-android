@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
+
+- Home-screen playback widget, rebuilt:
+  - Cover and panel are one object: the cover is a tile beside the panel at its full height, rounded
+    on the outer edge and square where the two meet, with the panel running 2dp underneath so no
+    hairline can open at the seam.
+  - The panel takes its colour from the cover — the artwork's average, chroma pulled halfway to grey
+    and luminance forced to one dark level, poured into an alpha gradient with a hairline rim. White
+    text stays readable whether the cover is a woodcut or a pastel photograph. Android 12+; below
+    that a neutral gradient of the same shape.
+  - The strip carries 书名 · 章节 with elapsed/total on the same baseline, three centred controls at
+    fixed sizes, and the progress hairline along the bottom. The tall size adds the chapter line with
+    its 第 x/y 章 count.
+  - Both sizes fill the cell they are given. `OPTION_APPWIDGET_MIN_HEIGHT` is the bottom of the resize
+    range, not the box on screen — reading it left the widget short of its cell and the cover cropped
+    or letterboxed; portrait now reads `MAX_HEIGHT`, and the cover bitmap is rendered for that box.
+  - Covers load through Coil, so online books (https artwork) get their real cover instead of the
+    generated placeholder, and the placeholder itself matches the in-app fallback.
 
 - Visual pass over the shelf and shared surfaces:
   - Softer corner ladder (cards 16dp, sheets/buttons 20–28dp, artwork 8–18dp) replaces the
