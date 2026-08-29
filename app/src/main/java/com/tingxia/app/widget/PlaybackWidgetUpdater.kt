@@ -14,9 +14,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
-import android.os.Build
 import android.util.LruCache
-import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.media3.common.Player
@@ -103,38 +101,17 @@ object PlaybackWidgetUpdater {
                     state.chapterTitle.ifBlank { context.getString(R.string.widget_no_media) },
                 )
                 setTextViewText(R.id.widget_status, statusText(context, state))
-                // The cover column is measured from the cover itself: the slot is as tall as the
-                // widget, so a fixed-width column had to crop a portrait cover to fill it. Android
-                // 12 can resize a RemoteViews child, so there the column takes the width the
-                // cover's own ratio asks for and the panel's start margin follows it.
-                val uri = state.artworkUri.takeIf { it.isNotBlank() }
-                val source = uri?.let(sourceCache::get)
-                val spec = widgetCoverSpec(
-                    slotHeightDp = if (singleLine) heightDp else EXPANDED_COVER_HEIGHT_DP,
-                    coverAspect = source?.let { it.width.toFloat() / it.height }
-                        ?: FALLBACK_COVER_ASPECT,
-                    defaultWidthDp = if (singleLine) {
-                        COMPACT_COVER_WIDTH_DP
-                    } else {
-                        EXPANDED_COVER_WIDTH_DP
-                    },
-                    dynamicWidth = SUPPORTS_DYNAMIC_WIDTH,
-                )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    setViewLayoutWidth(
-                        R.id.widget_artwork,
-                        spec.widthDp.toFloat(),
-                        TypedValue.COMPLEX_UNIT_DIP,
-                    )
-                    // The panel runs 2dp under the cover, so no hairline can open at the seam.
-                    setViewLayoutMargin(
-                        R.id.widget_panel,
-                        RemoteViews.MARGIN_START,
-                        (spec.widthDp - PANEL_UNDERLAP_DP).toFloat(),
-                        TypedValue.COMPLEX_UNIT_DIP,
-                    )
+                // The cover is drawn for this widget's slot, not at a fixed 3:4: a bitmap whose
+                // ratio misses the slot got letterboxed by the ImageView, and that empty column
+                // was the gap between cover and panel.
+                val spec = if (singleLine) {
+                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, heightDp)
+                } else {
+                    widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, EXPANDED_COVER_HEIGHT_DP)
                 }
-                val artwork = uri?.let { fittedCover(it, spec) }
+                val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let { uri ->
+                    fittedCover(uri, spec)
+                }
                 if (artwork == null) {
                     // Match the in-app fallback cover: palette wash + initial, so the
                     // desk widget speaks the same visual language as the shelf.
@@ -395,10 +372,6 @@ object PlaybackWidgetUpdater {
     private const val COMPACT_COVER_WIDTH_DP = 68
     private const val EXPANDED_COVER_WIDTH_DP = 100
     private const val EXPANDED_COVER_HEIGHT_DP = 132
-    private const val PANEL_UNDERLAP_DP = 2
-    /** Books are portrait, so a cover that has not decoded yet is laid out as one. */
-    private const val FALLBACK_COVER_ASPECT = 0.75f
-    private val SUPPORTS_DYNAMIC_WIDTH = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
     private val FALLBACK_PALETTE = intArrayOf(
@@ -424,46 +397,26 @@ internal fun widgetHeadline(bookTitle: String, chapterTitle: String, merged: Boo
 internal fun widgetCoverInitial(title: String): String =
     title.firstOrNull { it.isLetterOrDigit() }?.toString() ?: "听"
 
-/** Layout size and start-corner radius of the cover bitmap for one widget slot. */
-internal data class WidgetCoverSpec(
-    val widthDp: Int,
-    val heightDp: Int,
-    val widthPx: Int,
-    val heightPx: Int,
-    val radiusPx: Float,
-)
+/** Pixel size and start-corner radius of the cover bitmap for one widget slot. */
+internal data class WidgetCoverSpec(val widthPx: Int, val heightPx: Int, val radiusPx: Float)
 
 /**
- * Fits the cover to the slot without cropping it: the slot's height is the launcher's to decide, so
- * the column's width is derived from the cover's own ratio and the bitmap is rendered to exactly
- * that box. A fixed-width column had to centre-crop a portrait cover to fill the height, and
- * fitting the bitmap instead left the empty column that used to read as a gap before the panel.
- *
- * Heights are bucketed to 8dp so a resize tick does not regenerate the bitmap for every reported
- * pixel, and the width is kept within half again of the layout default so one unusually wide or tall
- * cover cannot take over the strip (such a cover is cropped the little that is left).
+ * Sizes the cover bitmap to the slot it will occupy, so the ImageView neither letterboxes it (which
+ * left a gap before the panel) nor crops it hard. Heights are bucketed to 8dp: regenerating the
+ * bitmap for every reported pixel would thrash the cache on each resize tick.
  */
 internal fun widgetCoverSpec(
+    slotWidthDp: Int,
     slotHeightDp: Int,
-    coverAspect: Float,
-    defaultWidthDp: Int,
-    dynamicWidth: Boolean,
     widthPx: Int = 330,
     cornerDp: Int = 14,
 ): WidgetCoverSpec {
-    val heightDp = ((slotHeightDp.coerceIn(56, 320) + 4) / 8) * 8
-    val aspect = coverAspect.takeIf { it.isFinite() && it > 0f } ?: 1f
-    val widthDp = if (dynamicWidth) {
-        Math.round(heightDp * aspect).coerceIn(defaultWidthDp / 2, defaultWidthDp * 3 / 2)
-    } else {
-        defaultWidthDp
-    }
+    val bucketed = ((slotHeightDp.coerceIn(56, 320) + 4) / 8) * 8
+    val heightPx = (widthPx.toFloat() * bucketed / slotWidthDp).toInt().coerceAtLeast(1)
     return WidgetCoverSpec(
-        widthDp = widthDp,
-        heightDp = heightDp,
         widthPx = widthPx,
-        heightPx = (widthPx.toFloat() * heightDp / widthDp).toInt().coerceAtLeast(1),
-        radiusPx = widthPx.toFloat() * cornerDp / widthDp,
+        heightPx = heightPx,
+        radiusPx = widthPx.toFloat() * cornerDp / slotWidthDp,
     )
 }
 

@@ -14,49 +14,23 @@ class PlaybackWidgetSnapshotTest {
     }
 
     @Test
-    fun coverSpec_takesTheWidthTheCoverAsksForInsteadOfCroppingIt() {
-        // A 3:4 cover in a 72dp strip: the column narrows to 54dp so the whole cover fits.
-        val portrait = widgetCoverSpec(
-            slotHeightDp = 72,
-            coverAspect = 0.75f,
-            defaultWidthDp = 68,
-            dynamicWidth = true,
-        )
-        assertEquals(54, portrait.widthDp) // 72dp bucketed to 72 -> round(72 * 0.75)
-        assertEquals(72, portrait.heightDp)
-        assertEquals(440, portrait.heightPx) // 330 * 72 / 54
-        assertEquals(14f * 330 / 54, portrait.radiusPx, 0.01f)
+    fun coverSpec_followsTheSlotRatioSoTheCoverMeetsThePanel() {
+        // A 68dp x 72dp strip slot: the bitmap must be squarer than 3:4, or fitting it leaves the
+        // gap between cover and panel that this replaces.
+        val strip = widgetCoverSpec(slotWidthDp = 68, slotHeightDp = 72)
+        assertEquals(330, strip.widthPx)
+        assertEquals(349, strip.heightPx) // 72dp bucketed to 72 -> 330 * 72 / 68
+        assertEquals(14f * 330 / 68, strip.radiusPx, 0.01f)
 
-        // A square cover in the same strip wants a square column.
-        val square = widgetCoverSpec(
-            slotHeightDp = 72,
-            coverAspect = 1f,
-            defaultWidthDp = 68,
-            dynamicWidth = true,
-        )
-        assertEquals(72, square.widthDp)
-        assertEquals(330, square.heightPx)
-
-        // One freak cover cannot take over the strip: width stays within half again of the default.
-        assertEquals(
-            102,
-            widgetCoverSpec(72, coverAspect = 3f, defaultWidthDp = 68, dynamicWidth = true).widthDp,
-        )
-        assertEquals(
-            34,
-            widgetCoverSpec(72, coverAspect = 0.1f, defaultWidthDp = 68, dynamicWidth = true).widthDp,
-        )
-
-        // Before Android 12 a RemoteViews child cannot be resized, so the layout width stands and
-        // the bitmap is cut to the slot instead.
-        val legacy = widgetCoverSpec(72, coverAspect = 0.75f, defaultWidthDp = 68, dynamicWidth = false)
-        assertEquals(68, legacy.widthDp)
-        assertEquals(349, legacy.heightPx) // 330 * 72 / 68
+        // The expanded panel is a fixed 100dp x 132dp tile, so its cover stays near 3:4.
+        val panel = widgetCoverSpec(slotWidthDp = 100, slotHeightDp = 132)
+        assertEquals(330, panel.widthPx)
+        assertEquals(448, panel.heightPx) // 132dp bucketed to 136 -> 330 * 136 / 100
 
         // Heights are bucketed to 8dp, so nearby slots share one cached bitmap.
         assertEquals(
-            widgetCoverSpec(74, 0.75f, 68, true).heightPx,
-            widgetCoverSpec(71, 0.75f, 68, true).heightPx,
+            widgetCoverSpec(68, 74).heightPx,
+            widgetCoverSpec(68, 71).heightPx,
         )
     }
 
