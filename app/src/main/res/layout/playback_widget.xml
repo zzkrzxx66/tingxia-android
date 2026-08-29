@@ -19,7 +19,7 @@
         android:layout_width="match_parent"
         android:layout_height="132dp"
         android:layout_gravity="center_vertical"
-        android:layout_marginStart="92dp"
+        android:layout_marginStart="88dp"
         android:background="@drawable/widget_background"
         android:gravity="center_vertical"
         android:orientation="vertical"
@@ -125,6 +125,6 @@
         android:layout_gravity="start|center_vertical"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
-        android:scaleType="centerCrop"
+        android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_artwork_placeholder" />
 </FrameLayout>

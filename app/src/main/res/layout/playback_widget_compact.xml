@@ -13,7 +13,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginStart="62dp"
+        android:layout_marginStart="58dp"
         android:background="@drawable/widget_background"
         android:gravity="center_vertical"
         android:orientation="vertical"
@@ -109,6 +109,6 @@
         android:layout_marginBottom="1dp"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
-        android:scaleType="centerCrop"
+        android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_artwork_placeholder" />
 </FrameLayout>

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Matches whatever radius the launcher rounds widgets to, so the card does not sit inside a
-         second, differently-rounded rectangle. -->
-    <dimen name="widget_corner">@android:dimen/system_app_widget_background_radius</dimen>
-</resources>
