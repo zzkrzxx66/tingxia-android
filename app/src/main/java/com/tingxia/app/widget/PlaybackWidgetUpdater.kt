@@ -338,7 +338,9 @@ object PlaybackWidgetUpdater {
     private const val ARTWORK_DECODE_SIZE_PX = 480
     private const val ARTWORK_OUTPUT_WIDTH_PX = 330
     private const val ARTWORK_OUTPUT_HEIGHT_PX = 440
-    private const val ARTWORK_CORNER_RADIUS_PX = 36f
+    // 52px on a 330px-wide bitmap is ~10dp once the strip scales it down to 60dp wide; the old 36px
+    // came out at 7dp and read as almost square next to the panel.
+    private const val ARTWORK_CORNER_RADIUS_PX = 52f
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
