@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Expanded widget, built the way the Chinese audiobook apps build theirs: a dark scrim panel, the
-  cover overhanging its left edge, one line of title, and three large white controls.
-
-  The panel is inset from the start edge and the artwork sits over that inset, so the cover reads as
-  an object lying on the desktop rather than a thumbnail inside a form.
+  Two-row size. Same strip anatomy, scaled up: the artwork grows to the height of the content block
+  and the block itself is centred, so the panel is filled rather than framing a grey void. The
+  controls move under the text because at this width three of them plus a title do not share a row.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -14,102 +12,114 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginStart="40dp"
+        android:layout_marginStart="34dp"
         android:background="@drawable/widget_background"
-        android:orientation="vertical"
-        android:paddingStart="52dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="76dp"
         android:paddingTop="12dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="10dp">
-
-        <TextView
-            android:id="@+id/widget_book_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:fontFamily="serif"
-            android:maxLines="1"
-            android:text="@string/app_name"
-            android:textColor="@color/widget_on_surface"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/widget_chapter_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:fontFamily="sans-serif"
-            android:maxLines="1"
-            android:text="@string/widget_no_media"
-            android:textColor="@color/widget_on_surface_variant"
-            android:textSize="12sp" />
+        android:paddingEnd="14dp"
+        android:paddingBottom="12dp">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-            <ImageButton
-                android:id="@+id/widget_previous"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:contentDescription="@string/previous_chapter"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_previous"
-                android:tint="@color/widget_on_control" />
+            <TextView
+                android:id="@+id/widget_book_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="serif"
+                android:maxLines="1"
+                android:text="@string/app_name"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
-            <ImageButton
-                android:id="@+id/widget_play_pause"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@drawable/widget_primary_control_background"
-                android:contentDescription="@string/play"
-                android:padding="13dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_play"
-                android:tint="@color/widget_on_primary_control" />
+            <TextView
+                android:id="@+id/widget_chapter_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:text="@string/widget_no_media"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="12sp" />
 
-            <ImageButton
-                android:id="@+id/widget_next"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:contentDescription="@string/next_chapter"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_next"
-                android:tint="@color/widget_on_control" />
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="10dp"
+                android:indeterminate="false"
+                android:progressDrawable="@drawable/widget_progress" />
+
+            <TextView
+                android:id="@+id/widget_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:text="@string/widget_tap_to_resume"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="start|center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/widget_previous"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/previous_chapter"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_widget_previous"
+                    android:tint="@color/widget_on_control" />
+
+                <ImageButton
+                    android:id="@+id/widget_play_pause"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="12dp"
+                    android:background="@drawable/widget_primary_control_background"
+                    android:contentDescription="@string/play"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_widget_play"
+                    android:tint="@color/widget_on_primary_control" />
+
+                <ImageButton
+                    android:id="@+id/widget_next"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="12dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/next_chapter"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_widget_next"
+                    android:tint="@color/widget_on_control" />
+            </LinearLayout>
         </LinearLayout>
-
-        <ProgressBar
-            android:id="@+id/widget_progress"
-            style="@android:style/Widget.ProgressBar.Horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="2dp"
-            android:layout_marginTop="6dp"
-            android:indeterminate="false"
-            android:progressDrawable="@drawable/widget_progress" />
-
-        <TextView
-            android:id="@+id/widget_status"
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:text="@string/widget_tap_to_resume"
-            android:visibility="gone" />
     </LinearLayout>
 
     <ImageView
         android:id="@+id/widget_artwork"
-        android:layout_width="80dp"
-        android:layout_height="106dp"
+        android:layout_width="96dp"
+        android:layout_height="128dp"
         android:layout_gravity="start|center_vertical"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"

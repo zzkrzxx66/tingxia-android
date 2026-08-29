@@ -7,7 +7,7 @@
       audiobook apps do it. Wallpaper-themed light cards looked washed out on a light wallpaper and
       the controls disappeared into it; a scrim guarantees contrast on any desktop.
     -->
-    <color name="widget_surface">#B2242829</color>
+    <color name="widget_surface">#992C3033</color>
     <color name="widget_on_surface">#FFFFFFFF</color>
     <color name="widget_on_surface_variant">#B8FFFFFF</color>
     <color name="widget_outline">#33FFFFFF</color>
