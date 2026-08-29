@@ -91,13 +91,16 @@ fun MiniPlayerBar(
             // Progress became a ring around the play button: a hairline across a rounded capsule
             // read as a crack, and the ring puts position where the thumb already is.
             Box(contentAlignment = Alignment.Center) {
+                // A full track ring, no gap: at 3% the lone arc read as a broken stroke rather
+                // than progress.
                 CircularProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.size(42.dp),
                     strokeWidth = 2.dp,
                     color = accent,
-                    trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    trackColor = MaterialTheme.colorScheme.outlineVariant,
                     strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
                 )
                 Surface(
                     onClick = onToggle,

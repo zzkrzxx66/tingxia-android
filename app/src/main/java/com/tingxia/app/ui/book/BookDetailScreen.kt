@@ -693,6 +693,8 @@ fun BookDetailScreen(
                                 .clip(MaterialTheme.shapes.extraSmall),
                             color = rememberCoverAccent(book?.coverPath),
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            gapSize = 0.dp,
+                            drawStopIndicator = {},
                         )
                     }
                     Spacer(Modifier.height(16.dp))

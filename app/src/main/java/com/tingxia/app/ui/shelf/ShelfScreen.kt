@@ -1,9 +1,12 @@
 package com.tingxia.app.ui.shelf
 
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.ui.graphics.Brush
@@ -292,7 +295,7 @@ fun ShelfScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 10.dp,
+                                top = 16.dp,
                                 bottom = 24.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -330,6 +333,13 @@ fun ShelfScreen(
                                     onClick = { onOpenBook(book.id) },
                                     onPlay = { onPlayBook(book.id) },
                                 )
+                            }
+                            // A short shelf otherwise ends in half a screen of nothing; point that
+                            // space at the one thing that fills a shelf.
+                            if (books.size <= columns * 2 && query.isBlank()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    DiscoverMoreCard(onClick = onGoOnline)
+                                }
                             }
                         }
                         }
@@ -420,40 +430,40 @@ private fun BookGridItem(
     onClick: () -> Unit,
     onPlay: () -> Unit = {},
 ) {
-    val playSize = (tileWidth * 0.30f).coerceIn(28.dp, 44.dp)
+    // Fixed 28dp: scaling it with the tile put a 44dp disc over the focal point of the artwork.
+    val playSize = 28.dp
     val accent = rememberCoverAccent(book.coverPath)
     BookGridTile(
         title = book.title,
         coverPath = book.coverPath,
         subtitle = book.author?.takeIf { it.isNotBlank() }
-            ?: if (book.isRemote) stringResource(R.string.online_narrated)
-            else formatDuration(book.totalDurationMs),
+            ?: formatDuration(book.totalDurationMs),
+        // The tag rides with the author line now: cover art is the one thing a shelf is for, and
+        // it was carrying a badge, a play button and a progress line at once.
+        subtitleTag = if (book.isRemote) stringResource(R.string.online_badge) else null,
         onClick = onClick,
         framed = true,
         overlay = {
-            if (book.isRemote) {
-                OnlineBadge(modifier = Modifier.align(Alignment.TopStart))
-            }
             if (isCurrent) {
                 // Play dot marks the book loaded in the player, so the shelf answers
                 // "what am I listening to" without reading titles. Remote tiles carry
                 // the online badge at TopStart, so the dot shifts right to sit beside it.
+                // Equaliser bars, not a second play triangle: this marks "loaded in the player",
+                // while the corner button is the action.
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 3.dp,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(8.dp)
-                        .padding(start = if (book.isRemote) 44.dp else 0.dp),
+                        .padding(6.dp),
                 ) {
                     Icon(
-                        Icons.Default.PlayArrow,
+                        Icons.Default.GraphicEq,
                         contentDescription = stringResource(R.string.now_playing_badge),
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier
-                            .padding(3.dp)
-                            .size(13.dp),
+                            .padding(4.dp)
+                            .size(12.dp),
                     )
                 }
             }
@@ -481,7 +491,7 @@ private fun BookGridItem(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(playSize + 16.dp)
+                    .height(playSize + 20.dp)
                     .clip(
                         RoundedCornerShape(
                             bottomStart = CoverCorner.Grid,
@@ -491,7 +501,7 @@ private fun BookGridItem(
                     .background(
                         Brush.verticalGradient(
                             0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.45f),
+                            1f to Color.Black.copy(alpha = 0.55f),
                         ),
                     ),
             )
@@ -522,33 +532,14 @@ private fun BookGridItem(
                         .height(3.dp),
                     color = accent,
                     trackColor = Color.White.copy(alpha = 0.30f),
+                    // Material 1.3 draws a dot at the track end and a gap before it; on a 3dp
+                    // hairline both read as dirt on the artwork.
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                 )
             }
         },
     )
-}
-
-@Composable
-private fun OnlineBadge(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        // Follows the artwork's corner so the badge does not look like a square sticker peeling
-        // off a rounded cover.
-        shape = RoundedCornerShape(
-            topStart = CoverCorner.Grid,
-            topEnd = 4.dp,
-            bottomEnd = 8.dp,
-            bottomStart = 4.dp,
-        ),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        Text(
-            stringResource(R.string.online_badge),
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
-    }
 }
 
 @Composable
@@ -630,6 +621,8 @@ private fun ContinueListeningBar(
                     modifier = Modifier.fillMaxWidth().height(3.dp),
                     color = accent,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                 )
             }
         }
@@ -666,6 +659,45 @@ private fun ShelfFilterRow(
                 selected = filter == value,
                 onClick = { onFilterChange(value) },
                 label = { Text(label) },
+            )
+        }
+    }
+}
+
+/** Tail card on a sparse shelf: an invitation rather than empty space. */
+@Composable
+private fun DiscoverMoreCard(onClick: () -> Unit) {
+    SectionCard(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.TravelExplore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.empty_shelf_online_action),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    stringResource(R.string.shelf_discover_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

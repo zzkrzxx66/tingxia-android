@@ -173,6 +173,8 @@ fun ChapterRow(
                     .height(3.dp)
                     .clip(MaterialTheme.shapes.extraSmall),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
             )
         }
     }
