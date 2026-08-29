@@ -16,6 +16,7 @@
     <!-- Fixed height, centred: whatever footprint the launcher hands out, the widget draws one
          strip instead of stretching into a slab. -->
     <LinearLayout
+        android:id="@+id/widget_panel"
         android:layout_width="match_parent"
         android:layout_height="132dp"
         android:layout_gravity="center_vertical"
