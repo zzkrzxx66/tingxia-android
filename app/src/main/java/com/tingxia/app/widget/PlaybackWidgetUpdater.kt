@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.BitmapShader
@@ -82,9 +83,17 @@ object PlaybackWidgetUpdater {
         if (ids.isEmpty()) return
 
         ids.forEach { appWidgetId ->
-            val heightDp = manager.getAppWidgetOptions(appWidgetId).getInt(
-                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,
-                DEFAULT_EXPANDED_HEIGHT_DP,
+            // MIN_HEIGHT is the bottom of the size range, not the box on screen: for a one-cell strip
+            // it reported 72dp where the launcher actually handed out 87dp, which is why the widget
+            // used to sit inside its cell with a band of wallpaper above and below. In portrait the
+            // height to trust is MAX_HEIGHT.
+            val options = manager.getAppWidgetOptions(appWidgetId)
+            val heightDp = widgetSlotHeightDp(
+                minHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT),
+                maxHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT),
+                portrait = context.resources.configuration.orientation !=
+                    Configuration.ORIENTATION_LANDSCAPE,
+                fallbackDp = DEFAULT_EXPANDED_HEIGHT_DP,
             )
             val layoutId = widgetLayoutForHeight(heightDp)
             val singleLine = layoutId == R.layout.playback_widget_compact
@@ -136,9 +145,9 @@ object PlaybackWidgetUpdater {
                 // ratio misses the slot got letterboxed by the ImageView, and that empty column
                 // was the gap between cover and panel.
                 val spec = if (singleLine) {
-                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, COMPACT_STRIP_HEIGHT_DP)
+                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, heightDp)
                 } else {
-                    widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, EXPANDED_COVER_HEIGHT_DP)
+                    widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, heightDp)
                 }
                 val source = state.artworkUri.takeIf { it.isNotBlank() }?.let(sourceCache::get)
                 val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let { uri ->
@@ -418,12 +427,11 @@ object PlaybackWidgetUpdater {
     private const val COVER_CACHE_BYTES = 4 * 1_024 * 1_024
     private const val ARTWORK_DECODE_SIZE_PX = 480
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
-    // Slot sizes from the two layouts. Both are fixed there, so these are the real on-screen boxes
-    // rather than the launcher's estimate of them.
-    private const val COMPACT_COVER_WIDTH_DP = 60
-    private const val COMPACT_STRIP_HEIGHT_DP = 72
-    private const val EXPANDED_COVER_WIDTH_DP = 100
-    private const val EXPANDED_COVER_HEIGHT_DP = 132
+    // Cover column widths from the two layouts. Both fill the cell's height, so the bitmap's height
+    // comes from the measured slot; these widths are chosen to keep that box near a book's 3:4 at the
+    // heights each layout actually gets (a one-cell strip ~87dp, two cells ~160dp).
+    private const val COMPACT_COVER_WIDTH_DP = 64
+    private const val EXPANDED_COVER_WIDTH_DP = 120
     private const val COLOR_SAMPLE_SIZE = 16
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
@@ -508,6 +516,24 @@ internal fun widgetPanelTint(color: Int): Int {
 
 private const val PANEL_CHROMA = 0.55f
 private const val PANEL_LUMINANCE = 82f
+
+/**
+ * The height the widget actually gets, in dp. MIN_HEIGHT is the bottom of the resize range and
+ * MAX_HEIGHT the top; a portrait launcher hands out the top of that range, a landscape one the bottom.
+ * Reading MIN_HEIGHT in portrait under-reported a one-cell strip by ~15dp.
+ */
+internal fun widgetSlotHeightDp(
+    minHeightDp: Int,
+    maxHeightDp: Int,
+    portrait: Boolean,
+    fallbackDp: Int,
+): Int {
+    val preferred = if (portrait) maxHeightDp else minHeightDp
+    return preferred.takeIf { it > 0 }
+        ?: minHeightDp.takeIf { it > 0 }
+        ?: maxHeightDp.takeIf { it > 0 }
+        ?: fallbackDp
+}
 
 internal fun widgetLayoutForHeight(heightDp: Int): Int =
     if (heightDp in 1 until 120) {

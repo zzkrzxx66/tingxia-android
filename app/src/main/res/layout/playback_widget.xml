@@ -12,14 +12,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Fixed height, centred: whatever footprint the launcher hands out, the widget draws one
-         strip instead of stretching into a slab. -->
+    <!-- Fills the cell: a fixed-height panel centred in a two-cell footprint left a band of wallpaper
+         above and below it. Content stays vertically centred inside. -->
     <LinearLayout
         android:id="@+id/widget_panel"
         android:layout_width="match_parent"
-        android:layout_height="132dp"
-        android:layout_gravity="center_vertical"
-        android:layout_marginStart="98dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="118dp"
         android:background="@drawable/widget_background"
         android:gravity="center_vertical"
         android:orientation="vertical"
@@ -124,15 +123,14 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- A tile beside the panel, not a thumbnail inside it: exactly the panel's 132dp height and
-         flush against its start edge, with the panel running 2dp underneath so the two read as one
-         object with a straight seam. Fitted rather than cropped — the plate behind it, tinted with the
-         panel's colour, takes up whatever the ratio leaves over. -->
+    <!-- A tile beside the panel, not a thumbnail inside it: the panel's full height, flush against its
+         start edge, with the panel running 2dp underneath so the two read as one object with a straight
+         seam. 120dp wide keeps the box near 3:4 at the ~160dp two cells give. -->
     <ImageView
         android:id="@+id/widget_artwork"
-        android:layout_width="100dp"
-        android:layout_height="132dp"
-        android:layout_gravity="start|center_vertical"
+        android:layout_width="120dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
         android:scaleType="centerCrop"

@@ -15,18 +15,30 @@ class PlaybackWidgetSnapshotTest {
     }
 
     @Test
-    fun coverSpec_isTheExactRatioOfTheFixedSlot() {
-        // The strip's cover box is a fixed 60x72dp, so the bitmap is rendered at exactly that ratio:
-        // nothing is left for the ImageView to crop or letterbox.
-        val strip = widgetCoverSpec(slotWidthDp = 60, slotHeightDp = 72)
-        assertEquals(330, strip.widthPx)
-        assertEquals(396, strip.heightPx) // 330 * 72 / 60
-        assertEquals(14f * 330 / 60, strip.radiusPx, 0.01f)
+    fun slotHeight_readsTheEndOfTheRangeTheLauncherActuallyHandsOut() {
+        // A one-cell strip reports 72..87dp: portrait gets the top of that range, landscape the bottom.
+        assertEquals(87, widgetSlotHeightDp(72, 87, portrait = true, fallbackDp = 160))
+        assertEquals(72, widgetSlotHeightDp(72, 87, portrait = false, fallbackDp = 160))
 
-        // The tall size's tile is a fixed 100x132dp, which is close to a book's 3:4.
-        val panel = widgetCoverSpec(slotWidthDp = 100, slotHeightDp = 132)
-        assertEquals(436, panel.heightPx) // 330 * 132 / 100
-        assertEquals(14f * 330 / 100, panel.radiusPx, 0.01f)
+        // Missing options fall back to whatever is present, then to the default.
+        assertEquals(72, widgetSlotHeightDp(72, 0, portrait = true, fallbackDp = 160))
+        assertEquals(87, widgetSlotHeightDp(0, 87, portrait = false, fallbackDp = 160))
+        assertEquals(160, widgetSlotHeightDp(0, 0, portrait = true, fallbackDp = 160))
+    }
+
+    @Test
+    fun coverSpec_matchesTheColumnAndTheMeasuredCellHeight() {
+        // The strip's cover column is 64dp wide and as tall as the cell, so the bitmap is rendered at
+        // that ratio: nothing is left for the ImageView to crop or letterbox.
+        val strip = widgetCoverSpec(slotWidthDp = 64, slotHeightDp = 87)
+        assertEquals(330, strip.widthPx)
+        assertEquals(449, strip.heightPx) // round(330 * 87 / 64)
+        assertEquals(14f * 330 / 64, strip.radiusPx, 0.01f)
+
+        // The tall size's tile is 120dp wide, which is 3:4 at the ~160dp two cells give.
+        val panel = widgetCoverSpec(slotWidthDp = 120, slotHeightDp = 160)
+        assertEquals(440, panel.heightPx) // round(330 * 160 / 120)
+        assertEquals(14f * 330 / 120, panel.radiusPx, 0.01f)
     }
 
     @Test

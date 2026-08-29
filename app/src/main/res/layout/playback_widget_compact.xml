@@ -4,9 +4,10 @@
   along the bottom. Row heights are counted to fit the 72dp strip — with the time on its own row the
   content came to 90dp and the launcher clipped the bottom line in half.
 
-  The strip's height is fixed rather than match_parent, and the cover's with it. The launcher reports a
-  height some dp larger than the box it hands out, so anything sized from that report either cropped
-  the cover or left a band around it; a fixed 60x72dp cover beside a fixed 72dp panel lines up exactly.
+  Panel and cover both fill the cell: a fixed-height strip centred in the cell left a band of wallpaper
+  above and below it. The cover's bitmap is rendered for the measured cell height (see
+  widgetSlotHeightDp — MAX_HEIGHT in portrait, not MIN_HEIGHT), so filling its box costs the artwork
+  only the couple of percent the measurement is off by.
 
   The panel's colour comes from the cover at render time (see PlaybackWidgetUpdater.widgetPanelTint),
   so the background here is only the shape and the alpha gradient that tint is poured into.
@@ -19,9 +20,8 @@
     <LinearLayout
         android:id="@+id/widget_panel"
         android:layout_width="match_parent"
-        android:layout_height="72dp"
-        android:layout_gravity="center_vertical"
-        android:layout_marginStart="58dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="62dp"
         android:background="@drawable/widget_background"
         android:gravity="center_vertical"
         android:orientation="vertical"
@@ -120,14 +120,14 @@
             android:progressDrawable="@drawable/widget_progress" />
     </LinearLayout>
 
-    <!-- Exactly the panel's height, flush against its start edge, with the panel running 2dp
-         underneath so no hairline can open at the seam. 60dp wide rather than 68dp: a 60x72 box is
-         closer to a book's 3:4, so filling it costs the artwork ~10% of its height instead of ~20%. -->
+    <!-- Full cell height, flush against the panel's start edge, with the panel running 2dp underneath
+         so no hairline can open at the seam. 64dp wide because a 64dp x ~87dp box is close to a book's
+         3:4 at the height a one-cell strip actually gets. -->
     <ImageView
         android:id="@+id/widget_artwork"
-        android:layout_width="60dp"
-        android:layout_height="72dp"
-        android:layout_gravity="start|center_vertical"
+        android:layout_width="64dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
         android:scaleType="centerCrop"
