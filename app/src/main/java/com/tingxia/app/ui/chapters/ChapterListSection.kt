@@ -270,6 +270,8 @@ fun LazyListScope.chapterGroupItems(
     showCacheAction: Boolean,
     cachingChapterIds: Set<Long>,
     currentProgressFraction: Float?,
+    /** The player is loading the current chapter; its row spins instead of showing a play glyph. */
+    currentIsLoading: Boolean = false,
     headerColor: Color,
     onChapterClick: (Chapter) -> Unit,
     onChapterLongClick: (Chapter) -> Unit,
@@ -300,6 +302,7 @@ fun LazyListScope.chapterGroupItems(
                 modifier = Modifier.padding(rowPadding),
                 enabled = enabled,
                 progressFraction = currentProgressFraction,
+                loading = currentIsLoading,
                 showCacheAction = showCacheAction,
                 cacheInProgress = chapter.id in cachingChapterIds,
                 selectionMode = controls.selectionMode,

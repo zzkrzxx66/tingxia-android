@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.15.0
+
+- Streaming playback feedback, rebuilt. The player only knew whether it was playing, so a first
+  load or a mid-stream stall showed nothing at all and a 500 ms progress poll stepped the bar
+  visibly behind the audio — a slow chapter looked like a frozen screen.
+  - Two new states: 正在载入 appears the instant a chapter is requested, so the tap is never
+    silent, and 缓冲中 only appears after a stall lasts longer than 350 ms, so short network
+    hiccups no longer flash a spinner. Pausing during a stall drops the indicator; the buffer
+    refilling in the background is not the listener's problem.
+  - The scrub bar is drawn rather than a disabled Slider: it now carries the buffered head as a
+    second track, and while stalled a highlight travels over the part that is not playable yet.
+    Before the duration is known the bar is indeterminate and the timestamps read `--:--`
+    instead of a confident 0:00.
+  - The playhead is interpolated between polls, so the bar and the mini-player ring move
+    continuously; seeks and chapter changes snap instead of sliding across the track.
+  - The 76dp transport button gains a loading ring, its glyph cross-fades between play and pause
+    and dips on press. The cover keeps breathing while loading, chapter titles cross-fade, the
+    mini player's ring spins while loading with 缓冲中 on its second line, and the chapter picker
+    spins on the row it is loading.
+- Buffering policy for speech streaming: 60s–180s buffer, 1.2s to start a chapter, 2.5s after a
+  rebuffer, and a 60s back buffer so a 30-second rewind replays from memory instead of
+  refetching. Audio-only playlists make the extra memory cheap, and it is what carries a chapter
+  through a tunnel.
+
 ## 0.14.0
 
 - Home-screen playback widget, rebuilt:

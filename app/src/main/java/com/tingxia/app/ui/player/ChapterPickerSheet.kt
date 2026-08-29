@@ -44,6 +44,7 @@ fun ChapterPickerSheet(
     state: ChapterPickerUiState,
     currentChapterId: Long?,
     currentProgressFraction: Float?,
+    currentIsLoading: Boolean = false,
     cachingChapterIds: Set<Long>,
     onDismiss: () -> Unit,
     onQueryChange: (String) -> Unit,
@@ -175,6 +176,7 @@ fun ChapterPickerSheet(
                     showCacheAction = state.isRemote,
                     cachingChapterIds = cachingChapterIds,
                     currentProgressFraction = currentProgressFraction,
+                    currentIsLoading = currentIsLoading,
                     headerColor = headerColor,
                     onChapterClick = { chapter ->
                         if (controls.selectionMode) {

@@ -55,6 +55,8 @@ fun ChapterRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     progressFraction: Float? = null,
+    /** True while the player is loading this chapter, so the tile can spin instead of lying still. */
+    loading: Boolean = false,
     showCacheAction: Boolean = false,
     cacheInProgress: Boolean = false,
     selectionMode: Boolean = false,
@@ -93,6 +95,7 @@ fun ChapterRow(
                 ChapterStateTile(
                     number = chapter.index + 1,
                     isCurrent = isCurrent,
+                    loading = isCurrent && loading,
                     inProgress = inProgress,
                     completed = completed,
                 )
@@ -185,6 +188,7 @@ fun ChapterRow(
 private fun ChapterStateTile(
     number: Int,
     isCurrent: Boolean,
+    loading: Boolean,
     inProgress: Boolean,
     completed: Boolean,
 ) {
@@ -205,12 +209,22 @@ private fun ChapterStateTile(
             horizontalArrangement = Arrangement.Center,
         ) {
             if (isCurrent) {
-                Icon(
-                    Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(18.dp),
-                )
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f),
+                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             } else {
                 Text(
                     text = "%02d".format(number),

@@ -1,12 +1,23 @@
 package com.tingxia.app.ui.player
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -46,8 +57,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,6 +86,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.input.pointer.pointerInput
@@ -99,6 +109,9 @@ private val onArtworkTextShadow = Shadow(
     offset = Offset(0f, 1f),
     blurRadius = 8f,
 )
+
+/** Stand-in for a timestamp that is not known yet (online chapter still opening). */
+private const val TIME_PLACEHOLDER = "--:--"
 
 @Composable
 fun FullPlayerScreen(
@@ -130,6 +143,16 @@ fun FullPlayerScreen(
 
     val duration = state.durationMs.coerceAtLeast(0L).toFloat()
     val position = if (scrubbing) scrubValue else state.positionMs.toFloat().coerceAtMost(duration)
+    // One flag for "audio is not flowing yet": a first load and a mid-stream stall get the
+    // same visual language, they just differ in how fast they are allowed to appear.
+    val loading = state.isPreparing || state.isBuffering
+    // Smoothed playhead for the bar only; the timestamps keep the polled value so they
+    // never read a fraction ahead of the audio.
+    val smoothPosition = rememberSmoothPositionMs(
+        targetMs = state.positionMs,
+        animate = state.isPlaying && !scrubbing,
+    )
+    val bufferedMs = state.bufferedMs
 
     val haptics = LocalHapticFeedback.current
     Scaffold(
@@ -202,9 +225,10 @@ fun FullPlayerScreen(
                         ),
                         label = "coverScale",
                     )
-                    // Ease back to rest on pause instead of snapping from mid-breath.
+                    // Ease back to rest on pause instead of snapping from mid-breath. Loading
+                    // keeps breathing: a frozen cover is what made a stall feel like a crash.
                     val coverScale by animateFloatAsState(
-                        targetValue = if (state.isPlaying) breathScale else 1f,
+                        targetValue = if (state.isPlaying || loading) breathScale else 1f,
                         animationSpec = tween(450, easing = FastOutSlowInEasing),
                         label = "coverSettle",
                     )
@@ -234,14 +258,27 @@ fun FullPlayerScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = state.chapterTitle.orEmpty().ifEmpty { stringResource(R.string.nothing_playing) },
-                    style = MaterialTheme.typography.headlineSmall.copy(shadow = onArtworkTextShadow),
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // Chapter changes cross-fade: swapping two lines of text instantly is what made
+                // 上一章/下一章 feel like a jump cut.
+                AnimatedContent(
+                    targetState = state.chapterTitle.orEmpty()
+                        .ifEmpty { stringResource(R.string.nothing_playing) },
+                    transitionSpec = {
+                        (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 6 })
+                            .togetherWith(fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 6 })
+                    },
+                    label = "chapterTitle",
+                    modifier = Modifier.fillMaxWidth(),
+                ) { title ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall.copy(shadow = onArtworkTextShadow),
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (state.chapterCount > 0) {
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -252,6 +289,20 @@ fun FullPlayerScreen(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.8f),
+                    )
+                }
+                // Reserved by the animation, not by a fixed spacer: the pill expands the column
+                // instead of overlapping the artwork or the bar.
+                AnimatedVisibility(
+                    visible = loading,
+                    enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
+                ) {
+                    BufferingPill(
+                        text = stringResource(
+                            if (state.isPreparing) R.string.loading_chapter else R.string.buffering,
+                        ),
+                        modifier = Modifier.padding(top = 10.dp),
                     )
                 }
                 Spacer(Modifier.height(20.dp))
@@ -351,20 +402,15 @@ fun FullPlayerScreen(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Slider(
-                            value = if (duration > 0f) position.coerceIn(0f, duration) else 0f,
-                            onValueChange = {},
-                            enabled = false,
-                            valueRange = 0f..(duration.takeIf { it > 0f } ?: 1f),
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color.White,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.35f),
-                                disabledThumbColor = Color.White,
-                                disabledActiveTrackColor = Color.White,
-                                disabledInactiveTrackColor = Color.White.copy(alpha = 0.35f),
-                            ),
+                        PlayerScrubTrack(
+                            position = { if (scrubbing) scrubValue else smoothPosition.value },
+                            buffered = { bufferedMs.toFloat() },
+                            durationMs = duration,
+                            scrubbing = scrubbing,
+                            // Also indeterminate before the duration lands: an online chapter
+                            // reports 0 until the first bytes arrive, and an empty bar with no
+                            // motion is indistinguishable from a broken one.
+                            indeterminate = loading || duration <= 0f,
                         )
                     }
                 }
@@ -372,8 +418,11 @@ fun FullPlayerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
+                    // Before the duration is known there is no honest number to show; a
+                    // confident 0:00 / 本章剩余 0:00 reads as a broken chapter.
+                    val timeUnknown = duration <= 0f
                     Text(
-                        text = formatDuration(position.toLong()),
+                        text = if (timeUnknown) TIME_PLACEHOLDER else formatDuration(position.toLong()),
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontFeatureSettings = "tnum",
                             shadow = onArtworkTextShadow,
@@ -385,10 +434,13 @@ fun FullPlayerScreen(
                     val bookRemainingMs = ((state.bookDurationMs - state.bookPositionMs) / speed)
                         .toLong().coerceAtLeast(0L)
                     Text(
-                        text = if (showBookRemaining && state.bookDurationMs > 0L) {
-                            stringResource(R.string.remaining_book, formatDuration(bookRemainingMs))
-                        } else {
-                            stringResource(R.string.remaining_chapter, formatDuration(chapterRemainingMs))
+                        text = when {
+                            showBookRemaining && state.bookDurationMs > 0L ->
+                                stringResource(R.string.remaining_book, formatDuration(bookRemainingMs))
+                            timeUnknown ->
+                                stringResource(R.string.remaining_chapter, TIME_PLACEHOLDER)
+                            else ->
+                                stringResource(R.string.remaining_chapter, formatDuration(chapterRemainingMs))
                         },
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontFeatureSettings = "tnum",
@@ -425,24 +477,11 @@ fun FullPlayerScreen(
                             modifier = Modifier.size(34.dp),
                         )
                     }
-                    Surface(
+                    PlayerPrimaryButton(
+                        isPlaying = state.isPlaying,
+                        loading = loading,
                         onClick = onToggle,
-                        modifier = Modifier.size(76.dp),
-                        shape = CircleShape,
-                        color = Color.White,
-                        shadowElevation = 10.dp,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = stringResource(
-                                    if (state.isPlaying) R.string.pause else R.string.play,
-                                ),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(40.dp),
-                            )
-                        }
-                    }
+                    )
                     IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(52.dp)) {
                         Icon(
                             Icons.Default.Forward30,
@@ -645,6 +684,62 @@ fun FullPlayerScreen(
                 TextButton(onClick = { customSleepDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+}
+
+/**
+ * The 76dp transport button. While a chapter loads, an indeterminate ring runs around it and
+ * the glyph fades to the loading tint, so the one control the listener is looking at answers
+ * "did my tap register?" without a separate overlay.
+ */
+@Composable
+private fun PlayerPrimaryButton(
+    isPlaying: Boolean,
+    loading: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.93f else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f),
+        label = "primaryPress",
+    )
+    val glyphTint by animateColorAsState(
+        targetValue = if (loading) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+        } else {
+            MaterialTheme.colorScheme.primary
+        },
+        animationSpec = tween(220),
+        label = "primaryGlyphTint",
+    )
+    Box(
+        modifier = modifier.size(90.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedVisibility(
+            visible = loading,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(220)),
+        ) {
+            LoadingRing(modifier = Modifier.size(90.dp), strokeWidth = 3.dp)
+        }
+        Surface(
+            onClick = onClick,
+            interactionSource = interaction,
+            modifier = Modifier
+                .size(76.dp)
+                .scale(pressScale),
+            shape = CircleShape,
+            color = Color.White,
+            shadowElevation = 10.dp,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                PlayPauseGlyph(isPlaying = isPlaying, tint = glyphTint, size = 40.dp)
+            }
+        }
     }
 }
 

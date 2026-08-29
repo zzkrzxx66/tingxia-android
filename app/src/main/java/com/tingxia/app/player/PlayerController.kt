@@ -41,6 +41,10 @@ import kotlin.coroutines.resumeWithException
 data class PlayerUiState(
     val isConnected: Boolean = false,
     val isPlaying: Boolean = false,
+    /** A fresh chapter is being opened: show feedback immediately, the user just tapped. */
+    val isPreparing: Boolean = false,
+    /** Playback stalled mid-stream for longer than [PlaybackFeedback.BUFFERING_GRACE_MS]. */
+    val isBuffering: Boolean = false,
     val bookId: Long? = null,
     val bookTitle: String? = null,
     val chapterId: Long? = null,
@@ -88,6 +92,8 @@ class PlayerController @Inject constructor(
     private var controller: MediaController? = null
     private var positionJob: Job? = null
     private var sleepJob: Job? = null
+    private var bufferingJob: Job? = null
+    private var preparingJob: Job? = null
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -95,10 +101,13 @@ class PlayerController @Inject constructor(
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.value = _state.value.copy(isPlaying = isPlaying)
-            if (isPlaying) startProgressLoop() else stopProgressLoop()
+            syncProgressLoop()
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // A new chapter always starts unbuffered; drop the previous item's buffer
+            // reading so the bar cannot briefly show a full track for the new chapter.
+            _state.value = _state.value.copy(bufferedMs = 0L)
             updateFromMediaItem(mediaItem)
             // Manual chapter change keeps EndOfChapter timer targeting the new chapter.
             if (_state.value.sleepMode is SleepTimerMode.EndOfChapter) {
@@ -111,11 +120,21 @@ class PlayerController @Inject constructor(
             _state.value = _state.value.copy(
                 durationMs = c.duration.coerceAtLeast(0L),
                 positionMs = c.currentPosition.coerceAtLeast(0L),
+                bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
             )
+            updateLoadingState(playbackState)
+            // Keep polling while stalled: the buffered head is what the UI animates.
+            syncProgressLoop()
         }
 
         override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) {
             _state.value = _state.value.copy(speed = playbackParameters.speed)
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            // Pausing during a stall must drop the spinner; resuming re-arms it.
+            val c = controller ?: return
+            if (!playWhenReady) clearLoadingState() else updateLoadingState(c.playbackState)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -123,6 +142,7 @@ class PlayerController @Inject constructor(
             val isPermission = error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                 error.cause is SecurityException
+            clearLoadingState()
             if (isPermission && bookId != null) {
                 _state.value = _state.value.copy(
                     needsReauth = true,
@@ -163,7 +183,13 @@ class PlayerController @Inject constructor(
         override fun onDisconnected(controller: MediaController) {
             stopProgressLoop()
             sleepJob?.cancel()
-            _state.value = _state.value.copy(isConnected = false)
+            bufferingJob?.cancel()
+            preparingJob?.cancel()
+            _state.value = _state.value.copy(
+                isConnected = false,
+                isPreparing = false,
+                isBuffering = false,
+            )
         }
     }
 
@@ -182,7 +208,8 @@ class PlayerController @Inject constructor(
                 if (c != null) {
                     syncFromController(c)
                     syncRuntimeState(c.sessionExtras)
-                    if (c.isPlaying) startProgressLoop()
+                    updateLoadingState(c.playbackState)
+                    syncProgressLoop()
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -197,6 +224,10 @@ class PlayerController @Inject constructor(
         stopProgressLoop()
         sleepJob?.cancel()
         sleepJob = null
+        bufferingJob?.cancel()
+        bufferingJob = null
+        preparingJob?.cancel()
+        preparingJob = null
         controller?.removeListener(listener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controller = null
@@ -209,9 +240,13 @@ class PlayerController @Inject constructor(
         chapterId: Long? = null,
         positionMs: Long? = null,
     ): Boolean {
+        // Set before any suspending work: opening an online chapter involves a repository
+        // read and a network handshake, and the tap must not look ignored meanwhile.
+        markPreparing()
         ensureConnected()
         val accessible = bookRepository.checkBookAccess(bookId)
         if (!accessible) {
+            clearLoadingState()
             _state.value = _state.value.copy(
                 bookId = bookId,
                 needsReauth = true,
@@ -220,9 +255,15 @@ class PlayerController @Inject constructor(
             return false
         }
 
-        val book = bookRepository.getBook(bookId) ?: return false
+        val book = bookRepository.getBook(bookId) ?: run {
+            clearLoadingState()
+            return false
+        }
         val chapters = bookRepository.getChapters(bookId)
-        if (chapters.isEmpty()) return false
+        if (chapters.isEmpty()) {
+            clearLoadingState()
+            return false
+        }
 
         val startChapterId = chapterId
             ?: book.currentChapterId
@@ -238,7 +279,10 @@ class PlayerController @Inject constructor(
         val startPos = clampToChapterClip(requestedPos, startClip, startChapter.durationMs)
 
         val items = buildQueueItems(book, chapters)
-        val c = controller ?: return false
+        val c = controller ?: run {
+            clearLoadingState()
+            return false
+        }
         c.setMediaItems(items, startIndex, startPos.coerceAtLeast(0L))
         val speed = book.playbackSpeed ?: preferences.defaultSpeed.first()
         c.setPlaybackSpeed(speed)
@@ -312,6 +356,7 @@ class PlayerController @Inject constructor(
         val targetId = "${bookId}_$chapterId"
         val index = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == targetId }
             ?: return false
+        markPreparing()
         c.seekTo(index, 0L)
         updateFromMediaItem(c.getMediaItemAt(index))
         return true
@@ -369,6 +414,7 @@ class PlayerController @Inject constructor(
     }
 
     fun nextChapter() {
+        markPreparing()
         controller?.seekToNextMediaItem()
     }
 
@@ -377,6 +423,7 @@ class PlayerController @Inject constructor(
         if (c.currentPosition > 3_000L) {
             c.seekTo(0L)
         } else {
+            markPreparing()
             c.seekToPreviousMediaItem()
         }
     }
@@ -598,6 +645,7 @@ class PlayerController @Inject constructor(
             isPlaying = c.isPlaying,
             positionMs = c.currentPosition.coerceAtLeast(0L),
             durationMs = c.duration.coerceAtLeast(0L),
+            bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
             speed = c.playbackParameters.speed,
         )
         updateFromMediaItem(c.currentMediaItem)
@@ -701,7 +749,7 @@ class PlayerController @Inject constructor(
                     )
                     updateBookPosition()
                 }
-                delay(500)
+                delay(PlaybackFeedback.POLL_INTERVAL_MS)
             }
         }
     }
@@ -709,6 +757,90 @@ class PlayerController @Inject constructor(
     private fun stopProgressLoop() {
         positionJob?.cancel()
         positionJob = null
+    }
+
+    /** Polls while playing *or* stalled: a frozen buffer readout looks like a hung app. */
+    private fun syncProgressLoop() {
+        val c = controller
+        val needed = c != null &&
+            (c.isPlaying || c.playbackState == Player.STATE_BUFFERING || _state.value.isPreparing)
+        if (needed) startProgressLoop() else stopProgressLoop()
+    }
+
+    /**
+     * Maps the raw player state onto the two flags the UI reads.
+     *
+     * `isPreparing` is set by the caller the moment a chapter is requested, so the tap has
+     * instant feedback; it is cleared as soon as the player is ready. A mid-stream stall only
+     * raises `isBuffering` after [PlaybackFeedback.BUFFERING_GRACE_MS], otherwise every short
+     * network hiccup flashes a spinner.
+     */
+    private fun updateLoadingState(playbackState: Int) {
+        when (playbackState) {
+            Player.STATE_READY, Player.STATE_ENDED -> {
+                bufferingJob?.cancel()
+                bufferingJob = null
+                preparingJob?.cancel()
+                preparingJob = null
+                if (_state.value.isPreparing || _state.value.isBuffering) {
+                    _state.value = _state.value.copy(isPreparing = false, isBuffering = false)
+                }
+            }
+            Player.STATE_BUFFERING -> {
+                // A stall only matters while the player is trying to play: after a manual
+                // pause the buffer refilling in the background is not the listener's problem.
+                // isPreparing is left alone — a paused chapter switch still loads, and its
+                // watchdog clears it once the player leaves BUFFERING.
+                if (controller?.playWhenReady != true) {
+                    bufferingJob?.cancel()
+                    bufferingJob = null
+                    if (_state.value.isBuffering) {
+                        _state.value = _state.value.copy(isBuffering = false)
+                    }
+                    return
+                }
+                if (_state.value.isPreparing || _state.value.isBuffering) return
+                if (bufferingJob?.isActive == true) return
+                bufferingJob = scope.launch {
+                    delay(PlaybackFeedback.BUFFERING_GRACE_MS)
+                    val c = controller
+                    if (c?.playbackState == Player.STATE_BUFFERING && c.playWhenReady) {
+                        _state.value = _state.value.copy(isBuffering = true)
+                    }
+                }
+            }
+            else -> clearLoadingState()
+        }
+    }
+
+    private fun markPreparing() {
+        bufferingJob?.cancel()
+        bufferingJob = null
+        preparingJob?.cancel()
+        _state.value = _state.value.copy(isPreparing = true, isBuffering = false, bufferedMs = 0L)
+        startProgressLoop()
+        preparingJob = scope.launch {
+            // Safety net: a cached or local chapter can reach READY without emitting a
+            // state change, and a spinner that outlives the load is worse than none.
+            while (isActive) {
+                delay(120)
+                val playbackState = controller?.playbackState ?: break
+                if (playbackState != Player.STATE_BUFFERING) break
+            }
+            if (_state.value.isPreparing) {
+                _state.value = _state.value.copy(isPreparing = false)
+            }
+        }
+    }
+
+    private fun clearLoadingState() {
+        bufferingJob?.cancel()
+        bufferingJob = null
+        preparingJob?.cancel()
+        preparingJob = null
+        if (_state.value.isPreparing || _state.value.isBuffering) {
+            _state.value = _state.value.copy(isPreparing = false, isBuffering = false)
+        }
     }
 
     companion object {

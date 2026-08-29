@@ -349,6 +349,7 @@ fun TingXiaNavHost(
                             currentProgressFraction = playerState.durationMs
                                 .takeIf { it > 0L }
                                 ?.let { playerState.positionMs.toFloat() / it.toFloat() },
+                            currentIsLoading = playerState.isPreparing || playerState.isBuffering,
                             cachingChapterIds = cachingIds,
                             onDismiss = { playerViewModel.closeChapterPicker() },
                             onQueryChange = { playerViewModel.setPickerQuery(it) },

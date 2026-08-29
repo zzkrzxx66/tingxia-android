@@ -192,6 +192,8 @@
     <string name="stats_empty_title">还没有收听记录</string>
     <string name="stats_empty_body">开始播放后,这里会统计你的收听时长。</string>
     <string name="loading">加载中…</string>
+    <string name="buffering">缓冲中</string>
+    <string name="loading_chapter">正在载入</string>
     <string name="remaining_chapter">本章剩余 %1$s</string>
     <string name="remaining_book">全书剩余 %1$s</string>
     <string name="fine_scrub_hint">下拉进入精确调节</string>

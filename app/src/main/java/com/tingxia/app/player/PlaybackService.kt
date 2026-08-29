@@ -97,7 +97,23 @@ class PlaybackService : MediaSessionService() {
         // CacheDataSource; content:// SAF URIs fall through to the local resolver
         // (DefaultDataSource delegates non-http to File/ContentDataSource, which
         // simply never hit the cache upstream).
+        // Speech streaming, not video: keeping minutes of audio in memory is cheap and it is
+        // the difference between a chapter that stalls on every subway tunnel and one that
+        // rides it out. bufferForPlayback stays low so starting a chapter is still quick, and
+        // the back buffer means a 30s rewind replays from memory instead of refetching.
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 60_000,
+                /* maxBufferMs = */ 180_000,
+                /* bufferForPlaybackMs = */ 1_200,
+                /* bufferForPlaybackAfterRebufferMs = */ 2_500,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .setBackBuffer(/* backBufferDurationMs = */ 60_000, /* retainBackBufferFromKeyframe = */ true)
+            .build()
+
         val player = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(this)
                     .setDataSourceFactory(
