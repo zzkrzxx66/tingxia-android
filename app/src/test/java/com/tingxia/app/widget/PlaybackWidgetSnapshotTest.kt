@@ -2,6 +2,7 @@ package com.tingxia.app.widget
 
 import com.tingxia.app.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackWidgetSnapshotTest {
@@ -32,6 +33,46 @@ class PlaybackWidgetSnapshotTest {
             widgetCoverSpec(68, 74).heightPx,
             widgetCoverSpec(68, 71).heightPx,
         )
+    }
+
+    @Test
+    fun chapterLine_joinsTitleAndCountAndSurvivesEitherMissing() {
+        assertEquals("008 摊牌 · 8/1500 章", widgetChapterLine("008 摊牌", "8/1500 章"))
+        assertEquals("008 摊牌", widgetChapterLine("008 摊牌", ""))
+        assertEquals("8/1500 章", widgetChapterLine("", "8/1500 章"))
+        assertEquals("", widgetChapterLine("", ""))
+    }
+
+    @Test
+    fun panelTint_keepsTheHueButLandsOnOneDarkLevel() {
+        // Whatever the cover, the panel comes out dark enough for white text: luminance is forced to
+        // one level instead of following the cover's own brightness.
+        val covers = intArrayOf(
+            0xFFB3121A.toInt(), // 十日终焉: black-and-red woodcut
+            0xFFF2E4C9.toInt(), // a pale paper cover
+            0xFF101014.toInt(), // near black
+            0xFF3F8FD8.toInt(), // a blue photograph
+        )
+        covers.forEach { cover ->
+            val tint = widgetPanelTint(cover)
+            val luminance = 0.299f * ((tint shr 16) and 0xFF) +
+                0.587f * ((tint shr 8) and 0xFF) +
+                0.114f * (tint and 0xFF)
+            assertEquals(0xFF, (tint ushr 24) and 0xFF)
+            // Near-black covers cannot be scaled up to the target, so allow the floor.
+            assertTrue("$cover -> $tint", luminance <= 95f)
+            if (cover != 0xFF101014.toInt()) assertTrue("$cover -> $tint", luminance >= 70f)
+        }
+
+        // Hue survives: a red cover stays red-dominant, a blue one blue-dominant.
+        val red = widgetPanelTint(0xFFB3121A.toInt())
+        assertTrue(((red shr 16) and 0xFF) > (red and 0xFF))
+        val blue = widgetPanelTint(0xFF3F8FD8.toInt())
+        assertTrue((blue and 0xFF) > ((blue shr 16) and 0xFF))
+
+        // Grey in, grey out: no chroma is invented.
+        val grey = widgetPanelTint(0xFF808080.toInt())
+        assertEquals((grey shr 16) and 0xFF, (grey shr 8) and 0xFF)
     }
 
     @Test

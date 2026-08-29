@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.BitmapShader
@@ -14,6 +15,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.Build
 import android.util.LruCache
 import android.view.View
 import android.widget.RemoteViews
@@ -98,9 +100,38 @@ object PlaybackWidgetUpdater {
                 )
                 setTextViewText(
                     R.id.widget_chapter_title,
-                    state.chapterTitle.ifBlank { context.getString(R.string.widget_no_media) },
+                    widgetChapterLine(
+                        chapterTitle = state.chapterTitle,
+                        countLabel = if (state.chapterCount > 0) {
+                            context.getString(
+                                R.string.widget_chapter_progress,
+                                state.chapterIndex.coerceAtLeast(0) + 1,
+                                state.chapterCount,
+                            )
+                        } else {
+                            ""
+                        },
+                    ).ifBlank { context.getString(R.string.widget_no_media) },
                 )
-                setTextViewText(R.id.widget_status, statusText(context, state))
+                // Elapsed/total rides beside the progress bar in both sizes now, so the hairline is
+                // not the only thing saying where in the chapter we are.
+                val timeLabel = if (state.hasMedia && state.durationMs > 0L) {
+                    context.getString(
+                        R.string.widget_time_progress,
+                        formatWidgetDuration(state.positionMs),
+                        formatWidgetDuration(state.durationMs),
+                    )
+                } else {
+                    ""
+                }
+                setTextViewText(
+                    R.id.widget_status,
+                    timeLabel.ifBlank { context.getString(R.string.widget_tap_to_resume) },
+                )
+                setViewVisibility(
+                    R.id.widget_status,
+                    if (timeLabel.isNotBlank() || !singleLine) View.VISIBLE else View.GONE,
+                )
                 // The cover is drawn for this widget's slot, not at a fixed 3:4: a bitmap whose
                 // ratio misses the slot got letterboxed by the ImageView, and that empty column
                 // was the gap between cover and panel.
@@ -109,6 +140,7 @@ object PlaybackWidgetUpdater {
                 } else {
                     widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, EXPANDED_COVER_HEIGHT_DP)
                 }
+                val source = state.artworkUri.takeIf { it.isNotBlank() }?.let(sourceCache::get)
                 val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let { uri ->
                     fittedCover(uri, spec)
                 }
@@ -121,6 +153,20 @@ object PlaybackWidgetUpdater {
                     )
                 } else {
                     setImageViewBitmap(R.id.widget_artwork, artwork)
+                }
+                // Panel colour follows the cover: a muted, darkened version of the cover's own
+                // average, poured into the white alpha gradient in drawable-v31. A flat grey slab
+                // beside a red-and-black cover read as two unrelated objects.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setColorStateList(
+                        R.id.widget_panel,
+                        "setBackgroundTintList",
+                        ColorStateList.valueOf(
+                            widgetPanelTint(
+                                source?.let(::averageColor) ?: fallbackBase(state.bookTitle),
+                            ),
+                        ),
+                    )
                 }
                 setViewVisibility(
                     R.id.widget_progress,
@@ -316,31 +362,36 @@ object PlaybackWidgetUpdater {
         )
     }
 
-    private fun statusText(context: Context, state: PlaybackWidgetSnapshot): String {
-        if (!state.hasMedia) return context.getString(R.string.widget_tap_to_resume)
-        val parts = buildList {
-            // Time first: it answers "how far in am I" at a glance; the chapter count is context.
-            if (state.durationMs > 0L) {
-                add(
-                    context.getString(
-                        R.string.widget_time_progress,
-                        formatWidgetDuration(state.positionMs),
-                        formatWidgetDuration(state.durationMs),
-                    ),
-                )
-            }
-            if (state.chapterCount > 0) {
-                add(
-                    context.getString(
-                        R.string.widget_chapter_progress,
-                        state.chapterIndex.coerceAtLeast(0) + 1,
-                        state.chapterCount,
-                    ),
-                )
-            }
+    /**
+     * Average colour of the cover, sampled from a 16x16 copy. A full histogram would name the most
+     * saturated patch, but the panel wants the cover's overall cast, not its loudest detail.
+     */
+    private fun averageColor(source: Bitmap): Int {
+        val sampled = Bitmap.createScaledBitmap(source, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE, true)
+        val pixels = IntArray(COLOR_SAMPLE_SIZE * COLOR_SAMPLE_SIZE)
+        sampled.getPixels(pixels, 0, COLOR_SAMPLE_SIZE, 0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE)
+        if (sampled !== source) sampled.recycle()
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        var counted = 0
+        pixels.forEach { pixel ->
+            if ((pixel ushr 24 and 0xFF) < 128) return@forEach
+            r += (pixel shr 16) and 0xFF
+            g += (pixel shr 8) and 0xFF
+            b += pixel and 0xFF
+            counted++
         }
-        return parts.joinToString(" · ").ifBlank { context.getString(R.string.widget_ready) }
+        if (counted == 0) return FALLBACK_PALETTE[0]
+        return (0xFF shl 24) or
+            ((r / counted).toInt() shl 16) or
+            ((g / counted).toInt() shl 8) or
+            (b / counted).toInt()
     }
+
+    /** The palette colour the generated cover would use, so an undecoded book still tints the panel. */
+    private fun fallbackBase(title: String): Int =
+        FALLBACK_PALETTE[kotlin.math.abs(title.hashCode()) % FALLBACK_PALETTE.size]
 
     private fun openAppIntent(context: Context): PendingIntent = PendingIntent.getActivity(
         context,
@@ -372,6 +423,7 @@ object PlaybackWidgetUpdater {
     private const val COMPACT_COVER_WIDTH_DP = 68
     private const val EXPANDED_COVER_WIDTH_DP = 100
     private const val EXPANDED_COVER_HEIGHT_DP = 132
+    private const val COLOR_SAMPLE_SIZE = 16
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
     private val FALLBACK_PALETTE = intArrayOf(
@@ -419,6 +471,40 @@ internal fun widgetCoverSpec(
         radiusPx = widthPx.toFloat() * cornerDp / slotWidthDp,
     )
 }
+
+/**
+ * Chapter line: the chapter title with its position in the book appended, so the tall size can carry
+ * both without a second status row.
+ */
+internal fun widgetChapterLine(chapterTitle: String, countLabel: String): String = when {
+    chapterTitle.isBlank() -> countLabel
+    countLabel.isBlank() -> chapterTitle
+    else -> "$chapterTitle · $countLabel"
+}
+
+/**
+ * Turns a cover's average colour into a panel colour: chroma pulled back and luminance forced to a
+ * dark, even level, so white text and the outlined controls stay readable whether the cover is a
+ * black-and-red woodcut or a pastel photograph. Hue survives, which is the point — the panel should
+ * look like it belongs to that cover.
+ */
+internal fun widgetPanelTint(color: Int): Int {
+    val r = ((color shr 16) and 0xFF).toFloat()
+    val g = ((color shr 8) and 0xFF).toFloat()
+    val b = (color and 0xFF).toFloat()
+    val grey = 0.299f * r + 0.587f * g + 0.114f * b
+    // Halfway to grey: a fully saturated cover would otherwise stain the panel.
+    val mr = grey + (r - grey) * PANEL_CHROMA
+    val mg = grey + (g - grey) * PANEL_CHROMA
+    val mb = grey + (b - grey) * PANEL_CHROMA
+    val luminance = 0.299f * mr + 0.587f * mg + 0.114f * mb
+    val scale = if (luminance <= 1f) 1f else PANEL_LUMINANCE / luminance
+    fun channel(value: Float): Int = (value * scale).toInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (channel(mr) shl 16) or (channel(mg) shl 8) or channel(mb)
+}
+
+private const val PANEL_CHROMA = 0.55f
+private const val PANEL_LUMINANCE = 82f
 
 internal fun widgetLayoutForHeight(heightDp: Int): Int =
     if (heightDp in 1 until 120) {

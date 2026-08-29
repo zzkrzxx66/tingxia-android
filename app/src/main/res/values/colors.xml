@@ -3,11 +3,17 @@
     <color name="ic_launcher_background">#141210</color>
     <color name="window_background_dark">#141210</color>
     <!--
-      Home-screen widget: a dark scrim panel with white content, the way the popular Chinese
-      audiobook apps do it. Wallpaper-themed light cards looked washed out on a light wallpaper and
-      the controls disappeared into it; a scrim guarantees contrast on any desktop.
+      Home-screen widget: a scrim panel with white content, the way the popular Chinese audiobook
+      apps do it. Wallpaper-themed light cards looked washed out on a light wallpaper and the controls
+      disappeared into it; a scrim guarantees contrast on any desktop. On Android 12+ the panel is
+      tinted with the cover's own muted colour, so widget_surface_* is the pre-12 neutral fallback and
+      widget_panel_* is the alpha ramp that tint is poured into.
     -->
-    <color name="widget_surface">#B3646B72</color>
+    <color name="widget_surface">#D9707783</color>
+    <color name="widget_surface_deep">#A8565C66</color>
+    <color name="widget_panel_scrim">#F0FFFFFF</color>
+    <color name="widget_panel_scrim_deep">#B8FFFFFF</color>
+    <color name="widget_panel_rim">#59FFFFFF</color>
     <color name="widget_on_surface">#FFFFFFFF</color>
     <color name="widget_on_surface_variant">#B8FFFFFF</color>
     <color name="widget_outline">#33FFFFFF</color>

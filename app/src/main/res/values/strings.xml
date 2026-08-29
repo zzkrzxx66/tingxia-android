@@ -135,7 +135,6 @@
     <string name="widget_artwork">书籍封面</string>
     <string name="widget_no_media">暂无播放内容</string>
     <string name="widget_tap_to_resume">点击播放继续收听</string>
-    <string name="widget_ready">准备播放</string>
     <string name="widget_chapter_progress">%1$d/%2$d 章</string>
     <string name="widget_time_progress">%1$s / %2$s</string>
     <string name="nav_shelf">书架</string>
