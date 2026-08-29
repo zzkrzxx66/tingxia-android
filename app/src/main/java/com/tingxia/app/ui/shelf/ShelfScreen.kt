@@ -82,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -416,9 +417,11 @@ private fun BookGridItem(
                 // the online badge at TopStart, so the dot shifts right to sit beside it.
                 // Equaliser bars, not a second play triangle: this marks "loaded in the player",
                 // while the corner button is the action.
+                // A neutral scrim disc, not brand green: with a green play button in the opposite
+                // corner the artwork had two matching green dots pulling at each other.
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Color.Black.copy(alpha = 0.38f),
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(6.dp),
@@ -426,7 +429,7 @@ private fun BookGridItem(
                     Icon(
                         Icons.Default.GraphicEq,
                         contentDescription = stringResource(R.string.now_playing_badge),
-                        tint = MaterialTheme.colorScheme.onPrimary,
+                        tint = Color.White,
                         modifier = Modifier
                             .padding(4.dp)
                             .size(12.dp),
@@ -499,7 +502,9 @@ private fun BookGridItem(
                     color = accent,
                     trackColor = Color.White.copy(alpha = 0.30f),
                     // Material 1.3 draws a dot at the track end and a gap before it; on a 3dp
-                    // hairline both read as dirt on the artwork.
+                    // hairline both read as dirt on the artwork. Butt caps keep a 2% bar a clean
+                    // sliver instead of a rounded blob.
+                    strokeCap = StrokeCap.Butt,
                     gapSize = 0.dp,
                     drawStopIndicator = {},
                 )
@@ -587,6 +592,7 @@ private fun ContinueListeningBar(
                     modifier = Modifier.fillMaxWidth().height(3.dp),
                     color = accent,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    strokeCap = StrokeCap.Butt,
                     gapSize = 0.dp,
                     drawStopIndicator = {},
                 )

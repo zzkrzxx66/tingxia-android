@@ -96,10 +96,13 @@ fun MiniPlayerBar(
                 // than progress.
                 CircularProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.size(42.dp),
+                    // 38dp hugs the 34dp button: at 42dp the arc floated a ring away from it.
+                    modifier = Modifier.size(38.dp),
                     strokeWidth = 2.dp,
                     color = accent,
-                    trackColor = MaterialTheme.colorScheme.outlineVariant,
+                    // outlineVariant sits within 10% of surfaceContainerHigh, so the track was
+                    // invisible and the arc read as a stray stroke instead of progress.
+                    trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                     strokeCap = StrokeCap.Round,
                     gapSize = 0.dp,
                 )

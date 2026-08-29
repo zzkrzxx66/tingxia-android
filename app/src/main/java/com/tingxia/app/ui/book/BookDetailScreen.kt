@@ -693,6 +693,7 @@ fun BookDetailScreen(
                                 .clip(MaterialTheme.shapes.extraSmall),
                             color = rememberCoverAccent(book?.coverPath),
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt,
                             gapSize = 0.dp,
                             drawStopIndicator = {},
                         )
