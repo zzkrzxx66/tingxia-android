@@ -241,9 +241,13 @@ fun ShelfScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
                     )
-                    if (books.isEmpty() && !importing && (query.isNotBlank() || filter != ShelfFilter.ALL)) {
-                        EmptyShelf(filtered = true, onImport = {}, onGoOnline = onGoOnline)
-                    } else if (books.isEmpty() && !importing && recent == null) {
+                    // A filter or search that matches nothing must never take the filter row with
+                    // it: tapping 已完成 on a shelf with nothing finished used to swap the whole grid
+                    // for an empty state, leaving no way back to 全部. The "no match" message is a
+                    // row inside the grid instead, underneath the chips.
+                    if (books.isEmpty() && !importing && recent == null &&
+                        query.isBlank() && filter == ShelfFilter.ALL
+                    ) {
                         EmptyShelf(
                             filtered = false,
                             onImport = { openTree.launch(null) },
@@ -308,6 +312,15 @@ fun ShelfScreen(
                                     onPlay = { onPlayBook(book.id) },
                                 )
                             }
+                            if (books.isEmpty() && !importing) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    EmptyShelf(
+                                        filtered = true,
+                                        onImport = {},
+                                        onGoOnline = onGoOnline,
+                                    )
+                                }
+                            }
                         }
                         }
                     }
@@ -370,7 +383,8 @@ private fun EmptyShelf(
         body = stringResource(
             if (filtered) R.string.adjust_search_or_filter else R.string.empty_shelf_hint,
         ),
-        modifier = Modifier.fillMaxSize(),
+        // Filtered: a row inside the grid, so it takes only the height it needs.
+        modifier = if (filtered) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
         action = if (filtered) null else {
             {
                 Button(onClick = onImport, shape = MaterialTheme.shapes.medium) {
