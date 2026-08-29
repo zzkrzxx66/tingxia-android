@@ -1,5 +1,10 @@
 package com.tingxia.app.ui.components
 
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -493,9 +498,9 @@ fun BookGridTile(
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier
-            .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+        // No rounded clip on the whole tile: the artwork clips itself, and a 14dp radius at the
+        // bottom corners was shaving the first characters off the author line.
+        modifier = modifier.clickable(onClick = onClick),
     ) {
         Box {
             BookCover(
@@ -652,5 +657,70 @@ fun ShimmerTile(modifier: Modifier = Modifier) {
                 .clip(MaterialTheme.shapes.extraSmall)
                 .background(base),
         )
+    }
+}
+
+/**
+ * Compact search field, 46dp tall.
+ *
+ * Material's text field has a 56dp minimum and lays its text out against that; forcing a smaller
+ * height on it clips the glyphs (Chinese loses its bottom edge first). Building the row by hand
+ * keeps full control of the height without touching the text layout.
+ */
+@Composable
+fun TxSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    onClear: (() -> Unit)? = null,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier.height(46.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                if (value.isEmpty()) {
+                    Text(
+                        placeholder,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (value.isNotEmpty() && onClear != null) {
+                IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
     }
 }

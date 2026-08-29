@@ -46,7 +46,8 @@ fun MiniPlayerBar(
     // content, and the rounded card language now matches the rest of the app.
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = MaterialTheme.shapes.extraLarge,
+        // Card radius, not a stadium: at 28dp the capsule read as a pill stuck to the screen edge.
+        shape = MaterialTheme.shapes.medium,
         tonalElevation = 3.dp,
         shadowElevation = 8.dp,
         modifier = Modifier

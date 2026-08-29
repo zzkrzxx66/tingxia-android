@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.ui.graphics.Brush
 import com.tingxia.app.ui.components.CoverPlayButton
 import com.tingxia.app.ui.components.TxChip
+import com.tingxia.app.ui.components.TxSearchField
 import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.rememberCoverAccent
 import com.tingxia.app.ui.components.SectionCard
@@ -230,42 +231,14 @@ fun ShelfScreen(
                     .padding(innerPadding),
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    OutlinedTextField(
+                    TxSearchField(
                         value = query,
                         onValueChange = viewModel::setQuery,
+                        placeholder = stringResource(R.string.search_books_hint),
+                        onClear = { viewModel.setQuery("") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            // A 56dp field plus the hero card and the chip row left room for a
-                            // single book on the first screen; 46dp keeps the shelf the subject.
-                            .height(46.dp),
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        singleLine = true,
-                        placeholder = {
-                            Text(
-                                stringResource(R.string.search_books_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = null)
-                        },
-                        trailingIcon = if (query.isNotEmpty()) {
-                            {
-                                IconButton(onClick = { viewModel.setQuery("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_search))
-                                }
-                            }
-                        } else {
-                            null
-                        },
-                        shape = MaterialTheme.shapes.large,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        ),
+                            .padding(horizontal = 16.dp),
                     )
                     if (books.isEmpty() && !importing && (query.isNotBlank() || filter != ShelfFilter.ALL)) {
                         EmptyShelf(filtered = true, onImport = {}, onGoOnline = onGoOnline)
@@ -333,13 +306,6 @@ fun ShelfScreen(
                                     onClick = { onOpenBook(book.id) },
                                     onPlay = { onPlayBook(book.id) },
                                 )
-                            }
-                            // A short shelf otherwise ends in half a screen of nothing; point that
-                            // space at the one thing that fills a shelf.
-                            if (books.size <= columns * 2 && query.isBlank()) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    DiscoverMoreCard(onClick = onGoOnline)
-                                }
                             }
                         }
                         }
@@ -659,45 +625,6 @@ private fun ShelfFilterRow(
                 selected = filter == value,
                 onClick = { onFilterChange(value) },
                 label = { Text(label) },
-            )
-        }
-    }
-}
-
-/** Tail card on a sparse shelf: an invitation rather than empty space. */
-@Composable
-private fun DiscoverMoreCard(onClick: () -> Unit) {
-    SectionCard(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Outlined.TravelExplore,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.empty_shelf_online_action),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    stringResource(R.string.shelf_discover_summary),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
