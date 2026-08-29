@@ -266,7 +266,9 @@ fun SectionCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     shape: Shape = MaterialTheme.shapes.medium,
-    color: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    // surfaceContainer, not …Low: against the warm paper background the Low step differs by one
+    // value out of 255, which left cards with no visible edge once the shadows came off.
+    color: Color = MaterialTheme.colorScheme.surfaceContainer,
     /** Only things that genuinely float (sheets, the mini player, snack-like overlays) cast one. */
     floating: Boolean = false,
     content: @Composable () -> Unit,

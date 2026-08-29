@@ -540,7 +540,7 @@ private fun ContinueListeningBar(
     ) {
         Column {
             Row(
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Square thumb, not a 3:4 one: a portrait cover at this height reached the card's
@@ -587,9 +587,15 @@ private fun ContinueListeningBar(
                 )
             }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                // Inset and rounded: flush with the card's bottom edge the rounded corners clipped
+                // its ends and it read as a bar under the card rather than this book's progress.
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
-                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    modifier = Modifier
+                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(CircleShape),
                     color = accent,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     strokeCap = StrokeCap.Butt,
