@@ -2,17 +2,22 @@
 <resources>
     <color name="ic_launcher_background">#141210</color>
     <color name="window_background_dark">#141210</color>
-    <color name="widget_surface">#FAF7F2</color>
-    <color name="widget_on_surface">#1A1A18</color>
-    <color name="widget_on_surface_variant">#6B665C</color>
-    <color name="widget_outline">#E2DBCF</color>
-    <color name="widget_progress_track">#E8E1D5</color>
-    <color name="widget_accent">#2C5545</color>
-    <color name="widget_control">#EFE9DF</color>
-    <color name="widget_on_control">#163A2C</color>
-    <color name="widget_primary_control">#2C5545</color>
-    <color name="widget_on_primary_control">#FFFFFF</color>
-    <color name="widget_artwork_surface">#EFE9DF</color>
-    <color name="widget_artwork_mark">#2C5545</color>
-    <color name="widget_artwork_mark_soft">#A2603A</color>
+    <!--
+      Home-screen widget: a dark scrim panel with white content, the way the popular Chinese
+      audiobook apps do it. Wallpaper-themed light cards looked washed out on a light wallpaper and
+      the controls disappeared into it; a scrim guarantees contrast on any desktop.
+    -->
+    <color name="widget_surface">#B2242829</color>
+    <color name="widget_on_surface">#FFFFFFFF</color>
+    <color name="widget_on_surface_variant">#B8FFFFFF</color>
+    <color name="widget_outline">#33FFFFFF</color>
+    <color name="widget_progress_track">#3DFFFFFF</color>
+    <color name="widget_accent">#F2FFFFFF</color>
+    <color name="widget_control">#00000000</color>
+    <color name="widget_on_control">#FFFFFFFF</color>
+    <color name="widget_primary_control">#00000000</color>
+    <color name="widget_on_primary_control">#FFFFFFFF</color>
+    <color name="widget_artwork_surface">#33FFFFFF</color>
+    <color name="widget_artwork_mark">#FFFFFFFF</color>
+    <color name="widget_artwork_mark_soft">#99FFFFFF</color>
 </resources>

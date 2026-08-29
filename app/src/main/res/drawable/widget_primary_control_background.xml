@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Play/pause sits inside a hairline ring rather than a filled disc: on a scrim panel the ring
+     marks the primary action without turning it into a coloured blob. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
     <solid android:color="@color/widget_primary_control" />
+    <stroke
+        android:width="2dp"
+        android:color="@color/widget_on_primary_control" />
 </shape>

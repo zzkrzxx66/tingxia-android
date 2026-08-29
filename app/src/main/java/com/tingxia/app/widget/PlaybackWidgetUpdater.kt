@@ -324,11 +324,13 @@ object PlaybackWidgetUpdater {
     private const val REQUEST_PREVIOUS = 41
     private const val REQUEST_TOGGLE = 42
     private const val REQUEST_NEXT = 43
-    private const val ARTWORK_CACHE_BYTES = 512 * 1_024
-    private const val ARTWORK_DECODE_SIZE_PX = 256
-    private const val ARTWORK_OUTPUT_WIDTH_PX = 168
-    private const val ARTWORK_OUTPUT_HEIGHT_PX = 224
-    private const val ARTWORK_CORNER_RADIUS_PX = 12f
+    private const val ARTWORK_CACHE_BYTES = 2 * 1_024 * 1_024
+    // 240px wide covers the 80dp slot at 3x; the radius is kept proportional so the bitmap's
+    // corners match the 10dp the placeholder background draws.
+    private const val ARTWORK_DECODE_SIZE_PX = 360
+    private const val ARTWORK_OUTPUT_WIDTH_PX = 240
+    private const val ARTWORK_OUTPUT_HEIGHT_PX = 320
+    private const val ARTWORK_CORNER_RADIUS_PX = 30f
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
