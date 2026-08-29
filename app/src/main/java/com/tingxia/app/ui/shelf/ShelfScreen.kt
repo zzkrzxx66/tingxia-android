@@ -574,7 +574,7 @@ private fun ContinueListeningBar(
     ) {
         Column {
             Row(
-                modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Square thumb, not a 3:4 one: a portrait cover at this height reached the card's
@@ -586,34 +586,37 @@ private fun ContinueListeningBar(
                     corner = CoverCorner.Mini,
                     realistic = false,
                 )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    book.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+                Spacer(Modifier.width(12.dp))
+                // Title over position, with the button flush right: the old single line left the
+                // percentage floating between the title and a button that sat nowhere in
+                // particular.
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        book.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
+                    Text(
+                        if (book.lastPlayedAt > 0) {
+                            stringResource(
+                                R.string.shelf_continue_inline,
+                                (book.progressFraction * 100).toInt(),
+                                formatDuration(remainingMs),
+                            )
+                        } else {
+                            stringResource(R.string.shelf_continue_title)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
-                val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
-                Text(
-                    if (book.lastPlayedAt > 0) {
-                        stringResource(
-                            R.string.shelf_continue_inline,
-                            (book.progressFraction * 100).toInt(),
-                            formatDuration(remainingMs),
-                        )
-                    } else {
-                        stringResource(R.string.shelf_continue_title)
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f, fill = true),
-                )
                 CoverPlayButton(
                     onClick = onPlay,
-                    size = 34.dp,
+                    size = 36.dp,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                 )
             }

@@ -1,5 +1,17 @@
 package com.tingxia.app.ui.book
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -186,16 +198,42 @@ fun BookDetailScreen(
     // lazy index is known, so no row-height estimate is involved any more.
     // Runs once per book, never again, so the user's own scrolling is never yanked back.
     val listState = rememberLazyListState()
+    // scrollToItem parks an item at the very top of the viewport, which here sits *under* the
+    // pinned tab/toolbar block and the status bar — so the chapter it aimed at ended up hidden
+    // and the first readable row was some later chapter. A negative offset leaves room for both.
+    val density = LocalDensity.current
+    val statusBarPx = WindowInsets.statusBars.getTop(density)
+    // Estimate first, measure second: the pinned block may not be composed yet when the jump runs
+    // (a tall book header can fill the viewport on its own), and blocking on the measurement would
+    // mean no jump at all.
+    var controlsHeightPx by remember { mutableIntStateOf(with(density) { 136.dp.roundToPx() }) }
+    var controlsMeasured by remember { mutableStateOf(false) }
+    val stickyOffsetPx = { -(controlsHeightPx + statusBarPx) }
     var scrolledToCurrent by remember { mutableStateOf(false) }
-    LaunchedEffect(chapterGroups, book?.currentChapterId) {
-        if (scrolledToCurrent || chapters.isEmpty()) return@LaunchedEffect
+    var offsetCorrected by remember { mutableStateOf(false) }
+    LaunchedEffect(chapterGroups, book?.currentChapterId, controlsMeasured) {
+        if (chapters.isEmpty()) return@LaunchedEffect
         // Wait for the book flow before declaring failure: marking the jump as done
         // while book is still null would permanently skip it when the book arrives late.
         val currentChapterId = book?.currentChapterId ?: return@LaunchedEffect
         val target = ChapterPicker.flatIndexOf(chapterGroups, currentChapterId)
             ?: return@LaunchedEffect // chapter may be mid-reshuffle; retry on next emission
-        listState.scrollToItem(CHAPTER_ITEMS_OFFSET + target)
-        scrolledToCurrent = true
+        val item = CHAPTER_ITEMS_OFFSET + target
+        if (!scrolledToCurrent) {
+            listState.scrollToItem(item, stickyOffsetPx())
+            scrolledToCurrent = true
+            return@LaunchedEffect
+        }
+        // One correction once the real height is known, and only while the list is still parked
+        // where the jump left it, so the user's own scrolling is never yanked back.
+        if (controlsMeasured && !offsetCorrected) {
+            offsetCorrected = true
+            // A negative offset leaves the previous row (or the group header) partly visible, so
+            // the parked position is a small window around the target, not the exact index.
+            if (!listState.isScrollInProgress && listState.firstVisibleItemIndex in (item - 2)..item) {
+                listState.scrollToItem(item, stickyOffsetPx())
+            }
+        }
     }
 
     // Which 选集 chip reads as active: the block the list is parked on.
@@ -220,13 +258,39 @@ fun BookDetailScreen(
     }
 
     fun scrollToChapterIndex(target: Int) {
-        scope.launch { listState.animateScrollToItem(CHAPTER_ITEMS_OFFSET + target) }
+        scope.launch {
+            listState.animateScrollToItem(CHAPTER_ITEMS_OFFSET + target, stickyOffsetPx())
+        }
+    }
+
+    // Long books meant flicking upward for a dozen swipes to reach the header again.
+    val showScrollTop by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 6 }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = showScrollTop,
+                enter = fadeIn() + scaleIn(initialScale = 0.8f),
+                exit = fadeOut() + scaleOut(targetScale = 0.8f),
+            ) {
+                SmallFloatingActionButton(
+                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp),
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowUp,
+                        contentDescription = stringResource(R.string.back_to_top),
+                    )
+                }
+            }
+        },
     ) { innerPadding ->
         LazyColumn(
             state = listState,
@@ -710,8 +774,25 @@ fun BookDetailScreen(
             // Tabs + chapter toolbar stay pinned: on a 400-chapter book the old in-header strip
             // scrolled away and switching blocks meant scrolling all the way back up.
             stickyHeader(key = "chapter-controls") {
-                Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
-                    Column {
+                // Pinned at the top the block would otherwise slide under the status bar, which is
+                // exactly where the immersive header wants to draw while it is still in flow.
+                val pinned by remember {
+                    derivedStateOf { listState.firstVisibleItemIndex >= 1 }
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.background,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (pinned) Modifier.statusBarsPadding() else Modifier),
+                ) {
+                    Column(
+                        modifier = Modifier.onSizeChanged { size ->
+                            if (size.height > 0 && size.height != controlsHeightPx) {
+                                controlsHeightPx = size.height
+                                controlsMeasured = true
+                            }
+                        },
+                    ) {
                         SecondaryTabRow(
                             selectedTabIndex = selectedTab,
                             containerColor = MaterialTheme.colorScheme.background,
