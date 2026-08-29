@@ -295,16 +295,21 @@ fun ShelfScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            recent?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }?.let { book ->
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    ContinueListeningCard(
-                                        book = book,
-                                        isPlaying = isPlaying && book.id == playingBookId,
-                                        onOpen = { onOpenBook(book.id) },
-                                        onPlay = { onPlayBook(book.id) },
-                                    )
+                            // Skipped when the bottom capsule is already showing this book (a
+                            // loaded session means the mini player is on screen), and on a shelf
+                            // small enough to see the book itself without a shortcut.
+                            recent
+                                ?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }
+                                ?.takeIf { it.id != playingBookId && books.size >= 3 }
+                                ?.let { book ->
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        ContinueListeningBar(
+                                            book = book,
+                                            onOpen = { onOpenBook(book.id) },
+                                            onPlay = { onPlayBook(book.id) },
+                                        )
+                                    }
                                 }
-                            }
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ShelfFilterRow(
                                     filter = filter,
@@ -314,7 +319,8 @@ fun ShelfScreen(
                             items(books, key = { it.id }) { book ->
                                 BookGridItem(
                                     book = book,
-                                    isPlaying = book.id == playingBookId,
+                                    isCurrent = book.id == playingBookId,
+                                    isPlaying = isPlaying && book.id == playingBookId,
                                     tileWidth = tileWidth,
                                     onClick = { onOpenBook(book.id) },
                                     onPlay = { onPlayBook(book.id) },
@@ -402,6 +408,8 @@ private fun EmptyShelf(
 @Composable
 private fun BookGridItem(
     book: Book,
+    /** Loaded in the player (marks the tile), which is not the same as actually playing. */
+    isCurrent: Boolean = false,
     isPlaying: Boolean = false,
     tileWidth: Dp = 110.dp,
     onClick: () -> Unit,
@@ -422,7 +430,7 @@ private fun BookGridItem(
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                 )
             }
-            if (isPlaying) {
+            if (isCurrent) {
                 // Play dot marks the book loaded in the player, so the shelf answers
                 // "what am I listening to" without reading titles. Remote tiles carry
                 // the online badge at TopStart, so the dot shifts right to sit beside it.
@@ -542,13 +550,13 @@ private fun sortLabel(sort: ShelfSort): String = when (sort) {
 }
 
 /**
- * Shelf hero: the book the listener was last on, with a one-tap resume. Ximalaya-style entry point
- * so the most likely action is not buried inside the grid.
+ * One-line resume strip: cover thumb, title, position, play button, and a hairline of progress
+ * along the bottom edge. The tall hero card it replaced ate 128dp of the first screen and, on a
+ * short shelf, simply repeated the tile right below it.
  */
 @Composable
-private fun ContinueListeningCard(
+private fun ContinueListeningBar(
     book: Book,
-    isPlaying: Boolean,
     onOpen: () -> Unit,
     onPlay: () -> Unit,
 ) {
@@ -559,82 +567,57 @@ private fun ContinueListeningCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Box {
-            // A whisper of primary behind the artwork side ties the card to the brand colour
-            // without turning it into a coloured block.
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            0f to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                            0.75f to MaterialTheme.colorScheme.surface,
-                        ),
-                    ),
-            )
             Row(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BookCover(
                     title = book.title,
                     coverPath = book.coverPath,
-                    size = 72.dp,
+                    size = 36.dp,
                     ratio = COVER_RATIO_PORTRAIT,
-                    corner = CoverCorner.Card,
-                    realistic = true,
+                    corner = CoverCorner.Mini,
+                    realistic = false,
                 )
-                Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.shelf_continue_title),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        book.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
-                    Text(
-                        if (book.lastPlayedAt > 0) {
-                            stringResource(
-                                R.string.shelf_continue_progress,
-                                (book.progressFraction * 100).toInt(),
-                                formatDuration(remainingMs),
-                            )
-                        } else {
-                            stringResource(
-                                R.string.shelf_continue_fresh,
-                                formatDuration(book.totalDurationMs),
-                            )
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
-                        Spacer(Modifier.height(6.dp))
-                        LinearProgressIndicator(
-                            progress = { book.progressFraction },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(MaterialTheme.shapes.extraSmall),
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    book.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(8.dp))
+                val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
+                Text(
+                    if (book.lastPlayedAt > 0) {
+                        stringResource(
+                            R.string.shelf_continue_inline,
+                            (book.progressFraction * 100).toInt(),
+                            formatDuration(remainingMs),
                         )
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
+                    } else {
+                        stringResource(R.string.shelf_continue_title)
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = true),
+                )
                 CoverPlayButton(
                     onClick = onPlay,
-                    isPlaying = isPlaying,
-                    size = 42.dp,
+                    size = 34.dp,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
+                )
+            }
+            if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                LinearProgressIndicator(
+                    progress = { book.progressFraction },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    trackColor = Color.Transparent,
                 )
             }
         }

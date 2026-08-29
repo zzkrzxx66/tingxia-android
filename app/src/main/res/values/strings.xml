@@ -245,6 +245,7 @@
     <string name="meta_sync_align_keep">→ 保留原标题</string>
     <!-- Shelf hero -->
     <string name="shelf_continue_title">继续收听</string>
+    <string name="shelf_continue_inline">%1$d%% · 剩 %2$s</string>
     <string name="shelf_continue_progress">已听 %1$d%% · 剩余 %2$s</string>
     <string name="shelf_continue_fresh">还没开始 · 共 %1$s</string>
     <string name="sort_books">排序方式</string>
