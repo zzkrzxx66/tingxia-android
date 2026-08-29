@@ -76,13 +76,17 @@ object PlaybackWidgetUpdater {
                 AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,
                 DEFAULT_EXPANDED_HEIGHT_DP,
             )
-            val views = RemoteViews(
-                context.packageName,
-                widgetLayoutForHeight(heightDp),
-            ).apply {
+            val layoutId = widgetLayoutForHeight(heightDp)
+            val singleLine = layoutId == R.layout.playback_widget_compact
+            val views = RemoteViews(context.packageName, layoutId).apply {
+                // The strip has room for one line of text, so book and chapter share it there.
                 setTextViewText(
                     R.id.widget_book_title,
-                    state.bookTitle.ifBlank { context.getString(R.string.app_name) },
+                    widgetHeadline(
+                        bookTitle = state.bookTitle.ifBlank { context.getString(R.string.app_name) },
+                        chapterTitle = state.chapterTitle,
+                        merged = singleLine,
+                    ),
                 )
                 setTextViewText(
                     R.id.widget_chapter_title,
@@ -354,6 +358,10 @@ object PlaybackWidgetUpdater {
  * First character worth drawing on a placeholder cover: 《10日终焉》 used to render as 《, because the
  * old code took `first()` and Chinese titles often open with a bracket or quote.
  */
+/** Strip layout headline: "书名 · 章节", falling back to the book title alone. */
+internal fun widgetHeadline(bookTitle: String, chapterTitle: String, merged: Boolean): String =
+    if (merged && chapterTitle.isNotBlank()) "$bookTitle · $chapterTitle" else bookTitle
+
 internal fun widgetCoverInitial(title: String): String =
     title.firstOrNull { it.isLetterOrDigit() }?.toString() ?: "听"
 

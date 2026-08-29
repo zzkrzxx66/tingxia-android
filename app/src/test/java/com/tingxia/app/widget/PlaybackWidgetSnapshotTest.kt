@@ -14,6 +14,16 @@ class PlaybackWidgetSnapshotTest {
     }
 
     @Test
+    fun headline_mergesChapterOnlyForTheStrip() {
+        assertEquals(
+            "我不是戏神 · 006 陈氏编导法则",
+            widgetHeadline("我不是戏神", "006 陈氏编导法则", merged = true),
+        )
+        assertEquals("我不是戏神", widgetHeadline("我不是戏神", "006 陈氏编导法则", merged = false))
+        assertEquals("我不是戏神", widgetHeadline("我不是戏神", "", merged = true))
+    }
+
+    @Test
     fun coverInitial_skipsPunctuationAndBrackets() {
         // 《10日终焉》番茄唱… used to render its opening bracket as the cover initial.
         assertEquals("1", widgetCoverInitial("《10日终焉》番茄唱工"))

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The default size: a single-row strip. Cover overhangs the panel's start edge and stands as tall as
-  the panel's content, so there is no empty band around it; title and chapter take one line each and
-  the three controls sit at the end. This is the shape the reference widget uses, and the shape the
-  scrim treatment was designed for.
+  The strip, matched to the reference: one line of text and three large controls spread across the
+  panel's whole width. At the ~90dp a launcher gives a one-row widget there is room for exactly two
+  rows of content, so book and chapter share a line (the updater merges them) and progress is drawn
+  as a hairline overlaying the panel's bottom edge, costing no height at all.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -12,106 +12,102 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="84dp"
-        android:layout_gravity="center_vertical"
-        android:layout_marginStart="62dp"
-        android:layout_marginTop="2dp"
-        android:layout_marginBottom="2dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="84dp"
         android:background="@drawable/widget_background"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="18dp"
+        android:orientation="vertical"
+        android:paddingStart="22dp"
         android:paddingTop="8dp"
-        android:paddingEnd="6dp"
+        android:paddingEnd="14dp"
         android:paddingBottom="8dp">
 
-        <LinearLayout
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/widget_book_title"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:ellipsize="end"
+            android:fontFamily="serif"
+            android:maxLines="1"
+            android:text="@string/app_name"
+            android:textColor="@color/widget_on_surface"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/widget_book_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:fontFamily="serif"
-                android:maxLines="1"
-                android:text="@string/app_name"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+        <TextView
+            android:id="@+id/widget_chapter_title"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:text="@string/widget_no_media"
+            android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/widget_chapter_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:ellipsize="end"
-                android:fontFamily="sans-serif"
-                android:maxLines="1"
-                android:text="@string/widget_no_media"
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="11sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
 
-            <ProgressBar
-                android:id="@+id/widget_progress"
-                style="@android:style/Widget.ProgressBar.Horizontal"
-                android:layout_width="match_parent"
-                android:layout_height="2dp"
-                android:layout_marginTop="7dp"
-                android:layout_marginEnd="8dp"
-                android:indeterminate="false"
-                android:progressDrawable="@drawable/widget_progress" />
+            <ImageButton
+                android:id="@+id/widget_previous"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:contentDescription="@string/previous_chapter"
+                android:padding="9dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_previous"
+                android:tint="@color/widget_on_control" />
 
-            <TextView
-                android:id="@+id/widget_status"
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:text="@string/widget_tap_to_resume"
-                android:visibility="gone" />
+            <ImageButton
+                android:id="@+id/widget_play_pause"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:contentDescription="@string/play"
+                android:padding="2dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_play_circle" />
+
+            <ImageButton
+                android:id="@+id/widget_next"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:contentDescription="@string/next_chapter"
+                android:padding="9dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_next"
+                android:tint="@color/widget_on_control" />
         </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/widget_previous"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="@string/previous_chapter"
-            android:padding="6dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_widget_previous"
-            android:tint="@color/widget_on_control" />
-
-        <ImageButton
-            android:id="@+id/widget_play_pause"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:layout_marginStart="2dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="@string/play"
-            android:padding="3dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_widget_play_circle" />
-
-        <ImageButton
-            android:id="@+id/widget_next"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:layout_marginStart="2dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="@string/next_chapter"
-            android:padding="6dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_widget_next"
-            android:tint="@color/widget_on_control" />
+        <TextView
+            android:id="@+id/widget_status"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:text="@string/widget_tap_to_resume"
+            android:visibility="gone" />
     </LinearLayout>
+
+    <!-- Overlays the panel's foot, so the hairline takes no room from the two content rows. -->
+    <ProgressBar
+        android:id="@+id/widget_progress"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="106dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="10dp"
+        android:indeterminate="false"
+        android:progressDrawable="@drawable/widget_progress" />
 
     <ImageView
         android:id="@+id/widget_artwork"
-        android:layout_width="66dp"
-        android:layout_height="88dp"
+        android:layout_width="78dp"
+        android:layout_height="104dp"
         android:layout_gravity="start|center_vertical"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
