@@ -11,6 +11,8 @@ import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Shader
 import android.util.LruCache
 import android.view.View
@@ -33,7 +35,13 @@ object PlaybackWidgetUpdater {
     private val artworkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingArtwork = ConcurrentHashMap.newKeySet<String>()
     private val failedArtwork = ConcurrentHashMap.newKeySet<String>()
-    private val artworkCache = object : LruCache<String, Bitmap>(ARTWORK_CACHE_BYTES) {
+    /** Decoded covers, before they are fitted to a widget slot. */
+    private val sourceCache = object : LruCache<String, Bitmap>(ARTWORK_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
+
+    /** Covers cut to one slot's aspect ratio, keyed by uri plus that ratio. */
+    private val coverCache = object : LruCache<String, Bitmap>(COVER_CACHE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     }
 
@@ -93,13 +101,23 @@ object PlaybackWidgetUpdater {
                     state.chapterTitle.ifBlank { context.getString(R.string.widget_no_media) },
                 )
                 setTextViewText(R.id.widget_status, statusText(context, state))
-                val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let(artworkCache::get)
+                // The cover is drawn for this widget's slot, not at a fixed 3:4: a bitmap whose
+                // ratio misses the slot got letterboxed by the ImageView, and that empty column
+                // was the gap between cover and panel.
+                val spec = if (singleLine) {
+                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, heightDp)
+                } else {
+                    widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, EXPANDED_COVER_HEIGHT_DP)
+                }
+                val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let { uri ->
+                    fittedCover(uri, spec)
+                }
                 if (artwork == null) {
                     // Match the in-app fallback cover: palette wash + initial, so the
                     // desk widget speaks the same visual language as the shelf.
                     setImageViewBitmap(
                         R.id.widget_artwork,
-                        fallbackArtwork(context, state.bookTitle),
+                        fallbackArtwork(context, state.bookTitle, spec),
                     )
                 } else {
                     setImageViewBitmap(R.id.widget_artwork, artwork)
@@ -140,9 +158,17 @@ object PlaybackWidgetUpdater {
         requestArtwork(context, state)
     }
 
+    /** Cover for one slot, composed on demand from the decoded source and cached per ratio. */
+    private fun fittedCover(uri: String, spec: WidgetCoverSpec): Bitmap? {
+        val key = "$uri|${spec.widthPx}x${spec.heightPx}"
+        coverCache.get(key)?.let { return it }
+        val source = sourceCache.get(uri) ?: return null
+        return coverBitmap(source, spec).also { coverCache.put(key, it) }
+    }
+
     private fun requestArtwork(context: Context, state: PlaybackWidgetSnapshot) {
         val artworkUri = state.artworkUri.takeIf { it.isNotBlank() } ?: return
-        if (artworkCache.get(artworkUri) != null || artworkUri in failedArtwork) return
+        if (sourceCache.get(artworkUri) != null || artworkUri in failedArtwork) return
         if (!pendingArtwork.add(artworkUri)) return
         val appContext = context.applicationContext
         artworkScope.launch {
@@ -152,7 +178,7 @@ object PlaybackWidgetUpdater {
                 failedArtwork.add(artworkUri)
                 return@launch
             }
-            artworkCache.put(artworkUri, bitmap)
+            sourceCache.put(artworkUri, bitmap)
             val latest = PlaybackWidgetStateStore.load(appContext)
             if (latest.artworkUri == artworkUri) render(appContext, latest)
         }
@@ -175,40 +201,42 @@ object PlaybackWidgetUpdater {
             .allowHardware(false)
             .build()
         val result = context.imageLoader.execute(request)
-        val decoded = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: return null
-        return portraitArtwork(decoded)
+        return ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
     }
 
-    /** Books are portrait, so the widget crops 3:4 rather than squaring the artwork off. */
-    private fun portraitArtwork(source: Bitmap): Bitmap {
-        val width = ARTWORK_OUTPUT_WIDTH_PX
-        val height = ARTWORK_OUTPUT_HEIGHT_PX
-        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    /**
+     * Fills the slot edge to edge, centre-cropped, with only the outward (start) corners rounded:
+     * the edge facing the panel stays square so cover and panel meet on a straight seam.
+     */
+    private fun coverBitmap(source: Bitmap, spec: WidgetCoverSpec): Bitmap {
+        val output = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
         val scale = maxOf(
-            width.toFloat() / source.width,
-            height.toFloat() / source.height,
+            spec.widthPx.toFloat() / source.width,
+            spec.heightPx.toFloat() / source.height,
         )
         val matrix = Matrix().apply {
             setScale(scale, scale)
             postTranslate(
-                (width - source.width * scale) / 2f,
-                (height - source.height * scale) / 2f,
+                (spec.widthPx - source.width * scale) / 2f,
+                (spec.heightPx - source.height * scale) / 2f,
             )
         }
         val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
             setLocalMatrix(matrix)
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
-        Canvas(output).drawRoundRect(
-            0f,
-            0f,
-            width.toFloat(),
-            height.toFloat(),
-            ARTWORK_CORNER_RADIUS_PX,
-            ARTWORK_CORNER_RADIUS_PX,
-            paint,
-        )
+        Canvas(output).drawPath(startRoundedPath(spec), paint)
         return output
+    }
+
+    /** Rounded on the start edge, square on the edge that touches the panel. */
+    private fun startRoundedPath(spec: WidgetCoverSpec): Path = Path().apply {
+        val r = spec.radiusPx
+        addRoundRect(
+            RectF(0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat()),
+            floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r),
+            Path.Direction.CW,
+        )
     }
 
     private val fallbackCache = LruCache<String, Bitmap>(16)
@@ -219,20 +247,20 @@ object PlaybackWidgetUpdater {
      * mirror [com.tingxia.app.ui.theme.CoverPalette] and the theme's mint/forest
      * foreground for the light and night widget themes.
      */
-    private fun fallbackArtwork(context: Context, title: String): Bitmap {
+    private fun fallbackArtwork(context: Context, title: String, spec: WidgetCoverSpec): Bitmap {
         val dark = (context.resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val key = "$dark|${title.ifBlank { "?" }}"
+        val key = "$dark|${spec.widthPx}x${spec.heightPx}|${title.ifBlank { "?" }}"
         fallbackCache.get(key)?.let { return it }
-        val width = ARTWORK_OUTPUT_WIDTH_PX
-        val height = ARTWORK_OUTPUT_HEIGHT_PX
+        val width = spec.widthPx
+        val height = spec.heightPx
         val base = FALLBACK_PALETTE[kotlin.math.abs(title.hashCode()) % FALLBACK_PALETTE.size]
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawRoundRect(
-            0f, 0f, width.toFloat(), height.toFloat(),
-            ARTWORK_CORNER_RADIUS_PX, ARTWORK_CORNER_RADIUS_PX,
+        val shape = startRoundedPath(spec)
+        canvas.drawPath(
+            shape,
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = android.graphics.LinearGradient(
                     0f, 0f, width.toFloat(), height.toFloat(),
@@ -242,11 +270,14 @@ object PlaybackWidgetUpdater {
                 )
             },
         )
-        // Spine band.
+        // Spine band, clipped so it does not square off the rounded start edge.
+        canvas.save()
+        canvas.clipPath(shape)
         canvas.drawRect(
             0f, 0f, width * 0.09f, height.toFloat(),
             Paint().apply { color = 0x1F000000 },
         )
+        canvas.restore()
         // Book initial, optically centred.
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xF5FFFFFF.toInt()
@@ -333,15 +364,14 @@ object PlaybackWidgetUpdater {
     private const val REQUEST_TOGGLE = 42
     private const val REQUEST_NEXT = 43
     private const val ARTWORK_CACHE_BYTES = 2 * 1_024 * 1_024
-    // 240px wide covers the 80dp slot at 3x; the radius is kept proportional so the bitmap's
-    // corners match the 10dp the placeholder background draws.
+    private const val COVER_CACHE_BYTES = 4 * 1_024 * 1_024
     private const val ARTWORK_DECODE_SIZE_PX = 480
-    private const val ARTWORK_OUTPUT_WIDTH_PX = 330
-    private const val ARTWORK_OUTPUT_HEIGHT_PX = 440
-    // 52px on a 330px-wide bitmap is ~10dp once the strip scales it down to 60dp wide; the old 36px
-    // came out at 7dp and read as almost square next to the panel.
-    private const val ARTWORK_CORNER_RADIUS_PX = 52f
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
+    // Slot widths from the two layouts; the expanded panel is a fixed-height strip, the compact one
+    // fills whatever height the launcher hands out.
+    private const val COMPACT_COVER_WIDTH_DP = 68
+    private const val EXPANDED_COVER_WIDTH_DP = 100
+    private const val EXPANDED_COVER_HEIGHT_DP = 132
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
     private val FALLBACK_PALETTE = intArrayOf(
@@ -366,6 +396,29 @@ internal fun widgetHeadline(bookTitle: String, chapterTitle: String, merged: Boo
 
 internal fun widgetCoverInitial(title: String): String =
     title.firstOrNull { it.isLetterOrDigit() }?.toString() ?: "听"
+
+/** Pixel size and start-corner radius of the cover bitmap for one widget slot. */
+internal data class WidgetCoverSpec(val widthPx: Int, val heightPx: Int, val radiusPx: Float)
+
+/**
+ * Sizes the cover bitmap to the slot it will occupy, so the ImageView neither letterboxes it (which
+ * left a gap before the panel) nor crops it hard. Heights are bucketed to 8dp: regenerating the
+ * bitmap for every reported pixel would thrash the cache on each resize tick.
+ */
+internal fun widgetCoverSpec(
+    slotWidthDp: Int,
+    slotHeightDp: Int,
+    widthPx: Int = 330,
+    cornerDp: Int = 14,
+): WidgetCoverSpec {
+    val bucketed = ((slotHeightDp.coerceIn(56, 320) + 4) / 8) * 8
+    val heightPx = (widthPx.toFloat() * bucketed / slotWidthDp).toInt().coerceAtLeast(1)
+    return WidgetCoverSpec(
+        widthPx = widthPx,
+        heightPx = heightPx,
+        radiusPx = widthPx.toFloat() * cornerDp / slotWidthDp,
+    )
+}
 
 internal fun widgetLayoutForHeight(heightDp: Int): Int =
     if (heightDp in 1 until 120) {

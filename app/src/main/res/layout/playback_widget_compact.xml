@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The strip. Two content rows (one line of text, one row of controls) plus a progress hairline, all
-  in flow — an absolutely positioned hairline collided with the play ring. The artwork is as tall as
-  the widget and overlaps the panel's start edge, so the two touch instead of the cover floating
-  beside a gap.
+  in flow — an absolutely positioned hairline collided with the play ring. The cover fills its own
+  column edge to edge and the panel runs 2dp underneath it, so there is no seam to see: the bitmap is
+  rendered at the slot's ratio (see widgetCoverSpec) with square corners on the panel side.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -13,11 +13,11 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginStart="68dp"
+        android:layout_marginStart="66dp"
         android:background="@drawable/widget_background"
         android:gravity="center_vertical"
         android:orientation="vertical"
-        android:paddingStart="34dp"
+        android:paddingStart="36dp"
         android:paddingTop="6dp"
         android:paddingEnd="12dp"
         android:paddingBottom="6dp">
@@ -107,6 +107,6 @@
         android:layout_gravity="start"
         android:background="@drawable/widget_artwork_background"
         android:contentDescription="@string/widget_artwork"
-        android:scaleType="fitCenter"
+        android:scaleType="centerCrop"
         android:src="@drawable/ic_widget_artwork_placeholder" />
 </FrameLayout>

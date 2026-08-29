@@ -14,6 +14,27 @@ class PlaybackWidgetSnapshotTest {
     }
 
     @Test
+    fun coverSpec_followsTheSlotRatioSoTheCoverMeetsThePanel() {
+        // A 68dp x 72dp strip slot: the bitmap must be squarer than 3:4, or fitting it leaves the
+        // gap between cover and panel that this replaces.
+        val strip = widgetCoverSpec(slotWidthDp = 68, slotHeightDp = 72)
+        assertEquals(330, strip.widthPx)
+        assertEquals(349, strip.heightPx) // 72dp bucketed to 72 -> 330 * 72 / 68
+        assertEquals(14f * 330 / 68, strip.radiusPx, 0.01f)
+
+        // The expanded panel is a fixed 100dp x 132dp tile, so its cover stays near 3:4.
+        val panel = widgetCoverSpec(slotWidthDp = 100, slotHeightDp = 132)
+        assertEquals(330, panel.widthPx)
+        assertEquals(448, panel.heightPx) // 132dp bucketed to 136 -> 330 * 136 / 100
+
+        // Heights are bucketed to 8dp, so nearby slots share one cached bitmap.
+        assertEquals(
+            widgetCoverSpec(68, 74).heightPx,
+            widgetCoverSpec(68, 71).heightPx,
+        )
+    }
+
+    @Test
     fun headline_mergesChapterOnlyForTheStrip() {
         assertEquals(
             "我不是戏神 · 006 陈氏编导法则",
