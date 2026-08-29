@@ -1,14 +1,31 @@
 package com.tingxia.app.ui.components
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,7 +55,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -58,6 +74,7 @@ import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.tingxia.app.R
+import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.CoverPalette
@@ -80,7 +97,7 @@ fun BookCover(
     size: Dp? = null,
     corner: Dp = CoverCorner.Card,
     ratio: Float = 1f,
-    realistic: Boolean = false,
+    framed: Boolean = false,
 ) {
     val shape = RoundedCornerShape(corner)
     val sized = if (size != null) {
@@ -88,17 +105,12 @@ fun BookCover(
     } else {
         modifier.aspectRatio(ratio)
     }
-    val boxMod = if (realistic) {
-        // spotColor warms the contact shadow so books sit on the shelf instead of floating.
-        // The 1.5dp inner padding keeps that shadow from being clipped by tight grid
-        // cells or parent clips, at the cost of a barely-visible inset of the artwork.
-        sized
-            .padding(1.5.dp)
-            .shadow(elevation = 5.dp, shape = shape, clip = false, spotColor = Color(0xFF4A3B2C))
-    } else {
-        sized
-    }
-    Box(boxMod.clearAndSetSemantics { }.clip(shape)) {
+    val boxMod = sized
+    BoxWithConstraints(boxMod.clearAndSetSemantics { }.clip(shape)) {
+        // Compact treatment follows the measured width, not the optional size argument: grid tiles
+        // lay themselves out with fillMaxWidth, so they used to get the full paperback treatment
+        // (6dp spine, page block, cut-page hairlines) on a 118dp cover, which just read as stripes.
+        val compact = maxWidth < 104.dp
         val model: Any? = when {
             coverPath.isNullOrBlank() -> null
             coverPath.startsWith("content:") || coverPath.startsWith("file:") ||
@@ -113,100 +125,48 @@ fun BookCover(
                 contentScale = ContentScale.Crop,
             )
         } else {
-            FallbackCover(title = title, compact = size != null && size < 80.dp)
+            FallbackCover(title = title, compact = compact)
         }
-        if (realistic) {
-            RealisticBookOverlay(compact = size != null && size < 80.dp)
-        }
+        if (framed) CoverFinish()
     }
 }
 
 /**
- * Paperback finish painted over the artwork:
- *  - left: the dark crease and catch-light where cover wraps around the spine,
- *  - right: a strip of page edges in paper tone,
- *  - top: cut-page hairlines (skipped when compact, they turn to mush),
- *  - overall: the debossed hairline frame a printed hardcover carries.
- * All tones follow the light/dark theme so the effect stays subtle at night.
+ * The whole finish: a hairline inside the artwork edge and a barely-there wash at the foot.
+ *
+ * This replaces a painted paperback (spine crease, page block, cut-page hairlines). That effect
+ * was pastiche at any size and turned into stripes on a 118dp shelf tile; a printed edge is all
+ * the artwork needs to read as an object.
  */
 @Composable
-private fun RealisticBookOverlay(compact: Boolean, modifier: Modifier = Modifier) {
+private fun CoverFinish(modifier: Modifier = Modifier) {
     val darkTheme = isSystemInDarkTheme()
-    val pageEdge = if (darkTheme) Color(0xFF4A453D) else Color(0xFFEFE7D8)
-    val pageEdgeShade = if (darkTheme) Color(0xFF3A362F) else Color(0xFFE0D5C2)
-    val pageLine = if (darkTheme) Color(0xFF5A544A) else Color(0xFFCFC3AE)
-    val frame = if (darkTheme) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.22f)
-    Box(modifier.fillMaxSize()) {
-        // Spine crease: dark fold then a thin highlight, like light raking across the hinge.
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxHeight()
-                .width(if (compact) 4.dp else 6.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            Color.Black.copy(alpha = 0.30f),
-                            Color.Black.copy(alpha = 0.10f),
-                            Color.White.copy(alpha = 0.14f),
-                            Color.Transparent,
-                        ),
+    val edge = if (darkTheme) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
+    Box(
+        modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.72f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.16f),
                     ),
-                ),
-        )
-        // Page block peeking past the right edge of the cover board.
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(if (compact) 2.dp else 3.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(pageEdge, pageEdgeShade, pageEdge),
+                )
+                val stroke = 1.dp.toPx()
+                drawRect(
+                    color = edge,
+                    topLeft = Offset(stroke / 2f, stroke / 2f),
+                    size = androidx.compose.ui.geometry.Size(
+                        size.width - stroke,
+                        size.height - stroke,
                     ),
-                ),
-        )
-        if (!compact) {
-            // Cut-page hairlines along the head of the book.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxSize()
-                    .drawBehind {
-                        val line = 0.6.dp.toPx()
-                        val step = 1.6.dp.toPx()
-                        val inset = 1.2.dp.toPx()
-                        for (i in 0..3) {
-                            val y = inset + i * step
-                            drawLine(
-                                color = pageLine,
-                                start = Offset(inset, y),
-                                end = Offset(size.width - inset, y),
-                                strokeWidth = line,
-                            )
-                        }
-                    },
-            )
-        }
-        // Debossed inner frame, uniform across real covers and fallbacks.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawBehind {
-                    val inset = if (compact) 3.dp.toPx() else 6.dp.toPx()
-                    drawRect(
-                        color = frame,
-                        topLeft = Offset(inset, inset),
-                        size = androidx.compose.ui.geometry.Size(
-                            size.width - inset * 2,
-                            size.height - inset * 2,
-                        ),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()),
-                    )
-                },
-        )
-    }
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+                )
+            },
+    )
 }
+
 @Composable
 private fun FallbackCover(title: String, compact: Boolean, modifier: Modifier = Modifier) {
     val base = CoverPalette[kotlin.math.abs(title.hashCode()) % CoverPalette.size]
@@ -306,17 +266,16 @@ fun SectionCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     shape: Shape = MaterialTheme.shapes.medium,
-    color: Color = MaterialTheme.colorScheme.surface,
+    // surfaceContainer, not …Low: against the warm paper background the Low step differs by one
+    // value out of 255, which left cards with no visible edge once the shadows came off.
+    color: Color = MaterialTheme.colorScheme.surfaceContainer,
+    /** Only things that genuinely float (sheets, the mini player, snack-like overlays) cast one. */
+    floating: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    // Light mode: hairline outline + whisper of shadow reads crisper on the near-white
-    // canvas than shadow alone. Dark mode keeps pure shadow; outlines go muddy there.
-    val border = if (!isSystemInDarkTheme()) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    } else {
-        null
-    }
-    val shadow = if (border != null) 1.dp else 2.dp
+    // Layering by surface step rather than by shadow: a page where every card is lifted has no
+    // hierarchy at all, just a pile of floating boxes.
+    val shadow = if (floating) 8.dp else 0.dp
     if (onClick != null) {
         Surface(
             onClick = onClick,
@@ -324,7 +283,6 @@ fun SectionCard(
             shape = shape,
             color = color,
             shadowElevation = shadow,
-            border = border,
             content = content,
         )
     } else {
@@ -333,9 +291,51 @@ fun SectionCard(
             shape = shape,
             color = color,
             shadowElevation = shadow,
-            border = border,
             content = content,
         )
+    }
+}
+
+/**
+ * Compact filter chip: 28dp tall, badge-radius corners, selected state a 12% wash of the primary
+ * with primary text. Material's default chip is a 32dp pill with a border, which at four or five
+ * across a row dominates whatever it is filtering.
+ */
+@Composable
+fun TxChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background = if (selected) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    } else {
+        Color.Transparent
+    }
+    val content = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.extraSmall,
+        color = background,
+        contentColor = content,
+        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier.height(28.dp),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -457,24 +457,17 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(88.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(38.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-        }
-        Spacer(Modifier.height(18.dp))
+        // A small muted mark, not an 88dp circled icon: the sentence is the message here.
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
+        Spacer(Modifier.height(12.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
         if (body != null) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 body,
                 style = MaterialTheme.typography.bodyMedium,
@@ -483,7 +476,7 @@ fun EmptyState(
             )
         }
         if (action != null) {
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(24.dp))
             action()
         }
     }
@@ -501,13 +494,15 @@ fun BookGridTile(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    realistic: Boolean = true,
+    framed: Boolean = true,
+    /** Small coloured tag rendered before [subtitle], e.g. 在线. */
+    subtitleTag: String? = null,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier
-            .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+        // No rounded clip on the whole tile: the artwork clips itself, and a 14dp radius at the
+        // bottom corners was shaving the first characters off the author line.
+        modifier = modifier.clickable(onClick = onClick),
     ) {
         Box {
             BookCover(
@@ -516,26 +511,42 @@ fun BookGridTile(
                 modifier = Modifier.fillMaxWidth(),
                 ratio = COVER_RATIO_PORTRAIT,
                 corner = CoverCorner.Grid,
-                realistic = realistic,
+                framed = framed,
             )
             if (overlay != null) overlay()
         }
         Spacer(Modifier.height(8.dp))
         Text(
             title,
-            style = MaterialTheme.typography.titleSmall,
+            style = BookType.title,
+            // No reserved second line: a grid row already levels its tiles, so single-line
+            // titles used to leave a visible blank gap above the subtitle for nothing.
             maxLines = 2,
-            minLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(2.dp))
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (subtitleTag != null) {
+                Text(
+                    subtitleTag,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+                Text(
+                    " · ",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                // Author sits clearly behind the title instead of competing with it.
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -571,4 +582,147 @@ fun formatWordCount(count: Long): String {
     if (count < 10_000L) return count.toString()
     val wan = count / 10_000.0
     return if (wan >= 100) "%d".format(wan.toLong()) else "%.1f".format(wan)
+}
+
+/**
+ * Circular play affordance laid on top of cover art. Tapping it starts playback directly instead
+ * of routing through the book page, which is the one-tap path a shelf is for.
+ */
+@Composable
+fun CoverPlayButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isPlaying: Boolean = false,
+    size: Dp = 30.dp,
+    contentDescription: String? = null,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.94f),
+        shadowElevation = 4.dp,
+        modifier = modifier.size(size),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(size * 0.6f),
+            )
+        }
+    }
+}
+
+/**
+ * Cover-shaped placeholder with a travelling sheen, used while a network list is still loading so
+ * the online page shows its layout instead of an empty screen.
+ */
+@Composable
+fun ShimmerTile(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
+        label = "shimmerSweep",
+    )
+    val base = MaterialTheme.colorScheme.surfaceVariant
+    val sheen = MaterialTheme.colorScheme.surfaceContainerHighest
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(COVER_RATIO_PORTRAIT)
+                .clip(RoundedCornerShape(CoverCorner.Grid))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(base, sheen, base),
+                        start = Offset(progress * 600f - 300f, 0f),
+                        end = Offset(progress * 600f, 300f),
+                    ),
+                ),
+        )
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.8f)
+                .height(12.dp)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(base),
+        )
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.5f)
+                .height(10.dp)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(base),
+        )
+    }
+}
+
+/**
+ * Compact search field, 46dp tall.
+ *
+ * Material's text field has a 56dp minimum and lays its text out against that; forcing a smaller
+ * height on it clips the glyphs (Chinese loses its bottom edge first). Building the row by hand
+ * keeps full control of the height without touching the text layout.
+ */
+@Composable
+fun TxSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    onClear: (() -> Unit)? = null,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier.height(46.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                if (value.isEmpty()) {
+                    Text(
+                        placeholder,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (value.isNotEmpty() && onClear != null) {
+                IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
 }

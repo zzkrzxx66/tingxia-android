@@ -13,7 +13,7 @@
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
     <string name="dynamic_color">跟随系统取色</string>
-    <string name="dynamic_color_summary">用壁纸配色替换默认的森绿主题</string>
+    <string name="dynamic_color_summary">用壁纸配色覆盖听匣的墨绿与纸白配色</string>
     <string name="about">关于</string>
     <string name="app_description">听匣 · 本地有声书播放器</string>
     <string name="version_format">版本 %1$s (%2$d)</string>
@@ -135,7 +135,6 @@
     <string name="widget_artwork">书籍封面</string>
     <string name="widget_no_media">暂无播放内容</string>
     <string name="widget_tap_to_resume">点击播放继续收听</string>
-    <string name="widget_ready">准备播放</string>
     <string name="widget_chapter_progress">%1$d/%2$d 章</string>
     <string name="widget_time_progress">%1$s / %2$s</string>
     <string name="nav_shelf">书架</string>
@@ -243,6 +242,13 @@
     <string name="meta_sync_align_offset_pair">本地第 1 章 ↔ 在线第 %1$d 章</string>
     <string name="meta_sync_align_matched">已匹配 %1$d 章,%2$d 章保留原标题</string>
     <string name="meta_sync_align_keep">→ 保留原标题</string>
+    <!-- Shelf hero -->
+    <string name="shelf_continue_title">继续收听</string>
+    <string name="shelf_continue_inline">%1$d%% · 剩 %2$s</string>
+    <string name="shelf_continue_progress">已听 %1$d%% · 剩余 %2$s</string>
+    <string name="shelf_continue_fresh">还没开始 · 共 %1$s</string>
+    <string name="sort_books">排序方式</string>
+    <string name="shelf_play_book">播放《%1$s》</string>
     <!-- Chapter picker (player sheet) -->
     <string name="chapter_picker_title">选集</string>
     <string name="chapter_picker_button">选集 %1$d/%2$d</string>
@@ -254,6 +260,7 @@
     <string name="chapter_filter">筛选章节</string>
     <string name="chapter_search_hint">章节名或章号</string>
     <string name="chapter_order_toggle">正序 / 倒序</string>
+    <string name="back_to_top">回到顶部</string>
     <string name="chapter_locate_current">定位到在听</string>
     <string name="chapter_group_block">第 %1$d–%2$d 章</string>
     <string name="chapter_filter_all">全部</string>

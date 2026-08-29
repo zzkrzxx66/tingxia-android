@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -47,7 +46,9 @@ import com.tingxia.app.data.policy.ChapterTitleAligner
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.SectionCard
+import com.tingxia.app.ui.components.TxChip
 import com.tingxia.app.ui.components.formatWordCount
+import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 
@@ -146,15 +147,15 @@ fun OnlineMetaSyncSheet(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
+                TxChip(
+                    label = stringResource(R.string.meta_sync_cover),
                     selected = state.syncCover,
                     onClick = { onToggleCover(!state.syncCover) },
-                    label = { Text(stringResource(R.string.meta_sync_cover)) },
                 )
-                FilterChip(
+                TxChip(
+                    label = stringResource(R.string.meta_sync_chapter_titles),
                     selected = state.syncChapterTitles,
                     onClick = { onToggleChapterTitles(!state.syncChapterTitles) },
-                    label = { Text(stringResource(R.string.meta_sync_chapter_titles)) },
                 )
             }
             Box(modifier = Modifier.fillMaxWidth().height(3.dp).padding(top = 8.dp)) {
@@ -230,15 +231,15 @@ private fun ChapterAlignmentDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
+                    TxChip(
+                        label = stringResource(R.string.meta_sync_align_by_number),
                         selected = plan.mode == ChapterTitleAligner.Mode.BY_NUMBER,
                         onClick = { onModeChange(ChapterTitleAligner.Mode.BY_NUMBER) },
-                        label = { Text(stringResource(R.string.meta_sync_align_by_number)) },
                     )
-                    FilterChip(
+                    TxChip(
+                        label = stringResource(R.string.meta_sync_align_by_offset),
                         selected = plan.mode == ChapterTitleAligner.Mode.BY_OFFSET,
                         onClick = { onModeChange(ChapterTitleAligner.Mode.BY_OFFSET) },
-                        label = { Text(stringResource(R.string.meta_sync_align_by_offset)) },
                     )
                 }
                 if (plan.mode == ChapterTitleAligner.Mode.BY_OFFSET) {
@@ -332,7 +333,7 @@ private fun MetaCandidateCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     candidate.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = BookType.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

@@ -15,23 +15,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.tingxia.app.R
 import com.tingxia.app.player.PlayerUiState
 import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.theme.BookType
+import com.tingxia.app.ui.theme.rememberCoverAccent
 import com.tingxia.app.ui.theme.CoverCorner
 
 @Composable
@@ -41,65 +42,75 @@ fun MiniPlayerBar(
     onOpen: () -> Unit,
     onNext: (() -> Unit)? = null,
 ) {
+    // Floating capsule rather than a full-width bar: it reads as a control sitting above the
+    // content, and the rounded card language now matches the rest of the app.
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        // Card radius, not a stadium: at 28dp the capsule read as a pill stuck to the screen edge.
+        shape = MaterialTheme.shapes.medium,
         tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
             .clickable(onClick = onOpen),
     ) {
-        Column {
-            // Hairline on top keeps the bar distinct from content scrolling beneath it,
-            // especially in dark mode where the tonal step is subtle.
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            val progress = if (state.durationMs > 0) {
-                (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-            // Progress hugs the top edge so the bar itself stays one line tall.
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.Transparent,
+        val accent = rememberCoverAccent(state.coverPath)
+        val progress = if (state.durationMs > 0) {
+            (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BookCover(
+                title = state.bookTitle.orEmpty(),
+                coverPath = state.coverPath,
+                size = 42.dp,
+                corner = CoverCorner.Mini,
             )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BookCover(
-                    title = state.bookTitle.orEmpty(),
-                    coverPath = state.coverPath,
-                    size = 44.dp,
-                    corner = CoverCorner.Mini,
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = state.bookTitle.orEmpty(),
+                    style = BookType.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = state.bookTitle.orEmpty(),
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = state.chapterTitle.orEmpty(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // Filled round toggle echoes the full player's big white play button.
+                Text(
+                    text = state.chapterTitle.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Progress became a ring around the play button: a hairline across a rounded capsule
+            // read as a crack, and the ring puts position where the thumb already is.
+            Box(contentAlignment = Alignment.Center) {
+                // A full track ring, no gap: at 3% the lone arc read as a broken stroke rather
+                // than progress.
+                CircularProgressIndicator(
+                    progress = { progress },
+                    // 38dp hugs the 34dp button: at 42dp the arc floated a ring away from it.
+                    modifier = Modifier.size(38.dp),
+                    strokeWidth = 2.dp,
+                    color = accent,
+                    // outlineVariant sits within 10% of surfaceContainerHigh, so the track was
+                    // invisible and the arc read as a stray stroke instead of progress.
+                    trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
+                )
                 Surface(
                     onClick = onToggle,
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(38.dp),
+                    modifier = Modifier.size(34.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -108,19 +119,19 @@ fun MiniPlayerBar(
                                 if (state.isPlaying) R.string.pause else R.string.play,
                             ),
                             tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
-                if (onNext != null) {
-                    IconButton(onClick = onNext) {
-                        Icon(
-                            Icons.Default.SkipNext,
-                            contentDescription = stringResource(R.string.next_chapter),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
+            }
+            if (onNext != null) {
+                IconButton(onClick = onNext) {
+                    Icon(
+                        Icons.Default.SkipNext,
+                        contentDescription = stringResource(R.string.next_chapter),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp),
+                    )
                 }
             }
         }

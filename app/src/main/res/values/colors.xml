@@ -2,17 +2,28 @@
 <resources>
     <color name="ic_launcher_background">#141210</color>
     <color name="window_background_dark">#141210</color>
-    <color name="widget_surface">#FFFBF7</color>
-    <color name="widget_on_surface">#211E1A</color>
-    <color name="widget_on_surface_variant">#756F67</color>
-    <color name="widget_outline">#E4DDD4</color>
-    <color name="widget_progress_track">#E8E1D8</color>
-    <color name="widget_accent">#3F5D4A</color>
-    <color name="widget_control">#EEE8DF</color>
-    <color name="widget_on_control">#34463B</color>
-    <color name="widget_primary_control">#3F5D4A</color>
-    <color name="widget_on_primary_control">#FFFFFF</color>
-    <color name="widget_artwork_surface">#EDE6DC</color>
-    <color name="widget_artwork_mark">#3F5D4A</color>
-    <color name="widget_artwork_mark_soft">#9A6B2F</color>
+    <!--
+      Home-screen widget: a scrim panel with white content, the way the popular Chinese audiobook
+      apps do it. Wallpaper-themed light cards looked washed out on a light wallpaper and the controls
+      disappeared into it; a scrim guarantees contrast on any desktop. On Android 12+ the panel is
+      tinted with the cover's own muted colour, so widget_surface_* is the pre-12 neutral fallback and
+      widget_panel_* is the alpha ramp that tint is poured into.
+    -->
+    <color name="widget_surface">#D9707783</color>
+    <color name="widget_surface_deep">#A8565C66</color>
+    <color name="widget_panel_scrim">#F0FFFFFF</color>
+    <color name="widget_panel_scrim_deep">#B8FFFFFF</color>
+    <color name="widget_panel_rim">#59FFFFFF</color>
+    <color name="widget_on_surface">#FFFFFFFF</color>
+    <color name="widget_on_surface_variant">#B8FFFFFF</color>
+    <color name="widget_outline">#33FFFFFF</color>
+    <color name="widget_progress_track">#3DFFFFFF</color>
+    <color name="widget_accent">#F2FFFFFF</color>
+    <color name="widget_control">#00000000</color>
+    <color name="widget_on_control">#FFFFFFFF</color>
+    <color name="widget_primary_control">#00000000</color>
+    <color name="widget_on_primary_control">#FFFFFFFF</color>
+    <color name="widget_artwork_surface">#33FFFFFF</color>
+    <color name="widget_artwork_mark">#FFFFFFFF</color>
+    <color name="widget_artwork_mark_soft">#99FFFFFF</color>
 </resources>

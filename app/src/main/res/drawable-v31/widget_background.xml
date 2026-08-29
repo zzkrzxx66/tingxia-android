@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  White on purpose: the panel is tinted at render time with a muted version of the cover's own colour
+  (setBackgroundTintList, API 31+), and an SRC_IN tint keeps this drawable's per-pixel alpha. So the
+  alpha ramp below becomes a same-hue gradient of that colour — light at the seam, deeper at the far
+  bottom corner — and the stroke becomes a soft rim of it.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:endColor="@color/widget_panel_scrim_deep"
+        android:startColor="@color/widget_panel_scrim"
+        android:type="linear" />
+    <corners
+        android:bottomLeftRadius="0dp"
+        android:bottomRightRadius="@dimen/widget_corner"
+        android:topLeftRadius="0dp"
+        android:topRightRadius="@dimen/widget_corner" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/widget_panel_rim" />
+</shape>

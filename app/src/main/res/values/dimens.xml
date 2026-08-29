@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fixed rather than @android:dimen/system_app_widget_background_radius: the system value is
+         ~28dp, which on a 90dp strip reads as a lozenge. -->
+    <dimen name="widget_corner">14dp</dimen>
+</resources>

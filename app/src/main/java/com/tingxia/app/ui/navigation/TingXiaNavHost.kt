@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -171,8 +173,14 @@ fun TingXiaNavHost(
                                     }
                                 },
                                 icon = {
+                                    // Filled marks the destination you are on, outlined the rest:
+                                    // the old bar mixed both styles at once.
                                     Icon(
-                                        Icons.AutoMirrored.Filled.LibraryBooks,
+                                        if (currentRoute == Routes.SHELF) {
+                                            Icons.AutoMirrored.Filled.LibraryBooks
+                                        } else {
+                                            Icons.AutoMirrored.Outlined.LibraryBooks
+                                        },
                                         contentDescription = null,
                                     )
                                 },
@@ -189,7 +197,14 @@ fun TingXiaNavHost(
                                     }
                                 },
                                 icon = {
-                                    Icon(Icons.Outlined.TravelExplore, contentDescription = null)
+                                    Icon(
+                                        if (currentRoute == Routes.ONLINE) {
+                                            Icons.Filled.TravelExplore
+                                        } else {
+                                            Icons.Outlined.TravelExplore
+                                        },
+                                        contentDescription = null,
+                                    )
                                 },
                                 label = { Text(stringResource(R.string.nav_online)) },
                             )
@@ -224,6 +239,20 @@ fun TingXiaNavHost(
                                 }
                             },
                             playingBookId = playerState.bookId,
+                            isPlaying = playerState.isPlaying,
+                            onPlayBook = { id ->
+                                // Same book already loaded: the shelf button is a play/pause
+                                // toggle, so tapping it twice does not restart the chapter.
+                                if (playerState.bookId == id && playerState.isPlaying) {
+                                    playerViewModel.togglePlayPause()
+                                } else {
+                                    startPlayback {
+                                        playerViewModel.playBook(id) { ok ->
+                                            if (ok) navController.navigate(Routes.PLAYER)
+                                        }
+                                    }
+                                }
+                            },
                         )
                     }
                     composable(Routes.ONLINE) {

@@ -5,18 +5,25 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Shader
-import android.net.Uri
+import android.os.Build
 import android.util.LruCache
 import android.view.View
 import android.widget.RemoteViews
 import androidx.media3.common.Player
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.tingxia.app.MainActivity
 import com.tingxia.app.R
 import com.tingxia.app.player.PlayerController
@@ -25,14 +32,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
-import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
 object PlaybackWidgetUpdater {
     private val artworkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingArtwork = ConcurrentHashMap.newKeySet<String>()
     private val failedArtwork = ConcurrentHashMap.newKeySet<String>()
-    private val artworkCache = object : LruCache<String, Bitmap>(ARTWORK_CACHE_BYTES) {
+    /** Decoded covers, before they are fitted to a widget slot. */
+    private val sourceCache = object : LruCache<String, Bitmap>(ARTWORK_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
+
+    /** Covers cut to one slot's aspect ratio, keyed by uri plus that ratio. */
+    private val coverCache = object : LruCache<String, Bitmap>(COVER_CACHE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     }
 
@@ -71,33 +83,99 @@ object PlaybackWidgetUpdater {
         if (ids.isEmpty()) return
 
         ids.forEach { appWidgetId ->
-            val heightDp = manager.getAppWidgetOptions(appWidgetId).getInt(
-                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,
-                DEFAULT_EXPANDED_HEIGHT_DP,
+            // MIN_HEIGHT is the bottom of the size range, not the box on screen: for a one-cell strip
+            // it reported 72dp where the launcher actually handed out 87dp, which is why the widget
+            // used to sit inside its cell with a band of wallpaper above and below. In portrait the
+            // height to trust is MAX_HEIGHT.
+            val options = manager.getAppWidgetOptions(appWidgetId)
+            val heightDp = widgetSlotHeightDp(
+                minHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT),
+                maxHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT),
+                portrait = context.resources.configuration.orientation !=
+                    Configuration.ORIENTATION_LANDSCAPE,
+                fallbackDp = DEFAULT_EXPANDED_HEIGHT_DP,
             )
-            val views = RemoteViews(
-                context.packageName,
-                widgetLayoutForHeight(heightDp),
-            ).apply {
+            val layoutId = widgetLayoutForHeight(heightDp)
+            val singleLine = layoutId == R.layout.playback_widget_compact
+            val views = RemoteViews(context.packageName, layoutId).apply {
+                // The strip has room for one line of text, so book and chapter share it there.
                 setTextViewText(
                     R.id.widget_book_title,
-                    state.bookTitle.ifBlank { context.getString(R.string.app_name) },
+                    widgetHeadline(
+                        bookTitle = state.bookTitle.ifBlank { context.getString(R.string.app_name) },
+                        chapterTitle = state.chapterTitle,
+                        merged = singleLine,
+                    ),
                 )
                 setTextViewText(
                     R.id.widget_chapter_title,
-                    state.chapterTitle.ifBlank { context.getString(R.string.widget_no_media) },
+                    widgetChapterLine(
+                        chapterTitle = state.chapterTitle,
+                        countLabel = if (state.chapterCount > 0) {
+                            context.getString(
+                                R.string.widget_chapter_progress,
+                                state.chapterIndex.coerceAtLeast(0) + 1,
+                                state.chapterCount,
+                            )
+                        } else {
+                            ""
+                        },
+                    ).ifBlank { context.getString(R.string.widget_no_media) },
                 )
-                setTextViewText(R.id.widget_status, statusText(context, state))
-                val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let(artworkCache::get)
+                // Elapsed/total rides beside the progress bar in both sizes now, so the hairline is
+                // not the only thing saying where in the chapter we are.
+                val timeLabel = if (state.hasMedia && state.durationMs > 0L) {
+                    context.getString(
+                        R.string.widget_time_progress,
+                        formatWidgetDuration(state.positionMs),
+                        formatWidgetDuration(state.durationMs),
+                    )
+                } else {
+                    ""
+                }
+                setTextViewText(
+                    R.id.widget_status,
+                    timeLabel.ifBlank { context.getString(R.string.widget_tap_to_resume) },
+                )
+                setViewVisibility(
+                    R.id.widget_status,
+                    if (timeLabel.isNotBlank() || !singleLine) View.VISIBLE else View.GONE,
+                )
+                // The cover is drawn for this widget's slot, not at a fixed 3:4: a bitmap whose
+                // ratio misses the slot got letterboxed by the ImageView, and that empty column
+                // was the gap between cover and panel.
+                val spec = if (singleLine) {
+                    widgetCoverSpec(COMPACT_COVER_WIDTH_DP, heightDp)
+                } else {
+                    widgetCoverSpec(EXPANDED_COVER_WIDTH_DP, heightDp)
+                }
+                val source = state.artworkUri.takeIf { it.isNotBlank() }?.let(sourceCache::get)
+                val artwork = state.artworkUri.takeIf { it.isNotBlank() }?.let { uri ->
+                    fittedCover(uri, spec)
+                }
                 if (artwork == null) {
                     // Match the in-app fallback cover: palette wash + initial, so the
                     // desk widget speaks the same visual language as the shelf.
                     setImageViewBitmap(
                         R.id.widget_artwork,
-                        fallbackArtwork(context, state.bookTitle),
+                        fallbackArtwork(context, state.bookTitle, spec),
                     )
                 } else {
                     setImageViewBitmap(R.id.widget_artwork, artwork)
+                }
+                // Panel colour follows the cover: a muted, darkened version of the cover's own
+                // average, poured into the white alpha gradient in drawable-v31. A flat grey slab
+                // beside a red-and-black cover read as two unrelated objects.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val tint = ColorStateList.valueOf(
+                        widgetPanelTint(
+                            source?.let(::averageColor) ?: fallbackBase(state.bookTitle),
+                        ),
+                    )
+                    setColorStateList(R.id.widget_panel, "setBackgroundTintList", tint)
+                    // The plate behind the cover takes the same tint, so the few dp a fitted cover
+                    // leaves over read as the panel's frame instead of letterboxing.
+                    setColorStateList(R.id.widget_artwork, "setBackgroundTintList", tint)
                 }
                 setViewVisibility(
                     R.id.widget_progress,
@@ -106,7 +184,11 @@ object PlaybackWidgetUpdater {
                 setProgressBar(R.id.widget_progress, 1_000, state.progressPermille, false)
                 setImageViewResource(
                     R.id.widget_play_pause,
-                    if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
+                    if (state.isPlaying) {
+                        R.drawable.ic_widget_pause_circle
+                    } else {
+                        R.drawable.ic_widget_play_circle
+                    },
                 )
                 setContentDescription(
                     R.id.widget_play_pause,
@@ -131,9 +213,17 @@ object PlaybackWidgetUpdater {
         requestArtwork(context, state)
     }
 
+    /** Cover for one slot, composed on demand from the decoded source and cached per ratio. */
+    private fun fittedCover(uri: String, spec: WidgetCoverSpec): Bitmap? {
+        val key = "$uri|${spec.widthPx}x${spec.heightPx}"
+        coverCache.get(key)?.let { return it }
+        val source = sourceCache.get(uri) ?: return null
+        return coverBitmap(source, spec).also { coverCache.put(key, it) }
+    }
+
     private fun requestArtwork(context: Context, state: PlaybackWidgetSnapshot) {
         val artworkUri = state.artworkUri.takeIf { it.isNotBlank() } ?: return
-        if (artworkCache.get(artworkUri) != null || artworkUri in failedArtwork) return
+        if (sourceCache.get(artworkUri) != null || artworkUri in failedArtwork) return
         if (!pendingArtwork.add(artworkUri)) return
         val appContext = context.applicationContext
         artworkScope.launch {
@@ -143,63 +233,65 @@ object PlaybackWidgetUpdater {
                 failedArtwork.add(artworkUri)
                 return@launch
             }
-            artworkCache.put(artworkUri, bitmap)
+            sourceCache.put(artworkUri, bitmap)
             val latest = PlaybackWidgetStateStore.load(appContext)
             if (latest.artworkUri == artworkUri) render(appContext, latest)
         }
     }
 
-    private fun decodeArtwork(context: Context, value: String): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        openArtwork(context, value)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-        var sampleSize = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > ARTWORK_DECODE_SIZE_PX) {
-            sampleSize *= 2
+    /**
+     * Loads artwork through Coil, which brings http(s) support and the app's own disk cache with
+     * it. The hand-rolled decoder this replaces only understood content/file/local paths, so every
+     * online book — whose cover is an https URL — fell back to the generated placeholder.
+     */
+    private suspend fun decodeArtwork(context: Context, value: String): Bitmap? {
+        val model: Any = when {
+            value.startsWith("content:") || value.startsWith("file:") ||
+                value.startsWith("android.resource:") || value.startsWith("http") -> value
+            else -> File(value).takeIf(File::isFile) ?: return null
         }
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-        val decoded = openArtwork(context, value)?.use {
-            BitmapFactory.decodeStream(it, null, options)
-        } ?: return null
-        return roundedSquareArtwork(decoded)
+        val request = ImageRequest.Builder(context)
+            .data(model)
+            .size(ARTWORK_DECODE_SIZE_PX)
+            .allowHardware(false)
+            .build()
+        val result = context.imageLoader.execute(request)
+        return ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
     }
 
-    private fun roundedSquareArtwork(source: Bitmap): Bitmap {
-        val output = Bitmap.createBitmap(
-            ARTWORK_OUTPUT_SIZE_PX,
-            ARTWORK_OUTPUT_SIZE_PX,
-            Bitmap.Config.ARGB_8888,
-        )
+    /**
+     * Fills the slot edge to edge, centre-cropped, with only the outward (start) corners rounded:
+     * the edge facing the panel stays square so cover and panel meet on a straight seam.
+     */
+    private fun coverBitmap(source: Bitmap, spec: WidgetCoverSpec): Bitmap {
+        val output = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
         val scale = maxOf(
-            ARTWORK_OUTPUT_SIZE_PX.toFloat() / source.width,
-            ARTWORK_OUTPUT_SIZE_PX.toFloat() / source.height,
+            spec.widthPx.toFloat() / source.width,
+            spec.heightPx.toFloat() / source.height,
         )
         val matrix = Matrix().apply {
             setScale(scale, scale)
             postTranslate(
-                (ARTWORK_OUTPUT_SIZE_PX - source.width * scale) / 2f,
-                (ARTWORK_OUTPUT_SIZE_PX - source.height * scale) / 2f,
+                (spec.widthPx - source.width * scale) / 2f,
+                (spec.heightPx - source.height * scale) / 2f,
             )
         }
         val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
             setLocalMatrix(matrix)
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
-        Canvas(output).drawRoundRect(
-            0f,
-            0f,
-            ARTWORK_OUTPUT_SIZE_PX.toFloat(),
-            ARTWORK_OUTPUT_SIZE_PX.toFloat(),
-            ARTWORK_CORNER_RADIUS_PX,
-            ARTWORK_CORNER_RADIUS_PX,
-            paint,
-        )
-        source.recycle()
+        Canvas(output).drawPath(startRoundedPath(spec), paint)
         return output
+    }
+
+    /** Rounded on the start edge, square on the edge that touches the panel. */
+    private fun startRoundedPath(spec: WidgetCoverSpec): Path = Path().apply {
+        val r = spec.radiusPx
+        addRoundRect(
+            RectF(0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat()),
+            floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r),
+            Path.Direction.CW,
+        )
     }
 
     private val fallbackCache = LruCache<String, Bitmap>(16)
@@ -210,46 +302,49 @@ object PlaybackWidgetUpdater {
      * mirror [com.tingxia.app.ui.theme.CoverPalette] and the theme's mint/forest
      * foreground for the light and night widget themes.
      */
-    private fun fallbackArtwork(context: Context, title: String): Bitmap {
+    private fun fallbackArtwork(context: Context, title: String, spec: WidgetCoverSpec): Bitmap {
         val dark = (context.resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val key = "$dark|${title.ifBlank { "?" }}"
+        val key = "$dark|${spec.widthPx}x${spec.heightPx}|${title.ifBlank { "?" }}"
         fallbackCache.get(key)?.let { return it }
-        val size = ARTWORK_OUTPUT_SIZE_PX
+        val width = spec.widthPx
+        val height = spec.heightPx
         val base = FALLBACK_PALETTE[kotlin.math.abs(title.hashCode()) % FALLBACK_PALETTE.size]
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawRoundRect(
-            0f, 0f, size.toFloat(), size.toFloat(),
-            ARTWORK_CORNER_RADIUS_PX, ARTWORK_CORNER_RADIUS_PX,
+        val shape = startRoundedPath(spec)
+        canvas.drawPath(
+            shape,
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = android.graphics.LinearGradient(
-                    0f, 0f, size.toFloat(), size.toFloat(),
+                    0f, 0f, width.toFloat(), height.toFloat(),
                     intArrayOf(base.lightened(0.12f), base, base.darkened(0.14f)),
                     floatArrayOf(0f, 0.5f, 1f),
                     Shader.TileMode.CLAMP,
                 )
             },
         )
-        // Spine band.
+        // Spine band, clipped so it does not square off the rounded start edge.
+        canvas.save()
+        canvas.clipPath(shape)
         canvas.drawRect(
-            0f, 0f, size * 0.09f, size.toFloat(),
+            0f, 0f, width * 0.09f, height.toFloat(),
             Paint().apply { color = 0x1F000000 },
         )
+        canvas.restore()
         // Book initial, optically centred.
-        val initial = title.trim().firstOrNull()?.toString() ?: "听"
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xF5FFFFFF.toInt()
-            textSize = size * 0.42f
+            textSize = width * 0.44f
             textAlign = Paint.Align.CENTER
             typeface = android.graphics.Typeface.create(
-                android.graphics.Typeface.DEFAULT,
+                android.graphics.Typeface.SERIF,
                 android.graphics.Typeface.BOLD,
             )
         }
-        val textY = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
-        canvas.drawText(initial, size / 2f, textY, textPaint)
+        val textY = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(widgetCoverInitial(title), width / 2f, textY, textPaint)
         fallbackCache.put(key, bitmap)
         return bitmap
     }
@@ -276,38 +371,36 @@ object PlaybackWidgetUpdater {
         )
     }
 
-    private fun openArtwork(context: Context, value: String): InputStream? {
-        val uri = Uri.parse(value)
-        return when (uri.scheme) {
-            "content", "file", "android.resource" -> context.contentResolver.openInputStream(uri)
-            else -> File(value).takeIf(File::isFile)?.inputStream()
+    /**
+     * Average colour of the cover, sampled from a 16x16 copy. A full histogram would name the most
+     * saturated patch, but the panel wants the cover's overall cast, not its loudest detail.
+     */
+    private fun averageColor(source: Bitmap): Int {
+        val sampled = Bitmap.createScaledBitmap(source, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE, true)
+        val pixels = IntArray(COLOR_SAMPLE_SIZE * COLOR_SAMPLE_SIZE)
+        sampled.getPixels(pixels, 0, COLOR_SAMPLE_SIZE, 0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE)
+        if (sampled !== source) sampled.recycle()
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        var counted = 0
+        pixels.forEach { pixel ->
+            if ((pixel ushr 24 and 0xFF) < 128) return@forEach
+            r += (pixel shr 16) and 0xFF
+            g += (pixel shr 8) and 0xFF
+            b += pixel and 0xFF
+            counted++
         }
+        if (counted == 0) return FALLBACK_PALETTE[0]
+        return (0xFF shl 24) or
+            ((r / counted).toInt() shl 16) or
+            ((g / counted).toInt() shl 8) or
+            (b / counted).toInt()
     }
 
-    private fun statusText(context: Context, state: PlaybackWidgetSnapshot): String {
-        if (!state.hasMedia) return context.getString(R.string.widget_tap_to_resume)
-        val parts = buildList {
-            if (state.chapterCount > 0) {
-                add(
-                    context.getString(
-                        R.string.widget_chapter_progress,
-                        state.chapterIndex.coerceAtLeast(0) + 1,
-                        state.chapterCount,
-                    ),
-                )
-            }
-            if (state.durationMs > 0L) {
-                add(
-                    context.getString(
-                        R.string.widget_time_progress,
-                        formatWidgetDuration(state.positionMs),
-                        formatWidgetDuration(state.durationMs),
-                    ),
-                )
-            }
-        }
-        return parts.joinToString(" · ").ifBlank { context.getString(R.string.widget_ready) }
-    }
+    /** The palette colour the generated cover would use, so an undecoded book still tints the panel. */
+    private fun fallbackBase(title: String): Int =
+        FALLBACK_PALETTE[kotlin.math.abs(title.hashCode()) % FALLBACK_PALETTE.size]
 
     private fun openAppIntent(context: Context): PendingIntent = PendingIntent.getActivity(
         context,
@@ -330,11 +423,16 @@ object PlaybackWidgetUpdater {
     private const val REQUEST_PREVIOUS = 41
     private const val REQUEST_TOGGLE = 42
     private const val REQUEST_NEXT = 43
-    private const val ARTWORK_CACHE_BYTES = 512 * 1_024
-    private const val ARTWORK_DECODE_SIZE_PX = 192
-    private const val ARTWORK_OUTPUT_SIZE_PX = 160
-    private const val ARTWORK_CORNER_RADIUS_PX = 14f
+    private const val ARTWORK_CACHE_BYTES = 2 * 1_024 * 1_024
+    private const val COVER_CACHE_BYTES = 4 * 1_024 * 1_024
+    private const val ARTWORK_DECODE_SIZE_PX = 480
     private const val DEFAULT_EXPANDED_HEIGHT_DP = 160
+    // Cover column widths from the two layouts. Both fill the cell's height, so the bitmap's height
+    // comes from the measured slot; these widths are chosen to keep that box near a book's 3:4 at the
+    // heights each layout actually gets (a one-cell strip ~87dp, two cells ~160dp).
+    private const val COMPACT_COVER_WIDTH_DP = 64
+    private const val EXPANDED_COVER_WIDTH_DP = 120
+    private const val COLOR_SAMPLE_SIZE = 16
 
     /** Mirrors [com.tingxia.app.ui.theme.CoverPalette]. */
     private val FALLBACK_PALETTE = intArrayOf(
@@ -347,6 +445,94 @@ object PlaybackWidgetUpdater {
         0xFF555B75.toInt(),
         0xFF53613F.toInt(),
     )
+}
+
+/**
+ * First character worth drawing on a placeholder cover: 《10日终焉》 used to render as 《, because the
+ * old code took `first()` and Chinese titles often open with a bracket or quote.
+ */
+/** Strip layout headline: "书名 · 章节", falling back to the book title alone. */
+internal fun widgetHeadline(bookTitle: String, chapterTitle: String, merged: Boolean): String =
+    if (merged && chapterTitle.isNotBlank()) "$bookTitle · $chapterTitle" else bookTitle
+
+internal fun widgetCoverInitial(title: String): String =
+    title.firstOrNull { it.isLetterOrDigit() }?.toString() ?: "听"
+
+/** Pixel size and start-corner radius of the cover bitmap for one widget slot. */
+internal data class WidgetCoverSpec(val widthPx: Int, val heightPx: Int, val radiusPx: Float)
+
+/**
+ * Sizes the cover bitmap to the slot it will occupy, so the ImageView neither letterboxes it (which
+ * left a gap before the panel) nor crops it hard. Heights are bucketed to 8dp: regenerating the
+ * bitmap for every reported pixel would thrash the cache on each resize tick.
+ */
+/**
+ * Sizes the cover bitmap to the slot it will occupy. Both slot sizes are fixed in the layouts on
+ * purpose: the launcher reports a height some dp larger than the box it actually hands out, and every
+ * attempt to render the cover for that reported height ended either cropping the artwork or leaving
+ * a band of background around it. A fixed strip means the ratio here is exactly the ratio on screen.
+ */
+internal fun widgetCoverSpec(
+    slotWidthDp: Int,
+    slotHeightDp: Int,
+    widthPx: Int = 330,
+    cornerDp: Int = 14,
+): WidgetCoverSpec = WidgetCoverSpec(
+    widthPx = widthPx,
+    heightPx = Math.round(widthPx.toFloat() * slotHeightDp / slotWidthDp).coerceAtLeast(1),
+    radiusPx = widthPx.toFloat() * cornerDp / slotWidthDp,
+)
+
+/**
+ * Chapter line: the chapter title with its position in the book appended, so the tall size can carry
+ * both without a second status row.
+ */
+internal fun widgetChapterLine(chapterTitle: String, countLabel: String): String = when {
+    chapterTitle.isBlank() -> countLabel
+    countLabel.isBlank() -> chapterTitle
+    else -> "$chapterTitle · $countLabel"
+}
+
+/**
+ * Turns a cover's average colour into a panel colour: chroma pulled back and luminance forced to a
+ * dark, even level, so white text and the outlined controls stay readable whether the cover is a
+ * black-and-red woodcut or a pastel photograph. Hue survives, which is the point — the panel should
+ * look like it belongs to that cover.
+ */
+internal fun widgetPanelTint(color: Int): Int {
+    val r = ((color shr 16) and 0xFF).toFloat()
+    val g = ((color shr 8) and 0xFF).toFloat()
+    val b = (color and 0xFF).toFloat()
+    val grey = 0.299f * r + 0.587f * g + 0.114f * b
+    // Halfway to grey: a fully saturated cover would otherwise stain the panel.
+    val mr = grey + (r - grey) * PANEL_CHROMA
+    val mg = grey + (g - grey) * PANEL_CHROMA
+    val mb = grey + (b - grey) * PANEL_CHROMA
+    val luminance = 0.299f * mr + 0.587f * mg + 0.114f * mb
+    val scale = if (luminance <= 1f) 1f else PANEL_LUMINANCE / luminance
+    fun channel(value: Float): Int = (value * scale).toInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (channel(mr) shl 16) or (channel(mg) shl 8) or channel(mb)
+}
+
+private const val PANEL_CHROMA = 0.55f
+private const val PANEL_LUMINANCE = 82f
+
+/**
+ * The height the widget actually gets, in dp. MIN_HEIGHT is the bottom of the resize range and
+ * MAX_HEIGHT the top; a portrait launcher hands out the top of that range, a landscape one the bottom.
+ * Reading MIN_HEIGHT in portrait under-reported a one-cell strip by ~15dp.
+ */
+internal fun widgetSlotHeightDp(
+    minHeightDp: Int,
+    maxHeightDp: Int,
+    portrait: Boolean,
+    fallbackDp: Int,
+): Int {
+    val preferred = if (portrait) maxHeightDp else minHeightDp
+    return preferred.takeIf { it > 0 }
+        ?: minHeightDp.takeIf { it > 0 }
+        ?: maxHeightDp.takeIf { it > 0 }
+        ?: fallbackDp
 }
 
 internal fun widgetLayoutForHeight(heightDp: Int): Int =

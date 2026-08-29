@@ -14,8 +14,8 @@ android {
         applicationId = "com.tingxia.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "0.13.1"
+        versionCode = 36
+        versionName = "0.14.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

@@ -19,37 +19,42 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 
-/** Quiet listening surfaces with forest controls and sparing copper accents. */
-private val Ink = Color(0xFF17201B)
-private val InkMuted = Color(0xFF5B665F)
-private val Canvas = Color(0xFFF4F7F5)
-private val Paper = Color(0xFFFFFFFF)
-private val Mist = Color(0xFFE7ECE9)
-private val Forest = Color(0xFF315E4B)
-private val ForestDeep = Color(0xFF1E4636)
-private val ForestSoft = Color(0xFFDCEAE2)
-private val Copper = Color(0xFFA96335)
+/**
+ * Warm paper, deep ink, forest controls, copper reserved for "in progress".
+ *
+ * The light scheme is a printed-page white rather than the cool grey Material starts from: this is
+ * a listening app for books, and every surface it shows sits next to cover art.
+ */
+private val Ink = Color(0xFF1A1A18)
+private val InkMuted = Color(0xFF6B665C)
+private val Canvas = Color(0xFFFAF7F2)
+private val Paper = Color(0xFFFFFDF9)
+private val Mist = Color(0xFFEFE9DF)
+private val Forest = Color(0xFF2C5545)
+private val ForestDeep = Color(0xFF163A2C)
+private val ForestSoft = Color(0xFFDCE8E0)
+private val Copper = Color(0xFFA2603A)
 
-private val Night = Color(0xFF101412)
-private val NightElevated = Color(0xFF181D1A)
-private val NightVariant = Color(0xFF252C28)
-private val Bone = Color(0xFFE8EEE9)
-private val BoneMuted = Color(0xFFA9B3AC)
-private val Mint = Color(0xFFA9D0BC)
-private val MintDim = Color(0xFF28483A)
-private val CopperLight = Color(0xFFE4A46E)
+private val Night = Color(0xFF121311)
+private val NightElevated = Color(0xFF1A1B18)
+private val NightVariant = Color(0xFF262823)
+private val Bone = Color(0xFFE9E5DC)
+private val BoneMuted = Color(0xFFA8A49A)
+private val Mint = Color(0xFFA6CDB8)
+private val MintDim = Color(0xFF23422F)
+private val CopperLight = Color(0xFFDBA070)
 
 private val LightColors = lightColorScheme(
     primary = Forest,
-    onPrimary = Color.White,
+    onPrimary = Color(0xFFFDFCF8),
     primaryContainer = ForestSoft,
     onPrimaryContainer = ForestDeep,
     secondary = Copper,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF4E3D7),
-    onSecondaryContainer = Color(0xFF532E17),
-    tertiary = Color(0xFF4D6875),
-    onTertiary = Color.White,
+    onSecondary = Color(0xFFFDFCF8),
+    secondaryContainer = Color(0xFFF3E4D6),
+    onSecondaryContainer = Color(0xFF4E2C15),
+    tertiary = Color(0xFF4A6672),
+    onTertiary = Color(0xFFFDFCF8),
     background = Canvas,
     onBackground = Ink,
     surface = Paper,
@@ -58,32 +63,32 @@ private val LightColors = lightColorScheme(
     onSurfaceVariant = InkMuted,
     surfaceTint = Forest,
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF7F9F8),
-    surfaceContainer = Color(0xFFF0F4F1),
-    surfaceContainerHigh = Color(0xFFE9EFEB),
-    surfaceContainerHighest = Color(0xFFE1E8E3),
-    outline = Color(0xFF9AA69F),
-    outlineVariant = Color(0xFFD4DCD7),
-    error = Color(0xFFB3261E),
-    onError = Color.White,
-    errorContainer = Color(0xFFF9DEDC),
-    onErrorContainer = Color(0xFF8C1D18),
-    inverseSurface = Color(0xFF29312D),
-    inverseOnSurface = Color(0xFFF0F4F1),
+    surfaceContainerLow = Color(0xFFFBF8F3),
+    surfaceContainer = Color(0xFFF5F0E8),
+    surfaceContainerHigh = Color(0xFFEFE9DF),
+    surfaceContainerHighest = Color(0xFFE8E1D5),
+    outline = Color(0xFFB9B2A6),
+    outlineVariant = Color(0xFFE2DBCF),
+    error = Color(0xFF9F3B32),
+    onError = Color(0xFFFDFCF8),
+    errorContainer = Color(0xFFF7DFDA),
+    onErrorContainer = Color(0xFF6E241D),
+    inverseSurface = Color(0xFF2E2E2A),
+    inverseOnSurface = Color(0xFFF5F0E8),
     inversePrimary = Mint,
 )
 
 private val DarkColors = darkColorScheme(
     primary = Mint,
-    onPrimary = Color(0xFF10271D),
+    onPrimary = Color(0xFF0F2419),
     primaryContainer = MintDim,
-    onPrimaryContainer = Color(0xFFD5EADF),
+    onPrimaryContainer = Color(0xFFD3E8DB),
     secondary = CopperLight,
-    onSecondary = Color(0xFF3B1D0B),
-    secondaryContainer = Color(0xFF56351F),
-    onSecondaryContainer = Color(0xFFF7D6BE),
-    tertiary = Color(0xFFA8C8D7),
-    onTertiary = Color(0xFF17313C),
+    onSecondary = Color(0xFF38190A),
+    secondaryContainer = Color(0xFF52321D),
+    onSecondaryContainer = Color(0xFFF6D5BB),
+    tertiary = Color(0xFFA4C6D4),
+    onTertiary = Color(0xFF152F3A),
     background = Night,
     onBackground = Bone,
     surface = NightElevated,
@@ -91,79 +96,85 @@ private val DarkColors = darkColorScheme(
     surfaceVariant = NightVariant,
     onSurfaceVariant = BoneMuted,
     surfaceTint = Mint,
-    surfaceContainerLowest = Color(0xFF0C100E),
-    surfaceContainerLow = Color(0xFF141917),
+    surfaceContainerLowest = Color(0xFF0D0E0C),
+    surfaceContainerLow = Color(0xFF161816),
     surfaceContainer = NightElevated,
-    surfaceContainerHigh = Color(0xFF1D2320),
+    surfaceContainerHigh = Color(0xFF1F211D),
     surfaceContainerHighest = NightVariant,
-    outline = Color(0xFF707B74),
-    outlineVariant = Color(0xFF38413C),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
+    outline = Color(0xFF6E6A61),
+    outlineVariant = Color(0xFF35372F),
+    error = Color(0xFFF2B8B2),
+    onError = Color(0xFF5F1611),
+    errorContainer = Color(0xFF8C2C24),
+    onErrorContainer = Color(0xFFFBDDD9),
     inverseSurface = Bone,
     inverseOnSurface = Night,
     inversePrimary = Forest,
 )
 
+// Chinese text carries its own side bearings, so extra letter spacing (which Material's Latin
+// defaults add) just makes it look loose and machine-set. Everything here sits at 0 or tighter.
+private const val UI_SANS_FEATURES = "tnum"
+
 private val TingXiaTypography = Typography(
     displayLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = FontFamily.Serif,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 40.sp,
-        lineHeight = 48.sp,
-        letterSpacing = 0.sp,
+        fontSize = 28.sp,
+        lineHeight = 36.sp,
+        letterSpacing = (-0.4).sp,
     ),
     headlineSmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = FontFamily.Serif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 30.sp,
-        letterSpacing = 0.2.sp,
+        letterSpacing = (-0.2).sp,
     ),
     titleLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = FontFamily.Serif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 28.sp,
-        letterSpacing = 0.2.sp,
+        letterSpacing = (-0.2).sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.2.sp,
+        letterSpacing = 0.sp,
     ),
     titleSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.2.sp,
+        letterSpacing = 0.sp,
     ),
-    // Chinese body copy reads better with a taller leading than the Latin defaults.
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 26.sp,
-        letterSpacing = 0.3.sp,
+        fontSize = 15.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 22.sp,
-        letterSpacing = 0.3.sp,
+        letterSpacing = 0.sp,
     ),
+    // Durations, counters and percentages live in the small slots, so they get tabular figures:
+    // otherwise 1 is narrower than 8 and every ticking number nudges the layout.
     bodySmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.3.sp,
+        letterSpacing = 0.sp,
+        fontFeatureSettings = UI_SANS_FEATURES,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -171,6 +182,7 @@ private val TingXiaTypography = Typography(
         fontSize = 14.sp,
         lineHeight = 18.sp,
         letterSpacing = 0.sp,
+        fontFeatureSettings = UI_SANS_FEATURES,
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -178,6 +190,7 @@ private val TingXiaTypography = Typography(
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.sp,
+        fontFeatureSettings = UI_SANS_FEATURES,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -185,28 +198,50 @@ private val TingXiaTypography = Typography(
         fontSize = 11.sp,
         lineHeight = 14.sp,
         letterSpacing = 0.sp,
+        fontFeatureSettings = UI_SANS_FEATURES,
     ),
 )
 
 /**
- * A restrained corner ladder: print-like rectangles with just enough rounding
- * to soften edges. Badges sit below buttons, buttons below cards.
+ * Type reserved for the books themselves. A serif for titles is the cheapest honest signal that
+ * this app is about books, and it keeps titles from blending into the surrounding UI labels.
+ */
+object BookType {
+    val title = TextStyle(
+        fontFamily = FontFamily.Serif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.sp,
+    )
+    val titleLarge = TextStyle(
+        fontFamily = FontFamily.Serif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 22.sp,
+        lineHeight = 30.sp,
+        letterSpacing = (-0.2).sp,
+    )
+}
+
+/**
+ * Three radii, not five: 8 for anything badge-sized, 14 for cards and artwork, 28 for things that
+ * float over the page. A ladder with a step every 4dp reads as indecision, not craft.
  */
 private val TingXiaShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
+    extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(10.dp),
-    large = RoundedCornerShape(12.dp),
-    extraLarge = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 /** Corner radii for artwork, which tracks the container it sits in. */
 object CoverCorner {
-    val Mini = 6.dp
-    val Grid = 6.dp
-    val Card = 8.dp
-    val Detail = 10.dp
-    val Hero = 12.dp
+    val Mini = 8.dp
+    val Grid = 12.dp
+    val Card = 12.dp
+    val Detail = 14.dp
+    val Hero = 14.dp
 }
 
 /** Portrait book artwork is 3:4; square is reserved for chrome-sized thumbnails. */

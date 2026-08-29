@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.14.0
+
+- Home-screen playback widget, rebuilt:
+  - Cover and panel are one object: the cover is a tile beside the panel at its full height, rounded
+    on the outer edge and square where the two meet, with the panel running 2dp underneath so no
+    hairline can open at the seam.
+  - The panel takes its colour from the cover — the artwork's average, chroma pulled halfway to grey
+    and luminance forced to one dark level, poured into an alpha gradient with a hairline rim. White
+    text stays readable whether the cover is a woodcut or a pastel photograph. Android 12+; below
+    that a neutral gradient of the same shape.
+  - The strip carries 书名 · 章节 with elapsed/total on the same baseline, three centred controls at
+    fixed sizes, and the progress hairline along the bottom. The tall size adds the chapter line with
+    its 第 x/y 章 count.
+  - Both sizes fill the cell they are given. `OPTION_APPWIDGET_MIN_HEIGHT` is the bottom of the resize
+    range, not the box on screen — reading it left the widget short of its cell and the cover cropped
+    or letterboxed; portrait now reads `MAX_HEIGHT`, and the cover bitmap is rendered for that box.
+  - Covers load through Coil, so online books (https artwork) get their real cover instead of the
+    generated placeholder, and the placeholder itself matches the in-app fallback.
+
+- Visual pass over the shelf and shared surfaces:
+  - Softer corner ladder (cards 16dp, sheets/buttons 20–28dp, artwork 8–18dp) replaces the
+    near-rectangular print look, and cards lost their hairline outline in favour of a soft
+    shadow — at the new radii the outline made every card read as a form field.
+  - Shelf tiles are larger (adaptive 108dp instead of 88dp) and carry a play button in the
+    bottom-right corner: one tap resumes that book, the rest of the tile still opens the book
+    page. The progress line moved beside it so the two never overlap.
+  - New 继续收听 hero card at the top of the shelf — last book, percent listened, time left and a
+    big resume button. It scrolls away with the grid, as does the filter/sort row.
+  - Mini player is a floating capsule instead of a full-width bar, with chapter progress drawn
+    as a ring around the play button rather than a hairline across the top.
+  - The online page shows shimmering placeholder tiles while the hot list is still loading.
+
 ## 0.13.1
 
 - Chapter-title alignment for online metadata sync no longer assumes both sides start at the same

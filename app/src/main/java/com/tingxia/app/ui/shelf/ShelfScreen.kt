@@ -1,5 +1,24 @@
 package com.tingxia.app.ui.shelf
 
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.ui.graphics.Brush
+import com.tingxia.app.ui.components.CoverPlayButton
+import com.tingxia.app.ui.components.TxChip
+import com.tingxia.app.ui.components.TxSearchField
+import com.tingxia.app.ui.theme.BookType
+import com.tingxia.app.ui.theme.rememberCoverAccent
+import com.tingxia.app.ui.components.SectionCard
+import com.tingxia.app.ui.components.BookCover
+import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
+import com.tingxia.app.ui.theme.CoverCorner
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,10 +102,14 @@ fun ShelfScreen(
     onOpenBook: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onGoOnline: () -> Unit,
+    onPlayBook: (Long) -> Unit = {},
     playingBookId: Long? = null,
+    isPlaying: Boolean = false,
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
+    val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val hasReauthBooks by viewModel.hasReauthBooks.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
@@ -127,7 +151,7 @@ fun ShelfScreen(
                             stringResource(R.string.app_name),
                             style = MaterialTheme.typography.titleLarge,
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             stringResource(R.string.shelf_book_count, books.size),
                             style = MaterialTheme.typography.labelMedium,
@@ -141,6 +165,35 @@ fun ShelfScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
+                    Box {
+                        IconButton(onClick = { sortMenu = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = stringResource(R.string.sort_books),
+                            )
+                        }
+                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                            listOf(
+                                ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
+                                ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
+                                ShelfSort.TITLE to stringResource(R.string.book_title),
+                                ShelfSort.PROGRESS to stringResource(R.string.progress),
+                            ).forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    leadingIcon = {
+                                        if (sort == value) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setSort(value)
+                                        sortMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
                     Box {
                         IconButton(onClick = { importMenu = true }) {
                             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_audio))
@@ -179,121 +232,96 @@ fun ShelfScreen(
                     .padding(innerPadding),
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    OutlinedTextField(
+                    TxSearchField(
                         value = query,
                         onValueChange = viewModel::setQuery,
+                        placeholder = stringResource(R.string.search_books_hint),
+                        onClear = { viewModel.setQuery("") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                        singleLine = true,
-                        placeholder = { Text(stringResource(R.string.search_books_hint)) },
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = null)
-                        },
-                        trailingIcon = if (query.isNotEmpty()) {
-                            {
-                                IconButton(onClick = { viewModel.setQuery("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_search))
-                                }
-                            }
-                        } else {
-                            null
-                        },
-                        shape = MaterialTheme.shapes.large,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        ),
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    // A filter or search that matches nothing must never take the filter row with
+                    // it: tapping 已完成 on a shelf with nothing finished used to swap the whole grid
+                    // for an empty state, leaving no way back to 全部. The "no match" message is a
+                    // row inside the grid instead, underneath the chips.
+                    if (books.isEmpty() && !importing && recent == null &&
+                        query.isBlank() && filter == ShelfFilter.ALL
                     ) {
-                        val filterOptions = listOf(
-                            ShelfFilter.ALL to stringResource(R.string.filter_all),
-                            ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started),
-                            ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress),
-                            ShelfFilter.COMPLETED to stringResource(R.string.filter_completed),
-                            ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization),
-                        )
-                        LazyRow(
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(
-                                filterOptions,
-                                key = { it.first.name },
-                            ) { (value, label) ->
-                                FilterChip(
-                                    selected = filter == value,
-                                    onClick = { viewModel.setFilter(value) },
-                                    label = { Text(label) },
-                                )
-                            }
-                        }
-                        Box {
-                            AssistChip(
-                                onClick = { sortMenu = true },
-                                label = { Text(sortLabel(sort), maxLines = 1) },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.Sort,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                },
-                            )
-                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                                listOf(
-                                    ShelfSort.RECENT to stringResource(R.string.sort_recent_playback),
-                                    ShelfSort.IMPORTED to stringResource(R.string.sort_recent_import),
-                                    ShelfSort.TITLE to stringResource(R.string.book_title),
-                                    ShelfSort.PROGRESS to stringResource(R.string.progress),
-                                ).forEach { (value, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            viewModel.setSort(value)
-                                            sortMenu = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.width(16.dp))
-                    }
-
-                    if (books.isEmpty() && !importing) {
                         EmptyShelf(
-                            filtered = query.isNotBlank() || filter != ShelfFilter.ALL,
+                            filtered = false,
                             onImport = { openTree.launch(null) },
                             onGoOnline = onGoOnline,
                         )
                     } else {
+                        // Hero card and the filter row scroll with the grid, so the shelf reads as
+                        // one continuous surface instead of a fixed toolbar stack.
+                        // Explicit column counts: GridCells.Adaptive divides with integer
+                        // truncation, so a 108dp minimum silently produced two half-screen tiles
+                        // on a normal phone instead of three.
+                        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val columns = when {
+                            maxWidth < 600.dp -> 3
+                            maxWidth < 840.dp -> 4
+                            else -> 6
+                        }
+                        // Tile width drives the on-cover play button, which otherwise stayed a
+                        // 30dp dot no matter how large the artwork got.
+                        val tileWidth = (maxWidth - 32.dp - 12.dp * (columns - 1)) / columns
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 88.dp),
+                            columns = GridCells.Fixed(columns),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 8.dp,
+                                top = 16.dp,
                                 bottom = 24.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
+                            // Skipped when the bottom capsule is already showing this book (a
+                            // loaded session means the mini player is on screen), and on a shelf
+                            // small enough to see the book itself without a shortcut.
+                            recent
+                                ?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }
+                                ?.takeIf { it.id != playingBookId && books.size >= 3 }
+                                ?.let { book ->
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        ContinueListeningBar(
+                                            book = book,
+                                            onOpen = { onOpenBook(book.id) },
+                                            onPlay = { onPlayBook(book.id) },
+                                        )
+                                    }
+                                }
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                ShelfFilterRow(
+                                    filter = filter,
+                                    showReauthFilter = hasReauthBooks,
+                                    onFilterChange = viewModel::setFilter,
+                                )
+                            }
                             items(books, key = { it.id }) { book ->
                                 BookGridItem(
                                     book = book,
-                                    isPlaying = book.id == playingBookId,
+                                    isCurrent = book.id == playingBookId,
+                                    isPlaying = isPlaying && book.id == playingBookId,
+                                    tileWidth = tileWidth,
                                     onClick = { onOpenBook(book.id) },
+                                    onPlay = { onPlayBook(book.id) },
                                 )
                             }
+                            if (books.isEmpty() && !importing) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    EmptyShelf(
+                                        filtered = true,
+                                        onImport = {},
+                                        onGoOnline = onGoOnline,
+                                    )
+                                }
+                            }
+                        }
                         }
                     }
                 }
@@ -318,7 +346,7 @@ fun ShelfScreen(
                                 strokeWidth = 2.5.dp,
                                 color = MaterialTheme.colorScheme.primary,
                             )
-                            Spacer(Modifier.width(14.dp))
+                            Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(stringResource(R.string.importing), style = MaterialTheme.typography.titleSmall)
                                 importProgress?.let {
@@ -355,12 +383,13 @@ private fun EmptyShelf(
         body = stringResource(
             if (filtered) R.string.adjust_search_or_filter else R.string.empty_shelf_hint,
         ),
-        modifier = Modifier.fillMaxSize(),
+        // Filtered: a row inside the grid, so it takes only the height it needs.
+        modifier = if (filtered) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
         action = if (filtered) null else {
             {
                 Button(onClick = onImport, shape = MaterialTheme.shapes.medium) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.empty_shelf_action))
                 }
                 Spacer(Modifier.height(8.dp))
@@ -373,41 +402,51 @@ private fun EmptyShelf(
 }
 
 @Composable
-private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> Unit) {
+private fun BookGridItem(
+    book: Book,
+    /** Loaded in the player (marks the tile), which is not the same as actually playing. */
+    isCurrent: Boolean = false,
+    isPlaying: Boolean = false,
+    tileWidth: Dp = 110.dp,
+    onClick: () -> Unit,
+    onPlay: () -> Unit = {},
+) {
+    // Fixed 28dp: scaling it with the tile put a 44dp disc over the focal point of the artwork.
+    val playSize = 28.dp
+    val accent = rememberCoverAccent(book.coverPath)
     BookGridTile(
         title = book.title,
         coverPath = book.coverPath,
         subtitle = book.author?.takeIf { it.isNotBlank() }
-            ?: if (book.isRemote) stringResource(R.string.online_narrated)
-            else formatDuration(book.totalDurationMs),
+            ?: formatDuration(book.totalDurationMs),
+        // The tag rides with the author line now: cover art is the one thing a shelf is for, and
+        // it was carrying a badge, a play button and a progress line at once.
+        subtitleTag = if (book.isRemote) stringResource(R.string.online_badge) else null,
         onClick = onClick,
-        realistic = true,
+        framed = true,
         overlay = {
-            if (book.isRemote) {
-                OnlineBadge(
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
-                )
-            }
-            if (isPlaying) {
+            if (isCurrent) {
                 // Play dot marks the book loaded in the player, so the shelf answers
                 // "what am I listening to" without reading titles. Remote tiles carry
                 // the online badge at TopStart, so the dot shifts right to sit beside it.
+                // Equaliser bars, not a second play triangle: this marks "loaded in the player",
+                // while the corner button is the action.
+                // A neutral scrim disc, not brand green: with a green play button in the opposite
+                // corner the artwork had two matching green dots pulling at each other.
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 3.dp,
+                    color = Color.Black.copy(alpha = 0.38f),
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(6.dp)
-                        .padding(start = if (book.isRemote) 52.dp else 0.dp),
+                        .padding(6.dp),
                 ) {
                     Icon(
-                        Icons.Default.PlayArrow,
+                        Icons.Default.GraphicEq,
                         contentDescription = stringResource(R.string.now_playing_badge),
-                        tint = MaterialTheme.colorScheme.onPrimary,
+                        tint = Color.White,
                         modifier = Modifier
-                            .padding(3.dp)
-                            .size(13.dp),
+                            .padding(4.dp)
+                            .size(12.dp),
                     )
                 }
             }
@@ -429,41 +468,63 @@ private fun BookGridItem(book: Book, isPlaying: Boolean = false, onClick: () -> 
                     )
                 }
             }
+            // Artwork is unpredictable, so the bottom band gets a scrim: without it the progress
+            // line and the play button disappeared into busy covers.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(playSize + 20.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            bottomStart = CoverCorner.Grid,
+                            bottomEnd = CoverCorner.Grid,
+                        ),
+                    )
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.55f),
+                        ),
+                    ),
+            )
+            if (!book.needsReauth) {
+                // One-tap continue straight from the shelf; the rest of the tile still opens the
+                // book page.
+                CoverPlayButton(
+                    onClick = onPlay,
+                    isPlaying = isPlaying,
+                    size = playSize,
+                    contentDescription = stringResource(R.string.shelf_play_book, book.title),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 8.dp),
+                )
+            }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
                 // Progress rides the artwork itself so every tile keeps the same height.
                 // The track needs real contrast against dark covers; theme scrim at low
                 // alpha vanished entirely there, so a fixed dark wash is used instead.
+                // One unbroken line hugging the bottom edge; the old segment stopped short of the
+                // play button and read as a rendering glitch.
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 6.dp)
-                        .padding(bottom = 6.dp)
-                        .height(3.dp)
-                        .clip(MaterialTheme.shapes.extraSmall),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.Black.copy(alpha = 0.38f),
+                        .height(3.dp),
+                    color = accent,
+                    trackColor = Color.White.copy(alpha = 0.30f),
+                    // Material 1.3 draws a dot at the track end and a gap before it; on a 3dp
+                    // hairline both read as dirt on the artwork. Butt caps keep a 2% bar a clean
+                    // sliver instead of a rounded blob.
+                    strokeCap = StrokeCap.Butt,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                 )
             }
         },
     )
-}
-
-@Composable
-private fun OnlineBadge(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.extraSmall,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        Text(
-            stringResource(R.string.online_badge),
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
-    }
 }
 
 @Composable
@@ -472,4 +533,125 @@ private fun sortLabel(sort: ShelfSort): String = when (sort) {
     ShelfSort.IMPORTED -> stringResource(R.string.sort_recent_import)
     ShelfSort.TITLE -> stringResource(R.string.book_title)
     ShelfSort.PROGRESS -> stringResource(R.string.progress)
+}
+
+/**
+ * One-line resume strip: cover thumb, title, position, play button, and a hairline of progress
+ * along the bottom edge. The tall hero card it replaced ate 128dp of the first screen and, on a
+ * short shelf, simply repeated the tile right below it.
+ */
+@Composable
+private fun ContinueListeningBar(
+    book: Book,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    val accent = rememberCoverAccent(book.coverPath)
+    SectionCard(
+        onClick = onOpen,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Square thumb, not a 3:4 one: a portrait cover at this height reached the card's
+                // top and bottom edges and collided with the progress line.
+                BookCover(
+                    title = book.title,
+                    coverPath = book.coverPath,
+                    size = 38.dp,
+                    corner = CoverCorner.Mini,
+                    framed = false,
+                )
+                Spacer(Modifier.width(12.dp))
+                // Title over position, with the button flush right: the old single line left the
+                // percentage floating between the title and a button that sat nowhere in
+                // particular.
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        book.title,
+                        style = BookType.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
+                    Text(
+                        if (book.lastPlayedAt > 0) {
+                            stringResource(
+                                R.string.shelf_continue_inline,
+                                (book.progressFraction * 100).toInt(),
+                                formatDuration(remainingMs),
+                            )
+                        } else {
+                            stringResource(R.string.shelf_continue_title)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                CoverPlayButton(
+                    onClick = onPlay,
+                    size = 36.dp,
+                    contentDescription = stringResource(R.string.shelf_play_book, book.title),
+                )
+            }
+            if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                // Inset and rounded: flush with the card's bottom edge the rounded corners clipped
+                // its ends and it read as a bar under the card rather than this book's progress.
+                LinearProgressIndicator(
+                    progress = { book.progressFraction },
+                    modifier = Modifier
+                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(CircleShape),
+                    color = accent,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    strokeCap = StrokeCap.Butt,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Filter chips only. Sorting moved to the app bar: sitting at the end of this row it read as a
+ * fifth filter, and it pushed the real filters off-screen.
+ */
+@Composable
+private fun ShelfFilterRow(
+    filter: ShelfFilter,
+    showReauthFilter: Boolean,
+    onFilterChange: (ShelfFilter) -> Unit,
+) {
+    val filterOptions = buildList {
+        add(ShelfFilter.ALL to stringResource(R.string.filter_all))
+        add(ShelfFilter.NOT_STARTED to stringResource(R.string.filter_not_started))
+        add(ShelfFilter.IN_PROGRESS to stringResource(R.string.filter_in_progress))
+        add(ShelfFilter.COMPLETED to stringResource(R.string.filter_completed))
+        // Only offered when something actually lost its folder permission; otherwise it was a
+        // permanent fifth chip hanging half off the screen edge.
+        if (showReauthFilter || filter == ShelfFilter.NEEDS_REAUTH) {
+            add(ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization))
+        }
+    }
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(end = 4.dp),
+    ) {
+        items(filterOptions, key = { it.first.name }) { (value, label) ->
+            FilterChip(
+                selected = filter == value,
+                onClick = { onFilterChange(value) },
+                label = { Text(label) },
+            )
+        }
+    }
 }

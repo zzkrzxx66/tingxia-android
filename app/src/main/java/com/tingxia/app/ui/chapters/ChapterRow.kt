@@ -173,6 +173,9 @@ fun ChapterRow(
                     .height(3.dp)
                     .clip(MaterialTheme.shapes.extraSmall),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
             )
         }
     }
