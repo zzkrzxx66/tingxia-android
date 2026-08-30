@@ -344,29 +344,12 @@ fun TingXiaNavHost(
                                 playerViewModel.setSkipOffsets(intro, outro)
                             },
                             onOpenChapters = { playerViewModel.openChapterPicker() },
-                            onOpenText = if (textAvailable) {
-                                { playerViewModel.openChapterText() }
-                            } else {
-                                null
-                            },
+                            textAvailable = textAvailable,
+                            timeline = playerChapterText.timeline,
+                            timelineLoading = playerChapterText.loading,
+                            timelineError = playerChapterText.error,
+                            onEnsureTimeline = { playerViewModel.ensureChapterText() },
                         )
-                        if (playerChapterText.visible) {
-                            // Reload when the player moves to another chapter, otherwise the
-                            // drawer would highlight sentences of the previous one.
-                            androidx.compose.runtime.LaunchedEffect(playerState.chapterId) {
-                                playerViewModel.refreshChapterTextIfOpen()
-                            }
-                            com.tingxia.app.ui.components.ChapterReadAlongSheet(
-                                chapterTitle = playerChapterText.chapterTitle,
-                                timeline = playerChapterText.timeline,
-                                loading = playerChapterText.loading,
-                                error = playerChapterText.error,
-                                positionMs = playerState.positionMs,
-                                isPlaying = playerState.isPlaying,
-                                onSeek = { positionMs -> playerViewModel.seekTo(positionMs) },
-                                onDismiss = { playerViewModel.closeChapterText() },
-                            )
-                        }
                         ChapterPickerSheet(
                             state = chapterPicker,
                             currentChapterId = playerState.chapterId,

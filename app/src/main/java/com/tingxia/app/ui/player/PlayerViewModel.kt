@@ -55,6 +55,7 @@ class PlayerViewModel @Inject constructor(
         val visible: Boolean = false,
         val loading: Boolean = false,
         val chapterTitle: String = "",
+        val chapterId: Long = 0L,
         val timeline: com.tingxia.app.data.remote.FqChapterTimeline? = null,
         val error: String? = null,
     )
@@ -73,14 +74,31 @@ class PlayerViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /**
+     * Load the text for the chapter in the player, once per chapter. The player's text page
+     * asks for this when it becomes visible, so opening the player costs nothing.
+     */
+    fun ensureChapterText() {
+        val chapterId = state.value.chapterId ?: return
+        val current = _chapterText.value
+        if (current.loading) return
+        if (current.chapterId == chapterId && (current.timeline != null || current.error != null)) return
+        loadChapterText(chapterId)
+    }
+
     /** Open the text of the chapter that is currently loaded in the player. */
     fun openChapterText() {
-        val bookId = state.value.bookId ?: return
         val chapterId = state.value.chapterId ?: return
+        loadChapterText(chapterId)
+    }
+
+    private fun loadChapterText(chapterId: Long) {
+        val bookId = state.value.bookId ?: return
         _chapterText.value = ChapterTextUiState(
             visible = true,
             loading = true,
             chapterTitle = state.value.chapterTitle.orEmpty(),
+            chapterId = chapterId,
         )
         viewModelScope.launch {
             try {
@@ -100,11 +118,6 @@ class PlayerViewModel @Inject constructor(
                 )
             }
         }
-    }
-
-    /** Chapter changed under the drawer: reload so the highlight follows the new chapter. */
-    fun refreshChapterTextIfOpen() {
-        if (_chapterText.value.visible) openChapterText()
     }
 
     fun closeChapterText() {
