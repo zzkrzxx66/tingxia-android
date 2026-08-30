@@ -40,6 +40,18 @@ data class BookEntity(
     val metaSyncedAt: Long = 0L,
     /** JSON snapshot of the pre-sync fields, used to undo the sync. */
     val metaSyncBackup: String? = null,
+    /** Upstream score of the online edition, e.g. "9.4". */
+    val remoteScore: String? = null,
+    /** Upstream listen count of the online edition. */
+    val remoteListenCount: Long = 0L,
+    /** null = unknown, true = 完结, false = 连载. */
+    val remoteFinished: Boolean? = null,
+    /** Latest chapter title reported upstream at the last update check. */
+    val remoteLastChapterTitle: String? = null,
+    /** Epoch ms of the last online update check; 0 = never checked. */
+    val remoteUpdateCheckedAt: Long = 0L,
+    /** Chapters appended by update checks that the user has not opened yet. */
+    val remoteNewChapterCount: Int = 0,
 )
 
 @Entity(

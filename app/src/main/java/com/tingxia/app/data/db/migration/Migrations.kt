@@ -253,3 +253,18 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         db.execSQL("ALTER TABLE books ADD COLUMN metaSyncBackup TEXT")
     }
 }
+
+/**
+ * v10 → v11: online books keep the catalogue facts needed for 追更 and for showing
+ * score / listen count / 完结状态 without a network round trip.
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteScore TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteListenCount INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteFinished INTEGER")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteLastChapterTitle TEXT")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteUpdateCheckedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE books ADD COLUMN remoteNewChapterCount INTEGER NOT NULL DEFAULT 0")
+    }
+}

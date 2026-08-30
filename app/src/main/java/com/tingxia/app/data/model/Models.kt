@@ -35,8 +35,22 @@ data class Book(
     /** Online catalogue book id this book's metadata was synced from. */
     val metaSyncSourceId: String? = null,
     val metaSyncedAt: Long = 0L,
+    val remoteScore: String? = null,
+    val remoteListenCount: Long = 0L,
+    /** null = unknown, true = 完结, false = 连载. */
+    val remoteFinished: Boolean? = null,
+    val remoteLastChapterTitle: String? = null,
+    val remoteUpdateCheckedAt: Long = 0L,
+    val remoteNewChapterCount: Int = 0,
 ) {
     val isRemote: Boolean get() = sourceType != BookSourceType.LOCAL
+
+    /** Online book read by a synthesized voice rather than a narrated edition. */
+    val isTtsVoice: Boolean
+        get() = isRemote && (remoteToneId?.takeIf { it.isNotBlank() } ?: "0") != "0"
+
+    /** Chapters appended by an update check and not yet opened. */
+    val hasUnseenChapters: Boolean get() = remoteNewChapterCount > 0
 
     /** A local book carrying metadata pulled from the online catalogue. */
     val hasSyncedOnlineMeta: Boolean get() = !isRemote && metaSyncedAt > 0L
@@ -152,6 +166,12 @@ fun BookEntity.toModel() = Book(
     wordCount = wordCount,
     metaSyncSourceId = metaSyncSourceId,
     metaSyncedAt = metaSyncedAt,
+    remoteScore = remoteScore,
+    remoteListenCount = remoteListenCount,
+    remoteFinished = remoteFinished,
+    remoteLastChapterTitle = remoteLastChapterTitle,
+    remoteUpdateCheckedAt = remoteUpdateCheckedAt,
+    remoteNewChapterCount = remoteNewChapterCount,
 )
 
 fun ChapterEntity.toModel() = Chapter(

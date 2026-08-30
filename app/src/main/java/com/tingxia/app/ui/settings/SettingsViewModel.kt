@@ -33,6 +33,9 @@ class SettingsViewModel @Inject constructor(
     val dynamicColor: StateFlow<Boolean> = preferences.dynamicColor
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    val updateCheckEnabled: StateFlow<Boolean> = preferences.updateCheckEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     val playbackErrorPolicy: StateFlow<PlaybackErrorPolicy> = preferences.playbackErrorPolicy
         .stateIn(
             viewModelScope,
@@ -60,6 +63,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setPlaybackErrorPolicy(policy: PlaybackErrorPolicy) {
         viewModelScope.launch { preferences.setPlaybackErrorPolicy(policy) }
+    }
+
+    fun setUpdateCheckEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferences.setUpdateCheckEnabled(enabled) }
     }
 
     fun exportBackup(uri: Uri) {

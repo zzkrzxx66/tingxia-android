@@ -194,6 +194,12 @@ fun BookDetailScreen(
     }
     val visibleChapters = remember(chapterGroups) { chapterGroups.flatMap { it.chapters } }
 
+    // The "n 章未读" badge is a pointer to the chapter list; once that list is on screen
+    // it has served its purpose.
+    LaunchedEffect(selectedTab, book?.remoteNewChapterCount) {
+        if (selectedTab == 0) viewModel.markNewChaptersSeen()
+    }
+
     // Jump straight to the chapter in progress on first load; long books otherwise
     // open at chapter 1 and force a manual hunt. One item per chapter means the exact
     // lazy index is known, so no row-height estimate is involved any more.
@@ -407,6 +413,50 @@ fun BookDetailScreen(
                                         },
                                     )
                                     if (book?.isRemote == true) {
+                                        val checking by viewModel.checkingUpdate.collectAsStateWithLifecycle()
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(stringResource(R.string.book_check_update))
+                                                    book?.remoteLastChapterTitle?.takeIf { it.isNotBlank() }?.let {
+                                                        Text(
+                                                            stringResource(R.string.book_last_chapter, it),
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            enabled = !checking,
+                                            onClick = {
+                                                menu = false
+                                                viewModel.checkForUpdates()
+                                            },
+                                        )
+                                        if (book?.isTtsVoice == true) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.book_switch_voice)) },
+                                                onClick = {
+                                                    menu = false
+                                                    viewModel.openVoiceSwitch()
+                                                },
+                                            )
+                                        }
+                                    }
+                                    if (viewModel.canShowChapterText) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.chapter_text_open)) },
+                                            onClick = {
+                                                menu = false
+                                                val current = book?.currentChapterId
+                                                val chapter = chapters.firstOrNull { it.id == current }
+                                                    ?: chapters.firstOrNull()
+                                                chapter?.let(viewModel::openChapterText)
+                                            },
+                                        )
+                                    }
+                                    if (book?.isRemote == true) {
                                         val pf = prefetchState
                                         val runningForThis = pf.running && pf.bookId == bookId
                                         DropdownMenuItem(
@@ -614,6 +664,46 @@ fun BookDetailScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color.White.copy(alpha = 0.75f),
                                     )
+                                }
+                                book?.let { current ->
+                                    val facts = buildList {
+                                        current.remoteScore?.takeIf { it.isNotBlank() }?.let {
+                                            add(stringResource(R.string.online_score, it))
+                                        }
+                                        current.remoteFinished?.let {
+                                            add(
+                                                stringResource(
+                                                    if (it) R.string.book_finished else R.string.book_serial,
+                                                ),
+                                            )
+                                        }
+                                        if (current.isTtsVoice) add(stringResource(R.string.online_badge_tts_only))
+                                    }
+                                    if (facts.isNotEmpty()) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            facts.joinToString(" · "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.75f),
+                                        )
+                                    }
+                                    if (current.remoteNewChapterCount > 0) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Surface(
+                                            shape = MaterialTheme.shapes.extraSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        ) {
+                                            Text(
+                                                stringResource(
+                                                    R.string.book_new_chapters,
+                                                    current.remoteNewChapterCount,
+                                                ),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            )
+                                        }
+                                    }
                                 }
                                 book?.category?.takeIf { it.isNotBlank() }?.let { category ->
                                     Spacer(Modifier.height(8.dp))
@@ -981,6 +1071,26 @@ fun BookDetailScreen(
         onDismissAlignment = viewModel::dismissAlignment,
         onDismiss = viewModel::closeMetaSync,
     )
+
+    val chapterTextState by viewModel.chapterText.collectAsStateWithLifecycle()
+    if (chapterTextState.visible) {
+        com.tingxia.app.ui.components.ChapterTextSheet(
+            chapterTitle = chapterTextState.chapterTitle,
+            text = chapterTextState.text,
+            loading = chapterTextState.loading,
+            error = chapterTextState.error,
+            onDismiss = viewModel::closeChapterText,
+        )
+    }
+
+    val voiceSwitchState by viewModel.voiceSwitch.collectAsStateWithLifecycle()
+    if (voiceSwitchState.visible) {
+        VoiceSwitchSheet(
+            state = voiceSwitchState,
+            onPick = viewModel::switchVoice,
+            onDismiss = viewModel::closeVoiceSwitch,
+        )
+    }
 
     rescanPreview?.let { preview ->
         AlertDialog(

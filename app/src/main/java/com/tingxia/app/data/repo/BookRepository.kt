@@ -25,8 +25,10 @@ import com.tingxia.app.data.model.toModel
 import com.tingxia.app.data.policy.OnlineMetaSyncPolicy
 import com.tingxia.app.data.policy.SafPermissionPolicy
 import com.tingxia.app.data.remote.FqAudioChapter
+import com.tingxia.app.data.remote.FqAudioMeta
 import com.tingxia.app.data.remote.FqAudioTone
 import com.tingxia.app.data.remote.FqSearchBook
+import com.tingxia.app.data.remote.FqVoiceChoice
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -111,48 +113,171 @@ class BookRepository @Inject constructor(
 
     suspend fun importFqNovelBook(
         book: FqSearchBook,
-        tone: FqAudioTone,
+        choice: FqVoiceChoice,
         chapters: List<FqAudioChapter>,
+        meta: FqAudioMeta? = null,
     ): Long = database.withTransaction {
         require(chapters.isNotEmpty()) { "这个演播版本暂无可用章节" }
-        val rootUri = "fqnovel://${tone.audioBookId}"
+        // TTS editions share the novel's own catalogue, so the tone has to be part of
+        // the identity: the same book read by two voices is two shelf entries.
+        val rootUri = if (choice.isTts) {
+            "fqnovel://${choice.audioBookId}/tts/${choice.toneId}"
+        } else {
+            "fqnovel://${choice.audioBookId}"
+        }
         bookDao.findIdByRootUri(rootUri)?.let { return@withTransaction it }
         val now = System.currentTimeMillis()
         val bookId = bookDao.insertBook(
             BookEntity(
                 title = book.title,
                 author = book.author,
-                coverPath = book.coverUrl,
+                coverPath = book.coverUrl ?: meta?.coverUrl,
                 rootUri = rootUri,
                 needsReauth = false,
                 lastScannedAt = now,
                 sourceType = "FQNOVEL",
                 remoteBookId = book.bookId,
-                remoteAudioBookId = tone.audioBookId,
-                remoteToneId = "0",
-                description = book.description,
+                remoteAudioBookId = choice.audioBookId,
+                remoteToneId = choice.toneId,
+                description = book.description ?: meta?.description,
                 category = book.category,
                 wordCount = book.wordCount,
+                totalDurationMs = meta?.totalDurationMs ?: 0L,
+                remoteScore = meta?.score ?: book.score,
+                remoteListenCount = meta?.listenCount ?: book.listenCount,
+                remoteFinished = meta?.finished ?: book.finished,
+                remoteLastChapterTitle = meta?.lastChapterTitle,
+                remoteUpdateCheckedAt = now,
             ),
         )
         val ids = chapterDao.insertAll(
             chapters.map { chapter ->
-                ChapterEntity(
-                    bookId = bookId,
-                    title = chapter.title,
-                    uri = "fqnovel://${tone.audioBookId}/${chapter.itemId}",
-                    index = chapter.index,
-                    fileName = chapter.title,
-                    relativePath = chapter.title,
-                    mimeType = "audio/mp4",
-                    stableKey = "fqnovel:${tone.audioBookId}:${chapter.itemId}",
-                    remoteItemId = chapter.itemId,
-                )
+                chapterEntityFor(bookId, choice.audioBookId, choice.toneId, chapter)
             },
         )
         if (ids.isNotEmpty()) bookDao.updateProgress(bookId, ids.first(), 0L, 0L, 0L)
         invalidateOffsetIndex(bookId)
         bookId
+    }
+
+    private fun chapterEntityFor(
+        bookId: Long,
+        audioBookId: String,
+        toneId: String,
+        chapter: FqAudioChapter,
+    ) = ChapterEntity(
+        bookId = bookId,
+        title = chapter.title,
+        uri = "fqnovel://$audioBookId/${chapter.itemId}?toneId=$toneId",
+        index = chapter.index,
+        fileName = chapter.title,
+        relativePath = chapter.title,
+        // TTS chapters arrive as Opus in Ogg; narrated ones as AAC in MP4.
+        mimeType = if (toneId == "0") "audio/mp4" else "audio/ogg",
+        stableKey = "fqnovel:$audioBookId:$toneId:${chapter.itemId}",
+        remoteItemId = chapter.itemId,
+    )
+
+    /**
+     * Result of one 追更 check: how many chapters were appended and what upstream now says
+     * about the book. [addedCount] 0 with [checked] true means "nothing new".
+     */
+    data class RemoteUpdateResult(
+        val bookId: Long,
+        val bookTitle: String,
+        val addedCount: Int,
+        val lastChapterTitle: String?,
+        val finished: Boolean?,
+        val checked: Boolean = true,
+    )
+
+    /**
+     * Append chapters that appeared upstream since the last check.
+     *
+     * Existing rows are never touched, so chapter ids, progress, bookmarks and custom
+     * titles all survive; only genuinely new item ids are inserted at the tail.
+     */
+    suspend fun applyRemoteUpdate(
+        bookId: Long,
+        chapters: List<FqAudioChapter>,
+        meta: FqAudioMeta?,
+    ): RemoteUpdateResult = database.withTransaction {
+        val book = bookDao.getBook(bookId)
+            ?: return@withTransaction RemoteUpdateResult(bookId, "", 0, null, null, checked = false)
+        if (book.sourceType != "FQNOVEL" || book.remoteAudioBookId.isNullOrBlank()) {
+            return@withTransaction RemoteUpdateResult(bookId, book.title, 0, null, null, checked = false)
+        }
+        val now = System.currentTimeMillis()
+        val toneId = book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0"
+        val known = chapterDao.remoteItemIds(bookId).toHashSet()
+        var nextIndex = chapterDao.maxIndex(bookId) + 1
+        val fresh = chapters.filter { it.itemId !in known }
+        if (fresh.isNotEmpty()) {
+            chapterDao.insertAll(
+                fresh.map { chapter ->
+                    chapterEntityFor(bookId, book.remoteAudioBookId, toneId, chapter)
+                        .copy(index = nextIndex++)
+                },
+            )
+        }
+        bookDao.updateRemoteFacts(
+            bookId = bookId,
+            score = meta?.score ?: book.remoteScore,
+            listenCount = meta?.listenCount ?: book.remoteListenCount,
+            finished = meta?.finished ?: book.remoteFinished,
+            lastChapterTitle = meta?.lastChapterTitle ?: book.remoteLastChapterTitle,
+            checkedAt = now,
+        )
+        if (fresh.isNotEmpty()) {
+            bookDao.addNewChapterCount(bookId, fresh.size)
+            meta?.totalDurationMs?.takeIf { it > 0L }?.let { bookDao.updateTotalDuration(bookId, it) }
+            invalidateOffsetIndex(bookId)
+        }
+        RemoteUpdateResult(
+            bookId = bookId,
+            bookTitle = book.title,
+            addedCount = fresh.size,
+            lastChapterTitle = meta?.lastChapterTitle,
+            finished = meta?.finished,
+        )
+    }
+
+    /** All online books, for the periodic update sweep. */
+    suspend fun getRemoteBooks(): List<Book> = bookDao.getRemoteBooks().map { it.toModel() }
+
+    /** Clear the "n 章未读" badge once the user has seen the chapter list. */
+    suspend fun clearNewChapterBadge(bookId: Long) {
+        bookDao.setNewChapterCount(bookId, 0)
+    }
+
+    /**
+     * Switch the synthesized voice of a TTS book in place. Chapter item ids come from the
+     * novel's catalogue and do not depend on the voice, so progress and bookmarks survive;
+     * only the cached audio has to be fetched again.
+     */
+    suspend fun switchTtsTone(bookId: Long, toneId: String): Boolean = database.withTransaction {
+        val book = bookDao.getBook(bookId) ?: return@withTransaction false
+        val currentTone = book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0"
+        if (book.sourceType != "FQNOVEL" || currentTone == "0" || toneId == "0" || toneId == currentTone) {
+            return@withTransaction false
+        }
+        val audioBookId = book.remoteAudioBookId ?: return@withTransaction false
+        bookDao.updateRemoteToneId(bookId, toneId)
+        bookDao.updateBook(
+            bookDao.getBook(bookId)!!.copy(rootUri = "fqnovel://$audioBookId/tts/$toneId"),
+        )
+        // The old voice's audio is a different recording; drop the cache flags so the
+        // chapter list stops claiming those chapters are available offline.
+        chapterDao.clearCachedFlagForBook(bookId)
+        chapterDao.getChapters(bookId).forEach { chapter ->
+            chapterDao.update(
+                chapter.copy(
+                    uri = "fqnovel://$audioBookId/${chapter.remoteItemId}?toneId=$toneId",
+                    stableKey = "fqnovel:$audioBookId:$toneId:${chapter.remoteItemId}",
+                ),
+            )
+        }
+        true
     }
 
     suspend fun recordRemoteChapterDuration(bookId: Long, chapterId: Long, durationMs: Long) {

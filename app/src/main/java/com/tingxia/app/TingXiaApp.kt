@@ -32,10 +32,20 @@ class TingXiaApp : Application() {
             setShowBadge(false)
         }
         manager.createNotificationChannel(downloadChannel)
+        val updateChannel = NotificationChannel(
+            UPDATE_CHANNEL_ID,
+            getString(R.string.notification_channel_update),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.notification_channel_update_desc)
+            setShowBadge(true)
+        }
+        manager.createNotificationChannel(updateChannel)
     }
 
     companion object {
         const val PLAYBACK_CHANNEL_ID = "playback"
         const val DOWNLOAD_CHANNEL_ID = "download"
+        const val UPDATE_CHANNEL_ID = "chapter_update"
     }
 }

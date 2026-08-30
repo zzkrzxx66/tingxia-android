@@ -9,6 +9,7 @@ import com.tingxia.app.data.model.Chapter
 import com.tingxia.app.data.model.ChapterFilter
 import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.BookmarkRepository
+import com.tingxia.app.data.repo.ChapterTextRepository
 import com.tingxia.app.player.CacheManager
 import com.tingxia.app.player.PlayerController
 import com.tingxia.app.player.PlayerUiState
@@ -39,6 +40,7 @@ class PlayerViewModel @Inject constructor(
     private val playerController: PlayerController,
     private val bookmarkRepository: BookmarkRepository,
     private val bookRepository: BookRepository,
+    private val chapterTextRepository: ChapterTextRepository,
     private val cacheManager: CacheManager,
 ) : ViewModel() {
 
@@ -46,6 +48,64 @@ class PlayerViewModel @Inject constructor(
 
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
+
+    // ---- read-along chapter text ------------------------------------------------------
+
+    data class ChapterTextUiState(
+        val visible: Boolean = false,
+        val loading: Boolean = false,
+        val chapterTitle: String = "",
+        val text: String = "",
+        val error: String? = null,
+    )
+
+    private val _chapterText = MutableStateFlow(ChapterTextUiState())
+    val chapterText: StateFlow<ChapterTextUiState> = _chapterText.asStateFlow()
+
+    /** Whether the book being played has a text edition to read along with. */
+    val textAvailable: StateFlow<Boolean> = state
+        .map { it.bookId }
+        .distinctUntilChanged()
+        .map { bookId ->
+            bookId?.let { id ->
+                bookRepository.getBook(id)?.let { chapterTextRepository.canShowText(it) }
+            } ?: false
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Open the text of the chapter that is currently loaded in the player. */
+    fun openChapterText() {
+        val bookId = state.value.bookId ?: return
+        val chapterId = state.value.chapterId ?: return
+        _chapterText.value = ChapterTextUiState(
+            visible = true,
+            loading = true,
+            chapterTitle = state.value.chapterTitle.orEmpty(),
+        )
+        viewModelScope.launch {
+            try {
+                val book = bookRepository.getBook(bookId) ?: error("书籍不存在")
+                val list = chapters.value.ifEmpty { bookRepository.getChapters(bookId) }
+                val chapter = list.firstOrNull { it.id == chapterId } ?: error("章节不存在")
+                val text = chapterTextRepository.textFor(book, chapter, list)
+                _chapterText.value = ChapterTextUiState(
+                    visible = true,
+                    loading = false,
+                    chapterTitle = text.title.ifBlank { chapter.displayTitle },
+                    text = text.text,
+                )
+            } catch (e: Exception) {
+                _chapterText.value = _chapterText.value.copy(
+                    loading = false,
+                    error = e.message ?: app.getString(R.string.chapter_text_failed),
+                )
+            }
+        }
+    }
+
+    fun closeChapterText() {
+        _chapterText.value = ChapterTextUiState()
+    }
 
     /** Chapters of whatever book is loaded, so the picker never needs a separate load. */
     private val chapters: StateFlow<List<Chapter>> = state
@@ -169,7 +229,7 @@ class PlayerViewModel @Inject constructor(
                 val itemId = chapters.value.firstOrNull { it.id == chapterId }?.remoteItemId ?: return@forEach
                 try {
                     cacheManager.cache.removeResource(
-                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId),
+                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
                     )
                 } catch (_: Exception) {
                 }
@@ -210,7 +270,7 @@ class PlayerViewModel @Inject constructor(
             val book = bookRepository.getBook(bookId) ?: return@launch
             try {
                 cacheManager.cache.removeResource(
-                    cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId),
+                    cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
                 )
             } catch (_: Exception) {
             }

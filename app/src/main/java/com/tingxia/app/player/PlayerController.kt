@@ -83,6 +83,7 @@ class PlayerController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val bookRepository: BookRepository,
     private val preferences: UserPreferencesRepository,
+    private val fqNovelApi: com.tingxia.app.data.remote.FqNovelApi,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -109,6 +110,7 @@ class PlayerController @Inject constructor(
             // reading so the bar cannot briefly show a full track for the new chapter.
             _state.value = _state.value.copy(bufferedMs = 0L)
             updateFromMediaItem(mediaItem)
+            warmUpcomingChapters()
             // Manual chapter change keeps EndOfChapter timer targeting the new chapter.
             if (_state.value.sleepMode is SleepTimerMode.EndOfChapter) {
                 _state.value = _state.value.copy(sleepTargetChapterId = _state.value.chapterId)
@@ -718,10 +720,38 @@ class PlayerController @Inject constructor(
     /** True when the whole chapter payload is already in the offline cache. */
     fun isChapterFullyCached(book: Book, remoteItemId: String): Boolean {
         return try {
-            val key = "fqnovel_${book.remoteAudioBookId}_$remoteItemId"
+            val key = com.tingxia.app.data.remote.FqEndpoints.cacheKey(
+                book.remoteAudioBookId.orEmpty(),
+                remoteItemId,
+                book.remoteToneId,
+            )
             cacheManager.isFullyCached(key)
         } catch (_: Exception) {
             false
+        }
+    }
+
+    /**
+     * Ask the stream service to decrypt and remux the chapters that are about to play.
+     * A cold chapter otherwise pays for the whole download plus ffmpeg at the moment the
+     * previous one ends; this moves that work into the current chapter's playback.
+     */
+    private fun warmUpcomingChapters(lookahead: Int = 2) {
+        val bookId = _state.value.bookId ?: return
+        val chapterId = _state.value.chapterId ?: return
+        scope.launch {
+            val book = bookRepository.getBook(bookId) ?: return@launch
+            if (!book.isRemote) return@launch
+            val audioBookId = book.remoteAudioBookId?.takeIf { it.isNotBlank() } ?: return@launch
+            val tone = com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId)
+            val chapters = bookRepository.getChapters(bookId)
+            val index = chapters.indexOfFirst { it.id == chapterId }
+            if (index < 0) return@launch
+            chapters.drop(index + 1).take(lookahead).forEach { chapter ->
+                if (chapter.isCached) return@forEach
+                val itemId = chapter.remoteItemId?.takeIf { it.isNotBlank() } ?: return@forEach
+                runCatching { fqNovelApi.warm(audioBookId, itemId, tone) }
+            }
         }
     }
 
@@ -927,8 +957,11 @@ fun Chapter.toMediaItem(
     val isRemoteStream = book.isRemote &&
         !book.remoteAudioBookId.isNullOrBlank() && !remoteItemId.isNullOrBlank()
     val mediaUri = if (isRemoteStream) {
-        val tone = book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0"
-        "https://fq.logix.cc.cd/audio/stream/${book.remoteAudioBookId}/${remoteItemId}?toneId=$tone"
+        com.tingxia.app.data.remote.FqEndpoints.streamUrl(
+            book.remoteAudioBookId!!,
+            remoteItemId!!,
+            book.remoteToneId,
+        )
     } else {
         uri
     }
@@ -936,10 +969,16 @@ fun Chapter.toMediaItem(
         .setMediaId("${book.id}_$id")
         .setUri(mediaUri)
         .apply {
-            // Stable cache key per (audiobook, chapter) so playback and prefetch
-            // share one cache entry regardless of the toneId query param.
+            // Stable cache key per (audiobook, voice, chapter) so playback and prefetch
+            // share one cache entry regardless of the query string.
             if (isRemoteStream) {
-                setCustomCacheKey("fqnovel_${book.remoteAudioBookId}_$remoteItemId")
+                setCustomCacheKey(
+                    com.tingxia.app.data.remote.FqEndpoints.cacheKey(
+                        book.remoteAudioBookId!!,
+                        remoteItemId!!,
+                        book.remoteToneId,
+                    ),
+                )
             }
         }
         .setMediaMetadata(metadata)

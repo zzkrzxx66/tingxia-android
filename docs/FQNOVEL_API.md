@@ -521,11 +521,17 @@ python3 tools/fqnovel_audio_poc.py \
 
 - 域名 `https://fq.logix.cc.cd` 当前已经可以从外部调用。
 - HTTP 会重定向到 HTTPS。
-- Nginx 当前代理读取和发送超时均为 120 秒。
+- Nginx 代理读取/发送超时 120 秒；`/audio/stream/` 和 `/audio/warm/` 转发到本机
+  9998 的流服务，其余路径转发到 9999。
 - `fqnovel` 容器仍只绑定到本机端口，这是合理的部署方式；外部访问统一由
   Nginx 提供。
-- 当前接口没有 API Key、JWT 或其他客户端认证。
-- 如果域名暴露到公网，建议增加认证、限流、访问日志脱敏和健康检查。
+- 可选令牌校验：Java 服务设 `FQ_API_TOKEN`，流服务设 `STREAM_API_TOKEN`（同一个值）
+  与 `FQNOVEL_API_TOKEN`（流服务调用上游时带的头）。开启后除 `/healthz` 外所有请求
+  需带 `X-Api-Key`（或 `?token=`）；留空 = 完全关闭，方便先部署服务再升级客户端。
+- 令牌的目的不是数据保密，而是 `/audio/play` 每次调用都消耗上游风控额度，
+  被外部扫到会连带把设备注册刷废。
+- 流服务缓存默认上限 20 GiB（`MAX_CACHE_BYTES`），超出后按最后访问时间 LRU 淘汰；
+  `GET :9998/healthz` 返回缓存大小、命中/未命中与正在预热的章节数。
 - 不要在客户端、日志、崩溃报告或公开仓库中保存 Cookie、设备标识、
   `encryption_key` 或完整临时 CDN URL。
 - 内容的使用和分发应遵守平台服务条款及版权要求。
@@ -535,10 +541,142 @@ python3 tools/fqnovel_audio_poc.py \
 | 功能 | 方法 | 路径 |
 |---|---|---|
 | 搜索小说 | GET | `/search` |
+| 热门有声书 | GET | `/search/hot`（= `/recommend/audio`）|
+| 发现页分区 | GET | `/discover/sections` |
 | 小说详情 | GET | `/book/{bookId}` |
 | 小说目录 | GET | `/toc/{bookId}` |
 | 小说正文 | GET | `/chapter/{bookId}/{chapterId}` |
-| 音色和真人有声关联 | GET | `/audio/tones/{bookId}` |
+| 音色与真人有声关联（原始）| GET | `/audio/tones/{bookId}` |
+| 收听方式（真人 + TTS，已归一）| GET | `/audio/voices/{bookId}` |
+| 有声书元信息 | GET | `/audio/meta/{audioBookId}` |
 | 真人有声目录 | GET | `/audio/toc/{audioBookId}` |
-| 真人有声播放信息 | GET | `/audio/play/{audioBookId}/{itemId}` |
+| 有声播放信息 | GET | `/audio/play/{audioBookId}/{itemId}` |
+| 单章时长 | GET | `/audio/duration/{audioBookId}/{itemId}` |
+| 可播音频流 | GET/HEAD | `/audio/stream/{audioBookId}/{itemId}` |
+| 预热章节 | GET/POST | `/audio/warm/{audioBookId}/{itemId}` |
+| 存活探针 | GET | `/healthz` |
+
+## 9. 新增接口详解
+
+### 9.1 收听方式（真人版 + TTS 音色）
+
+```http
+GET /audio/voices/{bookId}
+```
+
+`bookId` 是文字书 ID。该接口把 `/audio/tones` 的原始结构收敛成两组可直接展示的
+列表：
+
+```json
+{
+  "novelBookId": "6982529841564224526",
+  "bookName": "我在精神病院学斩神",
+  "audioBooks": [
+    { "audioBookId": "7088215107158690853", "title": "主播：…" }
+  ],
+  "ttsTones": [
+    { "toneId": 96, "title": "多角色对话升级版", "description": "自然流畅", "multiRole": true }
+  ],
+  "recommendToneId": 96,
+  "hasRealAudio": true,
+  "ttsEnabled": true
+}
+```
+
+两种收听方式播放时走同一个 `/audio/play`，只是 id 组合不同：
+
+| 方式 | audioBookId | toneId | 章节目录 | 容器 |
+|---|---|---|---|---|
+| 真人有声 | `audioBooks[].audioBookId` | `0` | `/audio/toc/{audioBookId}` | AAC in MP4 |
+| TTS | 文字书 `bookId` | `ttsTones[].toneId` | `/toc/{bookId}` | Opus in Ogg |
+
+TTS 对全库小说有效，包括没有真人版的书；同一本书换 `toneId` 不会改变 item id，
+所以切换音色可以保留进度。
+
+### 9.2 有声书元信息
+
+```http
+GET /audio/meta/{audioBookId}
+```
+
+```json
+{
+  "audioBookId": "7088215107158690853",
+  "chapterCount": 1766,
+  "totalDurationMs": 1092128901,
+  "score": "9.4",
+  "listenCount": 552683,
+  "lastChapterTitle": "《番外：周平篇》007-时间之剑【完结】",
+  "lastChapterItemId": "7296345160110279699",
+  "lastChapterUpdateTime": 1698821888000,
+  "finished": true,
+  "novelBookId": "6982529841564224526"
+}
+```
+
+上游 `creation_status` 为 `0` 时返回 `finished: true`。追更只需比较 `chapterCount` /
+`lastChapterTitle`，不必每次拉完整目录；结果在服务端缓存 10 分钟。
+
+### 9.3 单章时长
+
+```http
+GET /audio/duration/{audioBookId}/{itemId}?toneId=0
+```
+
+```json
+{ "code": 0, "message": "success", "data": 882390 }
+```
+
+`data` 是毫秒，来自 `video_model.video_duration`，不需下载音频；缓存 12 小时。
+
+### 9.4 发现页分区
+
+```http
+GET /discover/sections
+```
+
+返回 8 个分区（热门有声剧、玄幻仙侠、都市生活、悬疑推理、历史军事、科幻末世、
+言情、评书相声），每个分区带自己的 `query`，客户端点“更多”时直接用该词调 `/search`
+翻页。上游没有榜单接口，分区也是真实搜索聚合，缓存 30 分钟。
+
+### 9.5 搜索结果新增字段
+
+`/search`、`/search/hot` 和 `/discover/sections` 的书籍项现在额外携带：
+
+| 字段 | 说明 |
+|---|---|
+| `hasRealAudio` | 是否存在真人有声版 |
+| `audioBookIds` | 关联的真人有声书 ID 数组（已解开上游的字符串包装）|
+| `ttsEnabled` | 是否可用 TTS 收听 |
+| `score` / `listenCount` | 评分与收听人数 |
+| `finished` | `creation_status = 0` 时为 true |
+| `audioCoverUrl` | 有声版封面（与文字书封面可能不同）|
+
+### 9.6 预热章节
+
+```http
+GET|POST /audio/warm/{audioBookId}/{itemId}?toneId=0
+```
+
+```json
+{ "code": 0, "status": "warming" }
+```
+
+`status` 为 `ready`（已在缓存）或 `warming`（已在后台开始准备）。接口立即返回，不等
+下载和 ffmpeg。客户端在播当前章时对后两章打一枪，就把冷章节的启动开销挪到了
+上一章的播放时间里。
+
+### 9.7 音频流容器
+
+`/audio/stream/` 根据上游编码选容器，均为 `-c copy`，不重编码：
+
+| 上游编码 | 输出 | Content-Type |
+|---|---|---|
+| AAC（真人有声）| `.m4a` | `audio/mp4` |
+| Opus（TTS）| `.ogg` | `audio/ogg` |
+| 其他 | 转码 AAC `.m4a` | `audio/mp4` |
+
+MP4 容器无法携带 Opus（`Could not find tag for codec opus`），这是 TTS 必须走 Ogg 的
+原因；ExoPlayer 原生支持 Ogg/Opus。
+
 

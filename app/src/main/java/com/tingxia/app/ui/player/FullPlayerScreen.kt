@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
@@ -130,6 +131,7 @@ fun FullPlayerScreen(
     onAddBookmark: () -> Unit = {},
     onSaveSkipOffsets: (Long, Long) -> Unit = { _, _ -> },
     onOpenChapters: () -> Unit = {},
+    onOpenText: (() -> Unit)? = null,
 ) {
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
@@ -207,8 +209,20 @@ fun FullPlayerScreen(
                         color = Color.White,
                     )
                     Spacer(Modifier.weight(1f))
-                    // Balance the leading button so the title stays centred.
-                    Spacer(Modifier.size(48.dp))
+                    // Read-along entry point: only online books with a linked text edition
+                    // have anything to show here.
+                    if (onOpenText != null) {
+                        IconButton(onClick = onOpenText) {
+                            Icon(
+                                Icons.Default.MenuBook,
+                                contentDescription = stringResource(R.string.chapter_text_open),
+                                tint = Color.White,
+                            )
+                        }
+                    } else {
+                        // Balance the leading button so the title stays centred.
+                        Spacer(Modifier.size(48.dp))
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))

@@ -50,6 +50,9 @@ class UserPreferencesRepository @Inject constructor(
         val SHELF_SORT = stringPreferencesKey("shelf_sort")
         val SHELF_FILTER = stringPreferencesKey("shelf_filter")
         val PLAYBACK_ERROR_POLICY = stringPreferencesKey("playback_error_policy")
+        val ONLINE_SEARCH_HISTORY = stringPreferencesKey("online_search_history")
+        val UPDATE_CHECK_ENABLED = booleanPreferencesKey("update_check_enabled")
+        val LAST_UPDATE_SWEEP_AT = androidx.datastore.preferences.core.longPreferencesKey("last_update_sweep_at")
     }
 
     val themeMode: Flow<ThemeMode> = preferencesFlow.map { prefs ->
@@ -117,6 +120,51 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setPlaybackErrorPolicy(policy: PlaybackErrorPolicy) {
         context.dataStore.edit { it[Keys.PLAYBACK_ERROR_POLICY] = policy.name }
+    }
+
+    /** Most recent online-search terms, newest first. */
+    val onlineSearchHistory: Flow<List<String>> = preferencesFlow.map { prefs ->
+        prefs[Keys.ONLINE_SEARCH_HISTORY]
+            ?.split('\n')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+    }
+
+    suspend fun rememberOnlineSearch(keyword: String, limit: Int = 12) {
+        val normalized = keyword.trim()
+        if (normalized.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.ONLINE_SEARCH_HISTORY]
+                ?.split('\n')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                .orEmpty()
+            val merged = (listOf(normalized) + current.filter { !it.equals(normalized, ignoreCase = true) })
+                .take(limit)
+            prefs[Keys.ONLINE_SEARCH_HISTORY] = merged.joinToString("\n")
+        }
+    }
+
+    suspend fun clearOnlineSearchHistory() {
+        context.dataStore.edit { it.remove(Keys.ONLINE_SEARCH_HISTORY) }
+    }
+
+    /** Whether online books are checked for new chapters in the background. */
+    val updateCheckEnabled: Flow<Boolean> = preferencesFlow.map { prefs ->
+        prefs[Keys.UPDATE_CHECK_ENABLED] ?: true
+    }
+
+    suspend fun setUpdateCheckEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.UPDATE_CHECK_ENABLED] = enabled }
+    }
+
+    val lastUpdateSweepAt: Flow<Long> = preferencesFlow.map { prefs ->
+        prefs[Keys.LAST_UPDATE_SWEEP_AT] ?: 0L
+    }
+
+    suspend fun setLastUpdateSweepAt(value: Long) {
+        context.dataStore.edit { it[Keys.LAST_UPDATE_SWEEP_AT] = value }
     }
 
     suspend fun snapshot(): PreferencesSnapshot = PreferencesSnapshot(
