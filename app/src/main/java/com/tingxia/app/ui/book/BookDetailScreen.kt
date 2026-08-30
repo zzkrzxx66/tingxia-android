@@ -1074,11 +1074,15 @@ fun BookDetailScreen(
 
     val chapterTextState by viewModel.chapterText.collectAsStateWithLifecycle()
     if (chapterTextState.visible) {
-        com.tingxia.app.ui.components.ChapterTextSheet(
+        com.tingxia.app.ui.components.ChapterReadAlongSheet(
             chapterTitle = chapterTextState.chapterTitle,
-            text = chapterTextState.text,
+            timeline = chapterTextState.timeline,
             loading = chapterTextState.loading,
             error = chapterTextState.error,
+            // The book page is not the player: there is no live position here, so the text
+            // reads as plain text and a tap starts playback at that sentence instead.
+            positionMs = null,
+            onSeek = { positionMs -> viewModel.playChapterAt(positionMs) },
             onDismiss = viewModel::closeChapterText,
         )
     }

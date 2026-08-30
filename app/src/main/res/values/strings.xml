@@ -207,6 +207,10 @@
     <!-- Read-along chapter text -->
     <string name="chapter_text_open">看正文</string>
     <string name="chapter_text_title">正文</string>
+    <string name="chapter_text_synced">声文同步</string>
+    <string name="chapter_text_follow">跟随朝读</string>
+    <string name="chapter_text_following">已跟随朝读</string>
+    <string name="chapter_text_tap_hint">点句子可跳到该处播放</string>
     <string name="chapter_text_loading">正在获取正文…</string>
     <string name="chapter_text_failed">获取正文失败</string>
     <string name="chapter_text_missing">这一章没有找到对应的文字正文</string>

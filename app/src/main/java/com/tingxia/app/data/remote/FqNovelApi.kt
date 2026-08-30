@@ -117,6 +117,41 @@ data class FqDiscoverSection(
 /** Chapter text for the read-along drawer. */
 data class FqChapterText(val itemId: String, val title: String, val text: String, val wordCount: Int)
 
+/** One paragraph of a chapter, in reading order. */
+data class FqTimelineParagraph(
+    val order: Int,
+    val index: Int,
+    val isTitle: Boolean,
+    val text: String,
+)
+
+/** Character range inside one paragraph. */
+data class FqTimelineSpan(val paragraph: Int, val start: Int, val end: Int)
+
+/** One spoken sentence: when it is heard and where it sits in the text. */
+data class FqTimelineSentence(
+    val startMs: Long,
+    val endMs: Long,
+    val text: String,
+    val spans: List<FqTimelineSpan>,
+)
+
+/**
+ * Chapter text plus sentence timings.
+ *
+ * [synced] false means the timings could not be trusted against this text (the narrated
+ * editions' time points are computed against an older transcript revision), so the
+ * chapter should be read as plain text instead of highlighted in the wrong places.
+ */
+data class FqChapterTimeline(
+    val title: String,
+    val synced: Boolean,
+    val paragraphs: List<FqTimelineParagraph>,
+    val sentences: List<FqTimelineSentence>,
+) {
+    val plainText: String get() = paragraphs.joinToString("\n") { it.text }
+}
+
 class FqNovelApi(
     private val baseUrl: String = FqEndpoints.baseUrl,
     private val apiToken: String = FqEndpoints.apiToken,
@@ -269,6 +304,70 @@ class FqNovelApi(
             title = data.optString("title").takeIf { it.isNotBlank() } ?: "",
             text = text,
             wordCount = data.optInt("wordCount", text.length),
+        )
+    }
+
+    /**
+     * Chapter text with sentence timings, for the karaoke-style read-along view.
+     * [tts] selects which catalogue the ids belong to: the novel (TTS) or the narrated edition.
+     */
+    suspend fun chapterTimeline(
+        bookId: String,
+        itemId: String,
+        toneId: String,
+        tts: Boolean,
+    ): FqChapterTimeline? = withContext(Dispatchers.IO) {
+        val type = if (tts) "tts" else "audio"
+        val data = get("/audio/timeline/$bookId/$itemId?toneId=$toneId&type=$type")
+            .optJSONObject("data") ?: return@withContext null
+        val paragraphsArray = data.optJSONArray("paragraphs") ?: JSONArray()
+        val paragraphs = buildList {
+            for (i in 0 until paragraphsArray.length()) {
+                val item = paragraphsArray.optJSONObject(i) ?: continue
+                add(
+                    FqTimelineParagraph(
+                        order = item.optInt("order", i),
+                        index = item.optInt("index", i),
+                        isTitle = item.optBoolean("title", false),
+                        text = item.optString("text"),
+                    ),
+                )
+            }
+        }
+        if (paragraphs.isEmpty()) return@withContext null
+        val sentencesArray = data.optJSONArray("sentences") ?: JSONArray()
+        val sentences = buildList {
+            for (i in 0 until sentencesArray.length()) {
+                val item = sentencesArray.optJSONObject(i) ?: continue
+                val spansArray = item.optJSONArray("spans") ?: continue
+                val spans = buildList {
+                    for (j in 0 until spansArray.length()) {
+                        val span = spansArray.optJSONObject(j) ?: continue
+                        add(
+                            FqTimelineSpan(
+                                paragraph = span.optInt("paragraph", -1),
+                                start = span.optInt("start", 0),
+                                end = span.optInt("end", 0),
+                            ),
+                        )
+                    }
+                }.filter { it.paragraph >= 0 && it.end > it.start }
+                if (spans.isEmpty()) continue
+                add(
+                    FqTimelineSentence(
+                        startMs = item.optLong("startMs", 0L),
+                        endMs = item.optLong("endMs", 0L),
+                        text = item.optString("text"),
+                        spans = spans,
+                    ),
+                )
+            }
+        }
+        FqChapterTimeline(
+            title = data.optString("title").takeIf { it.isNotBlank() } ?: "",
+            synced = data.optBoolean("synced", false) && sentences.isNotEmpty(),
+            paragraphs = paragraphs,
+            sentences = sentences,
         )
     }
 

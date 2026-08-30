@@ -55,7 +55,7 @@ class PlayerViewModel @Inject constructor(
         val visible: Boolean = false,
         val loading: Boolean = false,
         val chapterTitle: String = "",
-        val text: String = "",
+        val timeline: com.tingxia.app.data.remote.FqChapterTimeline? = null,
         val error: String? = null,
     )
 
@@ -87,12 +87,11 @@ class PlayerViewModel @Inject constructor(
                 val book = bookRepository.getBook(bookId) ?: error("书籍不存在")
                 val list = chapters.value.ifEmpty { bookRepository.getChapters(bookId) }
                 val chapter = list.firstOrNull { it.id == chapterId } ?: error("章节不存在")
-                val text = chapterTextRepository.textFor(book, chapter, list)
-                _chapterText.value = ChapterTextUiState(
-                    visible = true,
+                val timeline = chapterTextRepository.timelineFor(book, chapter, list)
+                _chapterText.value = _chapterText.value.copy(
                     loading = false,
-                    chapterTitle = text.title.ifBlank { chapter.displayTitle },
-                    text = text.text,
+                    chapterTitle = timeline.title.ifBlank { chapter.displayTitle },
+                    timeline = timeline,
                 )
             } catch (e: Exception) {
                 _chapterText.value = _chapterText.value.copy(
@@ -101,6 +100,11 @@ class PlayerViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /** Chapter changed under the drawer: reload so the highlight follows the new chapter. */
+    fun refreshChapterTextIfOpen() {
+        if (_chapterText.value.visible) openChapterText()
     }
 
     fun closeChapterText() {

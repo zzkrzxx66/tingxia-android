@@ -18,7 +18,6 @@ import com.tingxia.app.data.repo.ChapterTextRepository
 import com.tingxia.app.data.repo.OnlineUpdateChecker
 import com.tingxia.app.data.repo.RescanPreview
 import com.tingxia.app.data.repo.ReauthDecisionRequiredException
-import com.tingxia.app.data.remote.FqChapterText
 import com.tingxia.app.data.remote.FqNovelApi
 import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.data.remote.FqTtsTone
@@ -743,7 +742,8 @@ class BookDetailViewModel @Inject constructor(
         val visible: Boolean = false,
         val loading: Boolean = false,
         val chapterTitle: String = "",
-        val text: String = "",
+        val chapterId: Long = 0L,
+        val timeline: com.tingxia.app.data.remote.FqChapterTimeline? = null,
         val error: String? = null,
     )
 
@@ -756,22 +756,26 @@ class BookDetailViewModel @Inject constructor(
             visible = true,
             loading = true,
             chapterTitle = chapter.displayTitle,
+            chapterId = chapter.id,
         )
         viewModelScope.launch {
             try {
-                val text: FqChapterText = chapterTextRepository.textFor(book, chapter, chapters.value)
-                _chapterText.value = ChapterTextUiState(
-                    visible = true,
-                    loading = false,
-                    chapterTitle = text.title.ifBlank { chapter.displayTitle },
-                    text = text.text,
-                )
+                val timeline = chapterTextRepository.timelineFor(book, chapter, chapters.value)
+                _chapterText.value = _chapterText.value.copy(loading = false, timeline = timeline)
             } catch (e: Exception) {
                 _chapterText.value = _chapterText.value.copy(
                     loading = false,
                     error = e.message ?: app.getString(R.string.chapter_text_failed),
                 )
             }
+        }
+    }
+
+    /** Tapping a sentence in the read-along sheet starts that chapter at that moment. */
+    fun playChapterAt(positionMs: Long) {
+        val chapterId = _chapterText.value.chapterId.takeIf { it > 0L } ?: return
+        viewModelScope.launch {
+            runCatching { playerController.playBook(bookId, chapterId, positionMs) }
         }
     }
 

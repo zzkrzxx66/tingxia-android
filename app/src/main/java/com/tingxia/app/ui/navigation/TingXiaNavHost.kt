@@ -351,11 +351,19 @@ fun TingXiaNavHost(
                             },
                         )
                         if (playerChapterText.visible) {
-                            com.tingxia.app.ui.components.ChapterTextSheet(
+                            // Reload when the player moves to another chapter, otherwise the
+                            // drawer would highlight sentences of the previous one.
+                            androidx.compose.runtime.LaunchedEffect(playerState.chapterId) {
+                                playerViewModel.refreshChapterTextIfOpen()
+                            }
+                            com.tingxia.app.ui.components.ChapterReadAlongSheet(
                                 chapterTitle = playerChapterText.chapterTitle,
-                                text = playerChapterText.text,
+                                timeline = playerChapterText.timeline,
                                 loading = playerChapterText.loading,
                                 error = playerChapterText.error,
+                                positionMs = playerState.positionMs,
+                                isPlaying = playerState.isPlaying,
+                                onSeek = { positionMs -> playerViewModel.seekTo(positionMs) },
                                 onDismiss = { playerViewModel.closeChapterText() },
                             )
                         }

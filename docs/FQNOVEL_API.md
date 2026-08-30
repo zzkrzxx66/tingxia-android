@@ -552,6 +552,8 @@ python3 tools/fqnovel_audio_poc.py \
 | 真人有声目录 | GET | `/audio/toc/{audioBookId}` |
 | 有声播放信息 | GET | `/audio/play/{audioBookId}/{itemId}` |
 | 单章时长 | GET | `/audio/duration/{audioBookId}/{itemId}` |
+| 声文同步时间轴 | GET | `/audio/timeline/{bookId}/{itemId}` |
+| 声文同步时间点（原始）| GET | `/audio/timepoint/{bookId}/{itemId}` |
 | 可播音频流 | GET/HEAD | `/audio/stream/{audioBookId}/{itemId}` |
 | 预热章节 | GET/POST | `/audio/warm/{audioBookId}/{itemId}` |
 | 存活探针 | GET | `/healthz` |
@@ -678,5 +680,62 @@ GET|POST /audio/warm/{audioBookId}/{itemId}?toneId=0
 
 MP4 容器无法携带 Opus（`Could not find tag for codec opus`），这是 TTS 必须走 Ogg 的
 原因；ExoPlayer 原生支持 Ogg/Opus。
+
+### 9.8 声文同步时间轴
+
+```http
+GET /audio/timeline/{bookId}/{itemId}?toneId=&type=audio|tts
+```
+
+服务端把上游的句级时间点与章节文稿拼好，客户端只需渲染 `paragraphs`，按当前播放
+位置在 `sentences[].spans` 上高亮：
+
+```json
+{
+  "type": "tts", "toneId": 96, "synced": true,
+  "title": "第1章 黑缎缠目",
+  "itemVersion": "c63f0e…", "timepointVersion": "c63f0e…",
+  "paragraphs": [
+    { "order": 0, "index": 10000, "title": true, "text": "第1章 黑缎缠目" },
+    { "order": 1, "index": 0, "title": false, "text": "炎炎八月。" }
+  ],
+  "sentences": [
+    { "startMs": 3295, "endMs": 4960, "text": "炎炎八月",
+      "spans": [ { "paragraph": 1, "start": 0, "end": 4 } ] }
+  ]
+}
+```
+
+两种类型的坐标系不同，这是上游的口径：
+
+| 类型 | bookId | 段落号指向 | 句级高亮 |
+|---|---|---|---|
+| `tts` | 文字书 ID | 小说正文（标题段落号 10000）| 可用，字符级对齐 |
+| `audio` | 有声书 ID | 有声版自己的 ASR 文稿 | 通常不可用（见下）|
+
+`synced=false` 时 `sentences` 为空，但 `paragraphs` 仍然可用于普通阅读。不可用的原因会
+写在 `syncNote`，实测主要是真人有声的 `timepoint_item_version` 与当前 `item_version`
+不一致（时间点对的是旧版 ASR 文稿，而 `FullRequest` / `BatchFullRequest` 只接受 item id，
+取不到指定版本的文稿）。服务端同时会检查时间点落到正文的比例，低于 95% 也会判为
+不可同步。结果缓存 6 小时，单章 JSON 约 64KB（gzip 后约 11KB）。
+
+### 9.9 声文同步时间点（原始）
+
+```http
+GET /audio/timepoint/{bookId}/{itemId}?toneId=&type=audio|tts
+```
+
+直接透传上游 `/reading/reader/audio/timepoint/`：
+
+```json
+{"start_time":6025,"end_time":20554,
+ "start_para":2,"start_para_off":0,"end_para":2,"end_para_off":63,
+ "position_info_v2":{"start_container_index":2,"start_element_index":0,
+                     "start_element_offset":0,"end_element_index":0,"end_element_offset":63}}
+```
+
+字符偏移是相对“元素”（`<blk e_idx>`）的，一个段落可能有多个元素，因此需要先把元素
+起点累加成段落内偏移；`/audio/timeline` 已经做完这一步。文稿结构可用
+`GET /chapter/{bookId}/{itemId}?raw=true` 查看（`<p idx>` 内嵌 `<blk p_idx e_idx>`）。
 
 
