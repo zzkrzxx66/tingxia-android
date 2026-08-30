@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.1
+
+- New launcher icon. The old one was a blue-violet box with a sound wave — a default-template
+  look that shared nothing with the app's forest-and-paper palette.
+  - The mark is the 匣 as an object: a paper-white box holding three level bars, on a forest
+    gradient. One filled shape and two colours, which is what every audiobook icon that stays
+    readable on a 48px home screen comes down to; the previous mark was thin line art with three
+    competing elements and turned to mush at that size.
+  - The bars are holes in the box (evenOdd), not a painted layer, so they carry the background
+    gradient and cannot drift out of register at any scale.
+  - Geometry sits inside the 66dp safe circle, so no launcher mask — squircle, circle or square —
+    can crop it.
+  - A real monochrome layer for Android 13+ themed icons. The old adaptive icon pointed its
+    monochrome slot at the full-colour foreground, so themed mode rendered a solid blob with the
+    pattern gone.
+
 ## 0.15.0
 
 - Streaming playback feedback, rebuilt. The player only knew whether it was playing, so a first

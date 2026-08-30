@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#141210</color>
     <color name="window_background_dark">#141210</color>
     <!--
       Home-screen widget: a scrim panel with white content, the way the popular Chinese audiobook

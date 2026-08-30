@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  听匣 launcher mark: the 匣 (box) holding three level bars.
-
-  One filled shape, two colours, no hairlines — the rule every audiobook icon that survives a
-  48px home screen follows. The bars are holes in the box (evenOdd) rather than painted strokes,
-  so they pick up the background gradient and the same path can serve the monochrome layer.
-
-  Geometry (108dp viewport): box 46x40dp centred at 54,54 — half-diagonal 30.5dp, inside the
-  66dp safe circle the launcher mask can never crop.
+  Themed-icon (Android 13+) layer: the same box-and-bars silhouette, single colour on
+  transparent. The system tints this and supplies its own background, so the previous
+  layer — the full-colour foreground reused as monochrome — came out as a coloured blob.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -15,7 +10,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FAF7F2"
+        android:fillColor="#000000"
         android:fillType="evenOdd"
         android:pathData="M38,34h32a7,7 0 0 1 7,7v26a7,7 0 0 1 -7,7h-32a7,7 0 0 1 -7,-7v-26a7,7 0 0 1 7,-7z M41,46a4,4 0 0 1 4,4v8a4,4 0 0 1 -8,0v-8a4,4 0 0 1 4,-4z M54,41a4,4 0 0 1 4,4v18a4,4 0 0 1 -8,0v-18a4,4 0 0 1 4,-4z M67,44a4,4 0 0 1 4,4v12a4,4 0 0 1 -8,0v-12a4,4 0 0 1 4,-4z" />
 </vector>
