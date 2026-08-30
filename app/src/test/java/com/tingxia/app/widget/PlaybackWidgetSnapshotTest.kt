@@ -127,4 +127,19 @@ class PlaybackWidgetSnapshotTest {
         assertEquals("02:05", formatWidgetDuration(125_000L))
         assertEquals("1:02:03", formatWidgetDuration(3_723_000L))
     }
+
+    @Test
+    fun previousButton_restartsTheChapterOncePastTheThreshold() {
+        assertEquals(WidgetPreviousAction.PreviousChapter, widgetPreviousAction(0L))
+        assertEquals(WidgetPreviousAction.PreviousChapter, widgetPreviousAction(3_000L))
+        assertEquals(WidgetPreviousAction.RestartChapter, widgetPreviousAction(3_001L))
+    }
+
+    @Test
+    fun afterResumption_onlySkipsStillNeedApplying() {
+        // play() is what asks the service to restore the last book, so a toggle is already served.
+        assertEquals(null, widgetCommandAfterResumption(WidgetCommand.Toggle))
+        assertEquals(WidgetCommand.Next, widgetCommandAfterResumption(WidgetCommand.Next))
+        assertEquals(WidgetCommand.Previous, widgetCommandAfterResumption(WidgetCommand.Previous))
+    }
 }
