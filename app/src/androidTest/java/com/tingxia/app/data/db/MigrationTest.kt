@@ -11,6 +11,7 @@ import com.tingxia.app.data.db.migration.MIGRATION_4_5
 import com.tingxia.app.data.db.migration.MIGRATION_7_8
 import com.tingxia.app.data.db.migration.MIGRATION_8_9
 import com.tingxia.app.data.db.migration.MIGRATION_9_10
+import com.tingxia.app.data.db.migration.MIGRATION_10_11
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -383,6 +384,59 @@ class MigrationTest {
                 assertTrue(c.moveToFirst())
                 assertEquals("7143", c.getString(0))
                 assertEquals(99L, c.getLong(1))
+            }
+            close()
+        }
+    }
+
+    @Test
+    fun migrate10To11_addsRemoteCatalogueColumns() {
+        helper.createDatabase(testDb, 10).apply {
+            execSQL(
+                """
+                INSERT INTO books (
+                    id, title, author, coverPath, rootUri, totalDurationMs, lastPlayedAt,
+                    currentChapterId, currentPositionMs, listenedDurationMs, createdAt,
+                    needsReauth, playbackSpeed, autoPlayNext, lastScannedAt, skipIntroMs,
+                    skipOutroMs, sourceType, description, category, wordCount,
+                    metaSyncSourceId, metaSyncedAt, metaSyncBackup
+                ) VALUES (
+                    1, 't', NULL, NULL, 'fqnovel://7088', 1000, 1,
+                    NULL, 0, 0, 0, 0, NULL, 1, 0, 0, 0, 'FQNOVEL', NULL, NULL, 0,
+                    NULL, 0, NULL
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(testDb, 11, true, MIGRATION_10_11).apply {
+            query(
+                "SELECT remoteScore, remoteListenCount, remoteFinished, remoteLastChapterTitle, " +
+                    "remoteUpdateCheckedAt, remoteNewChapterCount FROM books WHERE id = 1",
+            ).use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0))
+                assertEquals(0L, c.getLong(1))
+                assertTrue(c.isNull(2))
+                assertTrue(c.isNull(3))
+                assertEquals(0L, c.getLong(4))
+                assertEquals(0, c.getInt(5))
+            }
+            execSQL(
+                "UPDATE books SET remoteScore = '9.4', remoteListenCount = 552683, " +
+                    "remoteFinished = 1, remoteLastChapterTitle = '番外 007', " +
+                    "remoteUpdateCheckedAt = 1700, remoteNewChapterCount = 3 WHERE id = 1",
+            )
+            query(
+                "SELECT remoteScore, remoteListenCount, remoteFinished, remoteNewChapterCount " +
+                    "FROM books WHERE id = 1",
+            ).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("9.4", c.getString(0))
+                assertEquals(552683L, c.getLong(1))
+                assertEquals(1, c.getInt(2))
+                assertEquals(3, c.getInt(3))
             }
             close()
         }

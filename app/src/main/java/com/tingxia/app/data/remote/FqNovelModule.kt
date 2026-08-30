@@ -1,5 +1,6 @@
 package com.tingxia.app.data.remote
 
+import com.tingxia.app.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -11,5 +12,8 @@ import javax.inject.Singleton
 object FqNovelModule {
     @Provides
     @Singleton
-    fun provideFqNovelApi(): FqNovelApi = FqNovelApi()
+    fun provideFqNovelApi(): FqNovelApi = FqNovelApi(
+        baseUrl = BuildConfig.FQ_BASE_URL,
+        apiToken = BuildConfig.FQ_API_TOKEN,
+    )
 }

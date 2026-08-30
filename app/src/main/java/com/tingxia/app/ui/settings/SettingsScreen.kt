@@ -268,9 +268,38 @@ fun SettingsScreen(
 
             // Offline cache (online audiobooks)
             val cacheBytes by viewModel.cacheBytes.collectAsStateWithLifecycle()
+            val updateCheck by viewModel.updateCheckEnabled.collectAsStateWithLifecycle()
             LaunchedEffect(Unit) { viewModel.refreshCacheUsage() }
             SettingsGroup(icon = Icons.Default.CloudDownload, title = stringResource(R.string.cache_menu)) {
                 Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setUpdateCheckEnabled(!updateCheck) }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.settings_update_check),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                stringResource(R.string.settings_update_check_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = updateCheck,
+                            onCheckedChange = { viewModel.setUpdateCheckEnabled(it) },
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 52.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
                     SettingsActionRow(
                         icon = Icons.Default.CloudDownload,
                         title = stringResource(

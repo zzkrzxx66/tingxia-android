@@ -14,10 +14,14 @@ import com.tingxia.app.data.model.ChapterFilter
 import com.tingxia.app.ui.chapters.ChapterListControls
 import com.tingxia.app.data.repo.BookRepository
 import com.tingxia.app.data.repo.BookmarkRepository
+import com.tingxia.app.data.repo.ChapterTextRepository
+import com.tingxia.app.data.repo.OnlineUpdateChecker
 import com.tingxia.app.data.repo.RescanPreview
 import com.tingxia.app.data.repo.ReauthDecisionRequiredException
 import com.tingxia.app.data.remote.FqNovelApi
 import com.tingxia.app.data.remote.FqSearchBook
+import com.tingxia.app.data.remote.FqTtsTone
+import com.tingxia.app.data.remote.FqVoices
 import com.tingxia.app.data.policy.ChapterTitleAligner
 import com.tingxia.app.player.CacheManager
 import com.tingxia.app.player.LibraryMutationSnapshot
@@ -44,6 +48,8 @@ class BookDetailViewModel @Inject constructor(
     private val bookmarkRepository: BookmarkRepository,
     private val playerController: PlayerController,
     private val fqNovelApi: FqNovelApi,
+    private val updateChecker: OnlineUpdateChecker,
+    private val chapterTextRepository: ChapterTextRepository,
     val cacheManager: CacheManager,
 ) : ViewModel() {
 
@@ -128,7 +134,7 @@ class BookDetailViewModel @Inject constructor(
                     ?: return@forEach
                 try {
                     cacheManager.cache.removeResource(
-                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId),
+                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
                     )
                 } catch (_: Exception) {
                 }
@@ -190,7 +196,7 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _metaSync.value = _metaSync.value.copy(query = normalized, loading = true, searched = false)
             try {
-                val results = fqNovelApi.search(normalized)
+                val results = fqNovelApi.search(normalized).books
                 _metaSync.value = _metaSync.value.copy(candidates = results, loading = false, searched = true)
             } catch (e: Exception) {
                 _metaSync.value = _metaSync.value.copy(loading = false, searched = true)
@@ -323,8 +329,15 @@ class BookDetailViewModel @Inject constructor(
 
     /** Chapter titles live on the audio edition, so the tone list has to be resolved first. */
     private suspend fun fetchRemoteChapterTitles(candidate: FqSearchBook): List<String> {
-        val tone = fqNovelApi.tones(candidate.bookId).firstOrNull() ?: return emptyList()
-        return fqNovelApi.chapters(tone.audioBookId).sortedBy { it.index }.map { it.title }
+        val voices = fqNovelApi.voices(candidate.bookId)
+        val narrated = voices.audioBooks.firstOrNull()
+        return if (narrated != null) {
+            fqNovelApi.audioChapters(narrated.audioBookId).sortedBy { it.index }.map { it.title }
+        } else {
+            // No narrated edition: the novel's own table of contents is the better source
+            // for titles anyway, and it exists for every book.
+            fqNovelApi.novelChapters(candidate.bookId).sortedBy { it.index }.map { it.title }
+        }
     }
 
     init {
@@ -601,7 +614,11 @@ class BookDetailViewModel @Inject constructor(
             val itemId = chapter.remoteItemId ?: return@launch
             try {
                 cacheManager.cache.removeResource(
-                    cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId),
+                    cacheManager.cacheKeyForChapter(
+                        book.remoteAudioBookId.orEmpty(),
+                        itemId,
+                        book.remoteToneId,
+                    ),
                 )
             } catch (_: Exception) {
             }
@@ -617,7 +634,7 @@ class BookDetailViewModel @Inject constructor(
                 chapters.forEach { ch ->
                     val itemId = ch.remoteItemId ?: return@forEach
                     val key = cacheManager.cacheKeyForChapter(
-                        book.remoteAudioBookId.orEmpty(), itemId,
+                        book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId,
                     )
                     try {
                         cacheManager.cache.removeResource(key)
@@ -630,6 +647,140 @@ class BookDetailViewModel @Inject constructor(
                 _error.value = e.message
             }
         }
+    }
+
+    // ---- 追更 / voice switching / read-along text -----------------------------------------
+
+    private val _checkingUpdate = MutableStateFlow(false)
+    val checkingUpdate: StateFlow<Boolean> = _checkingUpdate.asStateFlow()
+
+    /** Look for chapters published after this book was added. */
+    fun checkForUpdates() {
+        if (_checkingUpdate.value) return
+        val book = book.value ?: return
+        if (!book.isRemote) return
+        viewModelScope.launch {
+            _checkingUpdate.value = true
+            try {
+                val result = updateChecker.check(book)
+                _message.value = when {
+                    result == null -> app.getString(R.string.book_update_failed)
+                    result.addedCount > 0 -> app.getString(R.string.book_update_added, result.addedCount)
+                    else -> app.getString(R.string.book_update_none)
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: app.getString(R.string.book_update_failed)
+            } finally {
+                _checkingUpdate.value = false
+            }
+        }
+    }
+
+    /** The "n 章未读" badge is answered by looking at the list, so opening it clears the count. */
+    fun markNewChaptersSeen() {
+        val book = book.value ?: return
+        if (book.remoteNewChapterCount <= 0) return
+        viewModelScope.launch { bookRepository.clearNewChapterBadge(bookId) }
+    }
+
+    private val _voiceSwitch = MutableStateFlow(VoiceSwitchUiState())
+    val voiceSwitch: StateFlow<VoiceSwitchUiState> = _voiceSwitch.asStateFlow()
+
+    data class VoiceSwitchUiState(
+        val visible: Boolean = false,
+        val loading: Boolean = false,
+        val voices: FqVoices? = null,
+        val currentToneId: String? = null,
+    )
+
+    /** Only TTS books can change voice in place; a narrated edition is a different catalogue. */
+    fun openVoiceSwitch() {
+        val book = book.value ?: return
+        if (!book.isTtsVoice) return
+        val novelBookId = book.remoteAudioBookId ?: return
+        _voiceSwitch.value = VoiceSwitchUiState(
+            visible = true,
+            loading = true,
+            currentToneId = book.remoteToneId,
+        )
+        viewModelScope.launch {
+            try {
+                val voices = fqNovelApi.voices(novelBookId)
+                _voiceSwitch.value = _voiceSwitch.value.copy(loading = false, voices = voices)
+            } catch (e: Exception) {
+                _voiceSwitch.value = VoiceSwitchUiState()
+                _error.value = e.message ?: app.getString(R.string.book_switch_voice_failed)
+            }
+        }
+    }
+
+    fun closeVoiceSwitch() {
+        _voiceSwitch.value = VoiceSwitchUiState()
+    }
+
+    fun switchVoice(tone: FqTtsTone) {
+        viewModelScope.launch {
+            try {
+                val changed = bookRepository.switchTtsTone(bookId, tone.toneId.toString())
+                closeVoiceSwitch()
+                if (changed) {
+                    playerController.refreshQueueMetadata(bookId)
+                    _message.value = app.getString(R.string.book_switch_voice_done)
+                } else {
+                    _error.value = app.getString(R.string.book_switch_voice_failed)
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: app.getString(R.string.book_switch_voice_failed)
+            }
+        }
+    }
+
+    private val _chapterText = MutableStateFlow(ChapterTextUiState())
+    val chapterText: StateFlow<ChapterTextUiState> = _chapterText.asStateFlow()
+
+    data class ChapterTextUiState(
+        val visible: Boolean = false,
+        val loading: Boolean = false,
+        val chapterTitle: String = "",
+        val chapterId: Long = 0L,
+        val timeline: com.tingxia.app.data.remote.FqChapterTimeline? = null,
+        val error: String? = null,
+    )
+
+    val canShowChapterText: Boolean
+        get() = book.value?.let { chapterTextRepository.canShowText(it) } ?: false
+
+    fun openChapterText(chapter: Chapter) {
+        val book = book.value ?: return
+        _chapterText.value = ChapterTextUiState(
+            visible = true,
+            loading = true,
+            chapterTitle = chapter.displayTitle,
+            chapterId = chapter.id,
+        )
+        viewModelScope.launch {
+            try {
+                val timeline = chapterTextRepository.timelineFor(book, chapter, chapters.value)
+                _chapterText.value = _chapterText.value.copy(loading = false, timeline = timeline)
+            } catch (e: Exception) {
+                _chapterText.value = _chapterText.value.copy(
+                    loading = false,
+                    error = e.message ?: app.getString(R.string.chapter_text_failed),
+                )
+            }
+        }
+    }
+
+    /** Tapping a sentence in the read-along sheet starts that chapter at that moment. */
+    fun playChapterAt(positionMs: Long) {
+        val chapterId = _chapterText.value.chapterId.takeIf { it > 0L } ?: return
+        viewModelScope.launch {
+            runCatching { playerController.playBook(bookId, chapterId, positionMs) }
+        }
+    }
+
+    fun closeChapterText() {
+        _chapterText.value = ChapterTextUiState()
     }
 
     fun clearError() { _error.value = null }

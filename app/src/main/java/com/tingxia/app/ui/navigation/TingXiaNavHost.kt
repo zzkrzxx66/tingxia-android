@@ -324,6 +324,8 @@ fun TingXiaNavHost(
                     ) {
                         val chapterPicker by playerViewModel.picker.collectAsStateWithLifecycle()
                         val cachingIds by playerViewModel.cachingChapterIds.collectAsStateWithLifecycle()
+                        val textAvailable by playerViewModel.textAvailable.collectAsStateWithLifecycle()
+                        val playerChapterText by playerViewModel.chapterText.collectAsStateWithLifecycle()
                         FullPlayerScreen(
                             state = playerState,
                             onBack = { navController.popBackStack() },
@@ -342,6 +344,11 @@ fun TingXiaNavHost(
                                 playerViewModel.setSkipOffsets(intro, outro)
                             },
                             onOpenChapters = { playerViewModel.openChapterPicker() },
+                            textAvailable = textAvailable,
+                            timeline = playerChapterText.timeline,
+                            timelineLoading = playerChapterText.loading,
+                            timelineError = playerChapterText.error,
+                            onEnsureTimeline = { playerViewModel.ensureChapterText() },
                         )
                         ChapterPickerSheet(
                             state = chapterPicker,

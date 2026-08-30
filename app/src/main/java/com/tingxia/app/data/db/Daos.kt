@@ -163,6 +163,38 @@ interface BookDao {
 
     @Query(
         """
+        UPDATE books SET
+            remoteScore = :score,
+            remoteListenCount = :listenCount,
+            remoteFinished = :finished,
+            remoteLastChapterTitle = :lastChapterTitle,
+            remoteUpdateCheckedAt = :checkedAt
+        WHERE id = :bookId
+        """
+    )
+    suspend fun updateRemoteFacts(
+        bookId: Long,
+        score: String?,
+        listenCount: Long,
+        finished: Boolean?,
+        lastChapterTitle: String?,
+        checkedAt: Long,
+    )
+
+    @Query("UPDATE books SET remoteNewChapterCount = :count WHERE id = :bookId")
+    suspend fun setNewChapterCount(bookId: Long, count: Int)
+
+    @Query("UPDATE books SET remoteNewChapterCount = remoteNewChapterCount + :delta WHERE id = :bookId")
+    suspend fun addNewChapterCount(bookId: Long, delta: Int)
+
+    @Query("UPDATE books SET remoteToneId = :toneId WHERE id = :bookId")
+    suspend fun updateRemoteToneId(bookId: Long, toneId: String)
+
+    @Query("SELECT * FROM books WHERE sourceType = 'FQNOVEL'")
+    suspend fun getRemoteBooks(): List<BookEntity>
+
+    @Query(
+        """
         SELECT COUNT(*) FROM books
         WHERE EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id)
           AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.bookId = books.id AND c.completionState != 2)
@@ -266,6 +298,12 @@ interface ChapterDao {
 
     @Query("SELECT COALESCE(SUM(durationMs), 0) FROM chapters WHERE bookId = :bookId")
     suspend fun totalDuration(bookId: Long): Long
+
+    @Query("SELECT COALESCE(MAX(`index`), -1) FROM chapters WHERE bookId = :bookId")
+    suspend fun maxIndex(bookId: Long): Int
+
+    @Query("SELECT remoteItemId FROM chapters WHERE bookId = :bookId AND remoteItemId IS NOT NULL")
+    suspend fun remoteItemIds(bookId: Long): List<String>
 }
 
 @Dao

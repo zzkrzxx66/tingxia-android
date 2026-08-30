@@ -14,12 +14,30 @@ android {
         applicationId = "com.tingxia.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 38
-        versionName = "0.15.1"
+        versionCode = 41
+        versionName = "0.17.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // fqnovel service endpoint. The token is optional: when the server runs with
+        // FQ_API_TOKEN/STREAM_API_TOKEN set, pass the same value at build time via
+        // -PfqApiToken=... (or the TINGXIA_FQ_API_TOKEN env var).
+        buildConfigField(
+            "String",
+            "FQ_BASE_URL",
+            "\"" + (findProperty("fqBaseUrl") as String? ?: "https://fq.logix.cc.cd") + "\"",
+        )
+        buildConfigField(
+            "String",
+            "FQ_API_TOKEN",
+            "\"" + (
+                findProperty("fqApiToken") as String?
+                    ?: System.getenv("TINGXIA_FQ_API_TOKEN")
+                    ?: ""
+                ) + "\"",
+        )
     }
 
     signingConfigs {

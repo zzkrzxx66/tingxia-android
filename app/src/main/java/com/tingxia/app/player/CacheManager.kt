@@ -43,8 +43,11 @@ class CacheManager @Inject constructor(
             .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
-    fun cacheKeyForChapter(bookRemoteAudioBookId: String, remoteItemId: String): String =
-        "fqnovel_${bookRemoteAudioBookId}_$remoteItemId"
+    fun cacheKeyForChapter(
+        bookRemoteAudioBookId: String,
+        remoteItemId: String,
+        toneId: String? = com.tingxia.app.data.remote.FqEndpoints.DEFAULT_TONE,
+    ): String = com.tingxia.app.data.remote.FqEndpoints.cacheKey(bookRemoteAudioBookId, remoteItemId, toneId)
 
     /** True when every byte of [key] is already cached. */
     fun isFullyCached(key: String): Boolean {
@@ -67,10 +70,14 @@ class CacheManager @Inject constructor(
     }
 
     /** Fully cached keys for one book, used to render per-book cache status. */
-    fun fullyCachedKeys(bookRemoteAudioBookId: String, remoteItemIds: List<String>): Set<String> {
+    fun fullyCachedKeys(
+        bookRemoteAudioBookId: String,
+        remoteItemIds: List<String>,
+        toneId: String? = com.tingxia.app.data.remote.FqEndpoints.DEFAULT_TONE,
+    ): Set<String> {
         val out = HashSet<String>()
         remoteItemIds.forEach { itemId ->
-            val key = cacheKeyForChapter(bookRemoteAudioBookId, itemId)
+            val key = cacheKeyForChapter(bookRemoteAudioBookId, itemId, toneId)
             val spans = cache.getCachedSpans(key)
             if (spans.isNotEmpty()) {
                 // Fully cached iff the cache reports zero remaining bytes.

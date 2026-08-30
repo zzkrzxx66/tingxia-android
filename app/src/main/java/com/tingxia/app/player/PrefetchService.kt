@@ -48,6 +48,7 @@ class PrefetchService : Service() {
 
     @Inject lateinit var cacheManager: CacheManager
     @Inject lateinit var bookRepository: BookRepository
+    @Inject lateinit var fqNovelApi: com.tingxia.app.data.remote.FqNovelApi
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
@@ -108,6 +109,7 @@ class PrefetchService : Service() {
                         withContext(Dispatchers.IO) {
                             bookRepository.setChapterCached(chapterId, true)
                         }
+                        fillDuration(book, chapter)
                     }
                 }
             } finally {
@@ -122,12 +124,44 @@ class PrefetchService : Service() {
     }
 
     private fun cacheKeyFor(book: com.tingxia.app.data.model.Book, chapter: com.tingxia.app.data.model.Chapter): String =
-        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), chapter.remoteItemId.orEmpty())
+        cacheManager.cacheKeyForChapter(
+            book.remoteAudioBookId.orEmpty(),
+            chapter.remoteItemId.orEmpty(),
+            book.remoteToneId,
+        )
 
     private fun cacheUrlFor(book: com.tingxia.app.data.model.Book, remoteItemId: String): String =
-        "https://fq.logix.cc.cd/audio/stream/" +
-            "${book.remoteAudioBookId}/$remoteItemId?toneId=" +
-            (book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0")
+        com.tingxia.app.data.remote.FqEndpoints.streamUrl(
+            book.remoteAudioBookId.orEmpty(),
+            remoteItemId,
+            book.remoteToneId,
+        )
+
+    /**
+     * Fill in a chapter's duration from the service. The play endpoint knows it without
+     * anyone downloading audio, so a cached chapter can show its length immediately.
+     */
+    private suspend fun fillDuration(
+        book: com.tingxia.app.data.model.Book,
+        chapter: com.tingxia.app.data.model.Chapter,
+    ) {
+        if (chapter.durationMs > 0L) return
+        val itemId = chapter.remoteItemId?.takeIf { it.isNotBlank() } ?: return
+        val audioBookId = book.remoteAudioBookId?.takeIf { it.isNotBlank() } ?: return
+        runCatching {
+            withContext(Dispatchers.IO) {
+                fqNovelApi.chapterDurationMs(
+                    audioBookId,
+                    itemId,
+                    com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId),
+                )
+            }
+        }.getOrNull()?.takeIf { it > 0L }?.let { durationMs ->
+            withContext(Dispatchers.IO) {
+                bookRepository.recordRemoteChapterDuration(book.id, chapter.id, durationMs)
+            }
+        }
+    }
 
     /** Blocking download of one URL into the shared cache. Caller provides the dispatcher. */
     private fun prefetchUrl(url: String, key: String): Boolean {
@@ -194,6 +228,17 @@ class PrefetchService : Service() {
                     currentCoroutineContext().ensureActive()
                     _state.value = _state.value.copy(currentChapterTitle = chapter.displayTitle)
                     updateNotification()
+                    // Ask the service to decrypt and remux ahead of the download, so the
+                    // first byte does not wait on ffmpeg.
+                    withContext(Dispatchers.IO) {
+                        chapter.remoteItemId?.let { itemId ->
+                            fqNovelApi.warm(
+                                book.remoteAudioBookId.orEmpty(),
+                                itemId,
+                                com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId),
+                            )
+                        }
+                    }
                     val ok = withContext(Dispatchers.IO) {
                         prefetchUrl(cacheUrlFor(book, chapter.remoteItemId!!), cacheKeyFor(book, chapter))
                     }
@@ -201,6 +246,7 @@ class PrefetchService : Service() {
                         withContext(Dispatchers.IO) {
                             bookRepository.setChapterCached(chapter.id, true)
                         }
+                        fillDuration(book, chapter)
                     }
                     _state.value = _state.value.copy(
                         doneCount = _state.value.doneCount + 1,
