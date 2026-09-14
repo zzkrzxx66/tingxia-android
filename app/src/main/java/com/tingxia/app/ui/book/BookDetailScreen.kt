@@ -325,16 +325,17 @@ fun BookDetailScreen(
                         scrim = playerScrim,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp),
+                            .height(360.dp),
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp)
+                            .height(360.dp)
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    0.5f to Color.Transparent,
+                                    0.35f to Color.Transparent,
+                                    0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.7f),
                                     1f to MaterialTheme.colorScheme.background,
                                 ),
                             ),
@@ -788,16 +789,16 @@ fun BookDetailScreen(
                             progress = { book?.progressFraction ?: 0f },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(MaterialTheme.shapes.extraSmall),
+                                .height(6.dp)
+                                .clip(CircleShape),
                             color = rememberCoverAccent(book?.coverPath),
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt,
+                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
                             gapSize = 0.dp,
                             drawStopIndicator = {},
                         )
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(20.dp))
                     val continueLabel = book?.let { b ->
                         if (b.lastPlayedAt > 0 && b.currentChapterId != null) {
                             chapters.firstOrNull { it.id == b.currentChapterId }?.let { ch ->

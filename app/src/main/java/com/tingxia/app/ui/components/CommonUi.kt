@@ -664,13 +664,14 @@ fun CoverPlayButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isPlaying: Boolean = false,
-    size: Dp = 30.dp,
+    size: Dp = 28.dp,
     contentDescription: String? = null,
 ) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.94f),
+        color = Color(0xDD1A382B),
+        border = BorderStroke(0.75.dp, Color.White.copy(alpha = 0.45f)),
         shadowElevation = 4.dp,
         modifier = modifier.size(size),
     ) {
@@ -678,8 +679,8 @@ fun CoverPlayButton(
             Icon(
                 if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = contentDescription,
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(size * 0.6f),
+                tint = Color.White,
+                modifier = Modifier.size(size * 0.58f),
             )
         }
     }

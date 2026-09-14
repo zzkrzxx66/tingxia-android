@@ -55,8 +55,6 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TimerOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -103,7 +101,6 @@ import kotlinx.coroutines.launch
 import com.tingxia.app.player.PlaybackSpeeds
 import com.tingxia.app.player.PlayerUiState
 import com.tingxia.app.player.SeekOffsets
-import com.tingxia.app.player.SleepOptions
 import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.SkipOffsetsDialog
@@ -156,8 +153,8 @@ fun FullPlayerScreen(
     var scrubValue by remember { mutableFloatStateOf(0f) }
     var fineScrub by remember { mutableStateOf(false) }
     var showBookRemaining by remember { mutableStateOf(false) }
-    var speedMenu by remember { mutableStateOf(false) }
-    var sleepMenu by remember { mutableStateOf(false) }
+    var speedSheetOpen by remember { mutableStateOf(false) }
+    var sleepSheetOpen by remember { mutableStateOf(false) }
     var customSleepDialog by remember { mutableStateOf(false) }
     var customSleepMinutes by remember { mutableStateOf("10") }
     var skipOffsetsDialog by remember { mutableStateOf(false) }
@@ -622,101 +619,38 @@ fun FullPlayerScreen(
                                 label = stringResource(R.string.bookmark),
                                 modifier = Modifier.weight(1f),
                             )
-                            Box(modifier = Modifier.weight(1f)) {
-                                val speedActive = state.speed != 1.0f
-                                PlayerToolButton(
-                                    onClick = { speedMenu = true },
-                                    icon = Icons.Default.Speed,
-                                    label = if (speedActive) {
-                                        PlaybackSpeeds.label(state.speed)
-                                    } else {
-                                        stringResource(R.string.playback_speed)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    active = speedActive,
-                                )
-                                DropdownMenu(expanded = speedMenu, onDismissRequest = { speedMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                stringResource(
-                                                    if (state.usesBookSpeedOverride) R.string.use_global_speed
-                                                    else R.string.using_global_speed,
-                                                ),
-                                            )
-                                        },
-                                        onClick = {
-                                            onUseGlobalSpeed()
-                                            speedMenu = false
-                                        },
-                                    )
-                                    PlaybackSpeeds.ALL.forEach { s ->
-                                        DropdownMenuItem(
-                                            text = { Text(PlaybackSpeeds.label(s)) },
-                                            onClick = {
-                                                onSpeed(s)
-                                                speedMenu = false
-                                            },
-                                        )
-                                    }
+                            val speedActive = state.speed != 1.0f
+                            PlayerToolButton(
+                                onClick = { speedSheetOpen = true },
+                                icon = Icons.Default.Speed,
+                                label = if (speedActive) {
+                                    PlaybackSpeeds.label(state.speed)
+                                } else {
+                                    stringResource(R.string.playback_speed)
+                                },
+                                modifier = Modifier.weight(1f),
+                                active = speedActive,
+                            )
+                            val sleepActive = state.sleepRemainingMs != null ||
+                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter
+                            val sleepLabel = when {
+                                state.sleepRemainingMs != null -> {
+                                    val ms = state.sleepRemainingMs!!
+                                    val m = (ms / 60_000).toInt()
+                                    val s = ((ms % 60_000) / 1000).toInt()
+                                    "%d:%02d".format(m, s)
                                 }
+                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter ->
+                                    stringResource(R.string.end_of_chapter)
+                                else -> stringResource(R.string.sleep)
                             }
-                            Box(modifier = Modifier.weight(1f)) {
-                                val sleepActive = state.sleepRemainingMs != null ||
-                                    state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter
-                                val sleepLabel = when {
-                                    state.sleepRemainingMs != null -> {
-                                        val ms = state.sleepRemainingMs!!
-                                        val m = (ms / 60_000).toInt()
-                                        val s = ((ms % 60_000) / 1000).toInt()
-                                        "%d:%02d".format(m, s)
-                                    }
-                                    state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter ->
-                                        stringResource(R.string.end_of_chapter)
-                                    else -> stringResource(R.string.sleep)
-                                }
-                                PlayerToolButton(
-                                    onClick = { sleepMenu = true },
-                                    icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
-                                    label = sleepLabel,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    active = sleepActive,
-                                )
-                                DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
-                                    SleepOptions.MINUTES.forEach { m ->
-                                        DropdownMenuItem(
-                                            text = { Text(SleepOptions.label(m)) },
-                                            onClick = {
-                                                onSleep(m)
-                                                sleepMenu = false
-                                            },
-                                        )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.end_of_chapter)) },
-                                        onClick = {
-                                            onSleepEndOfChapter()
-                                            sleepMenu = false
-                                        },
-                                    )
-                                    if (state.sleepRemainingMs != null) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.extend_15_minutes)) },
-                                            onClick = {
-                                                onExtendSleep()
-                                                sleepMenu = false
-                                            },
-                                        )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.custom_duration)) },
-                                        onClick = {
-                                            sleepMenu = false
-                                            customSleepDialog = true
-                                        },
-                                    )
-                                }
-                            }
+                            PlayerToolButton(
+                                onClick = { sleepSheetOpen = true },
+                                icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
+                                label = sleepLabel,
+                                modifier = Modifier.weight(1f),
+                                active = sleepActive,
+                            )
                             val skipActive = state.skipIntroMs > 0L || state.skipOutroMs > 0L
                             PlayerToolButton(
                                 onClick = { skipOffsetsDialog = true },
@@ -741,6 +675,26 @@ fun FullPlayerScreen(
             }
         }
     }
+
+    PlayerSpeedSheet(
+        visible = speedSheetOpen,
+        currentSpeed = state.speed,
+        usesBookSpeedOverride = state.usesBookSpeedOverride,
+        onSpeedSelected = onSpeed,
+        onUseGlobalSpeed = onUseGlobalSpeed,
+        onDismiss = { speedSheetOpen = false },
+    )
+
+    PlayerSleepSheet(
+        visible = sleepSheetOpen,
+        sleepRemainingMs = state.sleepRemainingMs,
+        sleepMode = state.sleepMode,
+        onSleepMinutes = onSleep,
+        onSleepEndOfChapter = onSleepEndOfChapter,
+        onExtendSleep = onExtendSleep,
+        onCustomDuration = { customSleepDialog = true },
+        onDismiss = { sleepSheetOpen = false },
+    )
 
     if (skipOffsetsDialog) {
         SkipOffsetsDialog(

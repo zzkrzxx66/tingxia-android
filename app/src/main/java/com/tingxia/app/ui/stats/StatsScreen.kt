@@ -22,15 +22,26 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -189,12 +200,17 @@ private fun WeekChart(daily: List<DailyListening>) {
     val today = StatsRepository.dayStartMs(System.currentTimeMillis())
     val days = (6 downTo 0).map { today - it * StatsRepository.DAY_MS }
     val maxMs = (daily.maxOfOrNull { it.listenedMs } ?: 1L).coerceAtLeast(1L)
+    var animationTriggered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        animationTriggered = true
+    }
 
     SectionCard {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 stringResource(R.string.stats_last_7_days),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(16.dp))
             Row(
@@ -206,42 +222,61 @@ private fun WeekChart(daily: List<DailyListening>) {
                     val ms = byDay[day]?.listenedMs ?: 0L
                     val fraction = (ms.toFloat() / maxMs).coerceIn(0f, 1f)
                     val isToday = day == today
+                    val animatedFraction by animateFloatAsState(
+                        targetValue = if (animationTriggered) fraction else 0f,
+                        animationSpec = tween(700, easing = FastOutSlowInEasing),
+                        label = "statBarGrowth",
+                    )
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(40.dp),
+                        modifier = Modifier.width(42.dp),
                     ) {
                         Text(
                             formatDuration(ms),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
-                                .width(18.dp)
-                                .height(96.dp),
+                                .width(16.dp)
+                                .height(96.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                             contentAlignment = Alignment.BottomCenter,
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height((96.dp * fraction).coerceAtLeast(2.dp)),
-                            ) {
-                                androidx.compose.material3.Surface(
-                                    color = if (isToday) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-                                    },
-                                    shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.fillMaxSize(),
-                                ) {}
+                            if (animatedFraction > 0.01f) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height((96.dp * animatedFraction).coerceAtLeast(if (ms > 0) 8.dp else 0.dp))
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isToday) {
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        MaterialTheme.colorScheme.primary,
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                                                    ),
+                                                )
+                                            } else {
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                                    ),
+                                                )
+                                            },
+                                        ),
+                                )
                             }
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
                             dayFormat.format(Date(day)),
                             style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                             color = if (isToday) {
                                 MaterialTheme.colorScheme.primary
                             } else {

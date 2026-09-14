@@ -390,9 +390,7 @@ private fun DiscoverRow(books: List<FqSearchBook>, onSelectBook: (FqSearchBook) 
                     subtitle = book.author?.takeIf { it.isNotBlank() }
                         ?: stringResource(R.string.unknown_author),
                     onClick = { onSelectBook(book) },
-                    // Online artwork already reads as cover art; the paperback
-                    // overlay is reserved for owned shelf items.
-                    framed = false,
+                    framed = true,
                 )
             }
         }
@@ -442,6 +440,7 @@ private fun OnlineBookCard(book: FqSearchBook, onClick: () -> Unit) {
                 size = 74.dp,
                 ratio = COVER_RATIO_PORTRAIT,
                 corner = CoverCorner.Card,
+                framed = true,
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -567,6 +566,7 @@ private fun FqVoicePicker(
                             size = 96.dp,
                             ratio = COVER_RATIO_PORTRAIT,
                             corner = CoverCorner.Detail,
+                            framed = true,
                         )
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
