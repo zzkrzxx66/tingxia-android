@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -44,8 +45,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -119,6 +123,7 @@ fun ShelfScreen(
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
+    var isListView by rememberSaveable { mutableStateOf(false) }
     val topBarScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     LaunchedEffect(error) {
@@ -165,6 +170,14 @@ fun ShelfScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
+                    IconButton(onClick = { isListView = !isListView }) {
+                        Icon(
+                            if (isListView) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
+                            contentDescription = stringResource(
+                                if (isListView) R.string.view_grid else R.string.view_list,
+                            ),
+                        )
+                    }
                     Box {
                         IconButton(onClick = { sortMenu = true }) {
                             Icon(
@@ -253,6 +266,55 @@ fun ShelfScreen(
                             onImport = { openTree.launch(null) },
                             onGoOnline = onGoOnline,
                         )
+                    } else if (isListView) {
+                        LazyColumn(
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
+                                bottom = 24.dp,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            recent
+                                ?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }
+                                ?.takeIf { it.id != playingBookId && books.size >= 3 }
+                                ?.let { book ->
+                                    item(key = "continue_bar") {
+                                        ContinueListeningBar(
+                                            book = book,
+                                            onOpen = { onOpenBook(book.id) },
+                                            onPlay = { onPlayBook(book.id) },
+                                        )
+                                    }
+                                }
+                            item(key = "filter_row") {
+                                ShelfFilterRow(
+                                    filter = filter,
+                                    showReauthFilter = hasReauthBooks,
+                                    onFilterChange = viewModel::setFilter,
+                                )
+                            }
+                            items(books, key = { it.id }) { book ->
+                                BookListItem(
+                                    book = book,
+                                    isCurrent = book.id == playingBookId,
+                                    isPlaying = isPlaying && book.id == playingBookId,
+                                    onClick = { onOpenBook(book.id) },
+                                    onPlay = { onPlayBook(book.id) },
+                                )
+                            }
+                            if (books.isEmpty() && !importing) {
+                                item(key = "empty_filtered") {
+                                    EmptyShelf(
+                                        filtered = true,
+                                        onImport = {},
+                                        onGoOnline = onGoOnline,
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         // Hero card and the filter row scroll with the grid, so the shelf reads as
                         // one continuous surface instead of a fixed toolbar stack.
@@ -525,6 +587,141 @@ private fun BookGridItem(
             }
         },
     )
+}
+
+@Composable
+private fun BookListItem(
+    book: Book,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = rememberCoverAccent(book.coverPath)
+    SectionCard(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box {
+                BookCover(
+                    title = book.title,
+                    coverPath = book.coverPath,
+                    size = 56.dp,
+                    ratio = COVER_RATIO_PORTRAIT,
+                    corner = CoverCorner.Card,
+                    framed = true,
+                )
+                if (isCurrent) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.42f),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.GraphicEq,
+                            contentDescription = stringResource(R.string.now_playing_badge),
+                            tint = Color.White,
+                            modifier = Modifier
+                                .padding(3.dp)
+                                .size(11.dp),
+                        )
+                    }
+                }
+                if (book.needsReauth && !book.isRemote) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.extraSmall,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = stringResource(R.string.needs_reauthorization),
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier
+                                .padding(3.dp)
+                                .size(12.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = book.title,
+                    style = BookType.title,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(3.dp))
+                val meta = buildList {
+                    book.author?.takeIf { it.isNotBlank() }?.let(::add)
+                    if (book.isRemote) add(stringResource(R.string.online_badge))
+                    book.category?.takeIf { it.isNotBlank() }?.let(::add)
+                }.joinToString(" · ")
+                if (meta.isNotBlank()) {
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                }
+                val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
+                val progressText = if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                    stringResource(
+                        R.string.shelf_continue_inline,
+                        (book.progressFraction * 100).toInt(),
+                        formatDuration(remainingMs),
+                    )
+                } else if (book.totalDurationMs > 0) {
+                    formatDuration(book.totalDurationMs)
+                } else {
+                    stringResource(R.string.shelf_continue_title)
+                }
+                Text(
+                    text = progressText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                )
+                if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { book.progressFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(CircleShape),
+                        color = accent,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        strokeCap = StrokeCap.Butt,
+                        gapSize = 0.dp,
+                        drawStopIndicator = {},
+                    )
+                }
+            }
+            if (!book.needsReauth) {
+                Spacer(Modifier.width(10.dp))
+                CoverPlayButton(
+                    onClick = onPlay,
+                    isPlaying = isPlaying,
+                    size = 36.dp,
+                    contentDescription = stringResource(R.string.shelf_play_book, book.title),
+                )
+            }
+        }
+    }
 }
 
 @Composable

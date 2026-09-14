@@ -324,4 +324,7 @@
     <string name="cache_clear_selected">清除所选缓存</string>
     <string name="chapters_marked_done">已将 %1$d 章标为已听</string>
     <string name="chapters_marked_undone">已清除 %1$d 章的完成状态</string>
+    <string name="view_mode">切换视图</string>
+    <string name="view_grid">网格视图</string>
+    <string name="view_list">列表视图</string>
 </resources>

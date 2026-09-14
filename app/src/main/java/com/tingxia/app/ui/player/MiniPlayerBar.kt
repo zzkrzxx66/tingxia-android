@@ -79,6 +79,7 @@ fun MiniPlayerBar(
                 coverPath = state.coverPath,
                 size = 42.dp,
                 corner = CoverCorner.Mini,
+                framed = true,
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

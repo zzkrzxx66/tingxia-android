@@ -25,6 +25,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -103,6 +105,7 @@ import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.EmptyState
 import com.tingxia.app.ui.components.ListSectionCard
+import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.SkipOffsetsDialog
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.components.formatWordCount
@@ -115,7 +118,11 @@ import kotlinx.coroutines.launch
 // Lazy items placed before the chapter rows: the book header and the sticky tab/toolbar block.
 private const val CHAPTER_ITEMS_OFFSET = 2
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class,
+)
 @Composable
 @androidx.annotation.OptIn(UnstableApi::class)
 fun BookDetailScreen(
@@ -647,46 +654,52 @@ fun BookDetailScreen(
                                         }
                                     }
                                 }
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    stringResource(
-                                        R.string.book_chapter_duration,
-                                        chapters.size,
-                                        formatDuration(book?.totalDurationMs ?: 0),
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.75f),
-                                )
-                                book?.wordCount?.takeIf { it > 0 }?.let { words ->
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        stringResource(R.string.word_count_wan, formatWordCount(words)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.75f),
+                                val metaTags = buildList<String> {
+                                    add(
+                                        stringResource(
+                                            R.string.book_chapter_duration,
+                                            chapters.size,
+                                            formatDuration(book?.totalDurationMs ?: 0),
+                                        ),
                                     )
-                                }
-                                book?.let { current ->
-                                    val facts = buildList {
-                                        current.remoteScore?.takeIf { it.isNotBlank() }?.let {
-                                            add(stringResource(R.string.online_score, it))
-                                        }
-                                        current.remoteFinished?.let {
-                                            add(
-                                                stringResource(
-                                                    if (it) R.string.book_finished else R.string.book_serial,
-                                                ),
-                                            )
-                                        }
-                                        if (current.isTtsVoice) add(stringResource(R.string.online_badge_tts_only))
+                                    book?.wordCount?.takeIf { it > 0 }?.let { words ->
+                                        add(stringResource(R.string.word_count_wan, formatWordCount(words)))
                                     }
-                                    if (facts.isNotEmpty()) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            facts.joinToString(" · "),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.75f),
+                                    book?.remoteScore?.takeIf { it.isNotBlank() }?.let {
+                                        add(stringResource(R.string.online_score, it))
+                                    }
+                                    book?.remoteFinished?.let {
+                                        add(
+                                            stringResource(
+                                                if (it) R.string.book_finished else R.string.book_serial,
+                                            ),
                                         )
                                     }
+                                    if (book?.isTtsVoice == true) add(stringResource(R.string.online_badge_tts_only))
+                                    book?.category?.takeIf { it.isNotBlank() }?.let { add(it) }
+                                }
+                                if (metaTags.isNotEmpty()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        metaTags.forEach { tag ->
+                                            Surface(
+                                                shape = MaterialTheme.shapes.extraSmall,
+                                                color = Color.White.copy(alpha = 0.16f),
+                                            ) {
+                                                Text(
+                                                    tag,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.White.copy(alpha = 0.92f),
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                book?.let { current ->
                                     if (current.remoteNewChapterCount > 0) {
                                         Spacer(Modifier.height(8.dp))
                                         Surface(
@@ -700,23 +713,9 @@ fun BookDetailScreen(
                                                 ),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onPrimary,
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                                             )
                                         }
-                                    }
-                                }
-                                book?.category?.takeIf { it.isNotBlank() }?.let { category ->
-                                    Spacer(Modifier.height(8.dp))
-                                    Surface(
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                        color = Color.White.copy(alpha = 0.16f),
-                                    ) {
-                                        Text(
-                                            category,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = Color.White.copy(alpha = 0.9f),
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                        )
                                     }
                                 }
                             }
@@ -728,28 +727,38 @@ fun BookDetailScreen(
                     book?.description?.takeIf { it.isNotBlank() }?.let { description ->
                         Spacer(Modifier.height(16.dp))
                         var expanded by remember { mutableStateOf(false) }
-                        Text(
-                            stringResource(R.string.book_description),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            description.trim(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = if (expanded) Int.MAX_VALUE else 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            stringResource(if (expanded) R.string.collapse else R.string.expand),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clip(MaterialTheme.shapes.extraSmall)
-                                .clickable { expanded = !expanded }
-                                .padding(vertical = 6.dp, horizontal = 2.dp),
-                        )
+                        SectionCard(
+                            onClick = { expanded = !expanded },
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.book_description),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        stringResource(if (expanded) R.string.collapse else R.string.expand),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    description.trim(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = if (expanded) Int.MAX_VALUE else 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
                     if ((book?.lastPlayedAt ?: 0) > 0) {
                         Spacer(Modifier.height(16.dp))

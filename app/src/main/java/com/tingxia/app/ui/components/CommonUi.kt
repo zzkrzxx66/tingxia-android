@@ -1,6 +1,9 @@
 package com.tingxia.app.ui.components
 
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.IconButton
@@ -132,34 +135,67 @@ fun BookCover(
 }
 
 /**
- * The whole finish: a hairline inside the artwork edge and a barely-there wash at the foot.
+ * The whole finish: a tactile book-spine crease on the left, an inner hairline frame,
+ * a page-edge sheen on the right, and a gentle vignette at the foot.
  *
- * This replaces a painted paperback (spine crease, page block, cut-page hairlines). That effect
- * was pastiche at any size and turned into stripes on a 118dp shelf tile; a printed edge is all
- * the artwork needs to read as an object.
+ * This gives covers authentic hardcover/paperback physical object presence.
  */
 @Composable
 private fun CoverFinish(modifier: Modifier = Modifier) {
     val darkTheme = isSystemInDarkTheme()
-    val edge = if (darkTheme) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
+    val edge = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
     Box(
         modifier
             .fillMaxSize()
             .drawBehind {
+                val w = size.width
+                val h = size.height
+                val spineWidth = (w * 0.07f).coerceIn(4.dp.toPx(), 9.dp.toPx())
+
+                // 1. Left spine lighting: highlight ridge + crease shadow (精装书脊微凸与折痕)
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        0f to Color.White.copy(alpha = if (darkTheme) 0.16f else 0.20f),
+                        0.35f to Color.Black.copy(alpha = if (darkTheme) 0.24f else 0.16f),
+                        0.75f to Color.Black.copy(alpha = if (darkTheme) 0.10f else 0.06f),
+                        1f to Color.Transparent,
+                        startX = 0f,
+                        endX = spineWidth,
+                    ),
+                    topLeft = Offset.Zero,
+                    size = androidx.compose.ui.geometry.Size(spineWidth, h),
+                )
+
+                // 2. Right page edge sheen (书页开合切口微光)
+                val rightSheenWidth = 2.dp.toPx()
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        0f to Color.Transparent,
+                        1f to Color.White.copy(alpha = if (darkTheme) 0.08f else 0.14f),
+                        startX = w - rightSheenWidth,
+                        endX = w,
+                    ),
+                    topLeft = Offset(w - rightSheenWidth, 0f),
+                    size = androidx.compose.ui.geometry.Size(rightSheenWidth, h),
+                )
+
+                // 3. Bottom vignette wash (底角柔和阴影)
                 drawRect(
                     brush = Brush.verticalGradient(
                         0f to Color.Transparent,
                         0.72f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.16f),
+                        1f to Color.Black.copy(alpha = 0.18f),
                     ),
                 )
+
+                // 4. Subtle inner hairline frame (细腻装订内边框)
                 val stroke = 1.dp.toPx()
                 drawRect(
                     color = edge,
                     topLeft = Offset(stroke / 2f, stroke / 2f),
                     size = androidx.compose.ui.geometry.Size(
-                        size.width - stroke,
-                        size.height - stroke,
+                        w - stroke,
+                        h - stroke,
                     ),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
                 )
@@ -173,47 +209,82 @@ private fun FallbackCover(title: String, compact: Boolean, modifier: Modifier = 
     Box(
         modifier = modifier
             .fillMaxSize()
-            // A soft diagonal wash reads as printed board stock rather than a flat swatch.
+            // A rich cloth-like gradient wash reads as fine linen board stock
             .background(
                 Brush.linearGradient(
                     listOf(
-                        base.lighten(0.12f),
+                        base.lighten(0.14f),
                         base,
-                        base.darken(0.14f),
+                        base.darken(0.16f),
                     ),
                 ),
             ),
         contentAlignment = Alignment.Center,
     ) {
+        // Spine strip
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
-                .width(if (compact) 5.dp else 8.dp)
-                .background(Color.Black.copy(alpha = 0.12f)),
+                .width(if (compact) 6.dp else 10.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.18f),
+                            Color.Black.copy(alpha = 0.22f),
+                        ),
+                    ),
+                ),
         )
-        // Hairline inner frame, like the debossed border on a hardcover.
+        // Double debossed hot-stamp frame (双重烫印微凹细边框)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .drawBehind {
-                    val inset = if (compact) 4.dp.toPx() else 7.dp.toPx()
+                    val outerInset = if (compact) 4.dp.toPx() else 7.dp.toPx()
+                    val innerInset = outerInset + (if (compact) 2.dp.toPx() else 3.dp.toPx())
+                    val frameColor = Color.White.copy(alpha = 0.26f)
+                    val frameInnerColor = Color.White.copy(alpha = 0.14f)
+                    val stroke = 1.dp.toPx()
+
+                    // Outer border
                     drawRect(
-                        color = Color.White.copy(alpha = 0.22f),
-                        topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
+                        color = frameColor,
+                        topLeft = Offset(outerInset, outerInset),
                         size = androidx.compose.ui.geometry.Size(
-                            size.width - inset * 2,
-                            size.height - inset * 2,
+                            size.width - outerInset * 2,
+                            size.height - outerInset * 2,
                         ),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
                     )
+
+                    // Inner fine accent border
+                    if (!compact) {
+                        drawRect(
+                            color = frameInnerColor,
+                            topLeft = Offset(innerInset, innerInset),
+                            size = androidx.compose.ui.geometry.Size(
+                                size.width - innerInset * 2,
+                                size.height - innerInset * 2,
+                            ),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
+                        )
+                    }
                 },
         )
         Text(
             text = title.take(1).ifEmpty { stringResource(R.string.cover_fallback_character) },
             color = Color.White.copy(alpha = 0.96f),
-            fontSize = if (compact) 20.sp else 34.sp,
+            fontSize = if (compact) 22.sp else 36.sp,
             fontWeight = FontWeight.SemiBold,
+            fontFamily = FontFamily.Serif,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = Color.Black.copy(alpha = 0.35f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 4f,
+                ),
+            ),
             letterSpacing = 0.sp,
         )
     }

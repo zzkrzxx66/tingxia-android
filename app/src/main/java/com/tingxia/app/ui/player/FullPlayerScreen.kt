@@ -340,6 +340,7 @@ fun FullPlayerScreen(
                                     size = coverSize,
                                     ratio = COVER_RATIO_PORTRAIT,
                                     corner = CoverCorner.Hero,
+                                    framed = true,
                                 )
                             }
                         }
@@ -861,13 +862,14 @@ private fun PlayerToolButton(
         // row overflow on narrow phones once 选集 joined it.
         modifier = modifier.height(64.dp),
     ) {
-        // Active tools sit on a soft halo; on the blurred artwork backdrop a plain
-        // colour shift alone was too subtle to read as "on".
+        // Active tools sit on a soft halo with crisp border; on the blurred artwork backdrop
+        // a plain colour shift alone was too subtle to read as "on".
         Surface(
             onClick = onClick,
             enabled = enabled,
             shape = CircleShape,
-            color = if (active) Color.White.copy(alpha = 0.24f) else Color.Transparent,
+            color = if (active) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+            border = if (active) androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)) else null,
             modifier = Modifier.size(44.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {

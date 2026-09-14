@@ -1,6 +1,10 @@
 package com.tingxia.app.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -132,6 +136,18 @@ private fun ReadAlongParagraph(
             lineHeight = (fontSize * 1.75f).sp,
         )
     }
+    val hasActive = ranges.any { it.first == activeSentence }
+    val baseModifier = if (hasActive) {
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = 0.09f))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    }
     Text(
         annotated,
         style = baseStyle,
@@ -142,10 +158,9 @@ private fun ReadAlongParagraph(
         },
         onTextLayout = { layout = it },
         modifier = if (onTapSentence == null) {
-            Modifier.fillMaxWidth()
+            baseModifier
         } else {
-            Modifier
-                .fillMaxWidth()
+            baseModifier
                 .pointerInput(ranges) {
                     detectTapGestures { position ->
                         val offset = layout?.getOffsetForPosition(position) ?: return@detectTapGestures
