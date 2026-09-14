@@ -327,6 +327,7 @@
     <string name="view_mode">切换视图</string>
     <string name="view_grid">网格视图</string>
     <string name="view_list">列表视图</string>
+    <string name="sleep_timer_title">定时关闭</string>
     <string name="sleep_timer_popular">常用</string>
     <string name="sleep_timer_status_counting">倒计时中：将在 %1$s 后自动暂停</string>
     <string name="sleep_timer_status_end_of_chapter">已设置：将在本章播放完毕后暂停</string>

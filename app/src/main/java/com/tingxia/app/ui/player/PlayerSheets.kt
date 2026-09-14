@@ -1,13 +1,10 @@
 package com.tingxia.app.ui.player
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,9 +13,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -32,6 +32,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,8 +47,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,9 +57,9 @@ import com.tingxia.app.ui.components.formatDuration
 import kotlin.math.abs
 
 /**
- * Modern modal bottom sheet for adjusting playback speed.
+ * Modern modal bottom sheet for adjusting playback speed with balanced 4x2 grid.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSpeedSheet(
     visible: Boolean,
@@ -132,69 +131,102 @@ fun PlayerSpeedSheet(
 
             Spacer(Modifier.height(20.dp))
 
-            // Speed chips
-            val speedOptions = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
-            FlowRow(
+            // 4x2 balanced grid
+            val speedOptionsRow1 = listOf(0.75f, 1.0f, 1.25f, 1.5f)
+            val speedOptionsRow2 = listOf(1.75f, 2.0f, 2.5f, 3.0f)
+
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                speedOptions.forEach { speed ->
-                    val isSelected = abs(speed - currentSpeed) < 0.01f
-                    Surface(
+                speedOptionsRow1.forEach { speed ->
+                    SpeedChip(
+                        speed = speed,
+                        isSelected = abs(speed - currentSpeed) < 0.01f,
+                        modifier = Modifier.weight(1f),
                         onClick = {
                             onSpeedSelected(speed)
                             onDismiss()
                         },
-                        shape = MaterialTheme.shapes.medium,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                speedOptionsRow2.forEach { speed ->
+                    SpeedChip(
+                        speed = speed,
+                        isSelected = abs(speed - currentSpeed) < 0.01f,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onSpeedSelected(speed)
+                            onDismiss()
                         },
-                        border = if (!isSelected) {
-                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        } else null,
-                        modifier = Modifier
-                            .weight(1f, fill = true)
-                            .height(48.dp),
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp),
-                        ) {
-                            if (isSelected) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(Modifier.width(4.dp))
-                            }
-                            Text(
-                                text = PlaybackSpeeds.label(speed),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                            )
-                        }
-                    }
+                    )
                 }
             }
         }
     }
 }
 
+@Composable
+private fun SpeedChip(
+    speed: Float,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        border = if (!isSelected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        } else null,
+        modifier = modifier.height(46.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) {
+            if (isSelected) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(15.dp),
+                )
+                Spacer(Modifier.width(3.dp))
+            }
+            Text(
+                text = PlaybackSpeeds.label(speed),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        }
+    }
+}
+
 /**
- * Modern modal bottom sheet for setting a sleep timer, with prominent 10-minute quick option.
+ * Elegant modal bottom sheet for setting a sleep timer, designed with a clean vertical list
+ * and prominent 10-minute favorite option.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSleepSheet(
     visible: Boolean,
@@ -219,10 +251,12 @@ fun PlayerSleepSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-                .navigationBarsPadding(),
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState()),
         ) {
+            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -235,7 +269,7 @@ fun PlayerSleepSheet(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = stringResource(R.string.sleep),
+                    text = stringResource(R.string.sleep_timer_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -245,40 +279,55 @@ fun PlayerSleepSheet(
                 }
             }
 
-            // If timer is running, show rich countdown banner
+            // If timer is running, show active countdown card
             if (isTimerActive) {
                 Spacer(Modifier.height(14.dp))
                 Card(
-                    shape = MaterialTheme.shapes.large,
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                     ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.HourglassTop,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = if (sleepRemainingMs != null) {
-                                    stringResource(
-                                        R.string.sleep_timer_status_counting,
-                                        formatDuration(sleepRemainingMs),
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(38.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.HourglassTop,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(20.dp),
                                     )
-                                } else {
-                                    stringResource(R.string.sleep_timer_status_end_of_chapter)
-                                },
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontWeight = FontWeight.Medium,
-                            )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (sleepRemainingMs != null) "倒计时中" else "播完当前章停止",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                )
+                                Text(
+                                    text = if (sleepRemainingMs != null) {
+                                        formatDuration(sleepRemainingMs)
+                                    } else {
+                                        stringResource(R.string.sleep_timer_status_end_of_chapter)
+                                    },
+                                    style = if (sleepRemainingMs != null) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(12.dp))
+
+                        Spacer(Modifier.height(14.dp))
+
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth(),
@@ -287,6 +336,7 @@ fun PlayerSleepSheet(
                                 FilledTonalButton(
                                     onClick = onExtendSleep,
                                     modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.filledTonalButtonColors(
                                         containerColor = MaterialTheme.colorScheme.primary,
                                         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -303,6 +353,7 @@ fun PlayerSleepSheet(
                                     onDismiss()
                                 },
                                 modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
                             ) {
                                 Icon(Icons.Default.TimerOff, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
@@ -313,166 +364,195 @@ fun PlayerSleepSheet(
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // Options Grid
-            FlowRow(
+            if (isTimerActive) {
+                Text(
+                    text = "修改定时",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                )
+            }
+
+            // Options List Card
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // 10 分钟 (User's special favorite)
-                SleepOptionCard(
-                    title = "10 分钟",
-                    badge = stringResource(R.string.sleep_timer_popular),
-                    isHighlight = true,
-                    onClick = {
-                        onSleepMinutes(10)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                Column {
+                    // 10 分钟 (User's special favorite)
+                    SleepOptionRow(
+                        title = "10 分钟",
+                        badge = stringResource(R.string.sleep_timer_popular),
+                        isPopular = true,
+                        onClick = {
+                            onSleepMinutes(10)
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 15 分钟
-                SleepOptionCard(
-                    title = "15 分钟",
-                    onClick = {
-                        onSleepMinutes(15)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 15 分钟
+                    SleepOptionRow(
+                        title = "15 分钟",
+                        onClick = {
+                            onSleepMinutes(15)
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 30 分钟
-                SleepOptionCard(
-                    title = "30 分钟",
-                    onClick = {
-                        onSleepMinutes(30)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 30 分钟
+                    SleepOptionRow(
+                        title = "30 分钟",
+                        onClick = {
+                            onSleepMinutes(30)
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 45 分钟
-                SleepOptionCard(
-                    title = "45 分钟",
-                    onClick = {
-                        onSleepMinutes(45)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 45 分钟
+                    SleepOptionRow(
+                        title = "45 分钟",
+                        onClick = {
+                            onSleepMinutes(45)
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 60 分钟
-                SleepOptionCard(
-                    title = "60 分钟",
-                    onClick = {
-                        onSleepMinutes(60)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 60 分钟
+                    SleepOptionRow(
+                        title = "60 分钟",
+                        onClick = {
+                            onSleepMinutes(60)
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 90 分钟
-                SleepOptionCard(
-                    title = "90 分钟",
-                    onClick = {
-                        onSleepMinutes(90)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 90 分钟
+                    SleepOptionRow(
+                        title = "90 分钟",
+                        onClick = {
+                            onSleepMinutes(90)
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 播完当前章
-                SleepOptionCard(
-                    title = stringResource(R.string.end_of_chapter),
-                    onClick = {
-                        onSleepEndOfChapter()
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 播完当前章
+                    SleepOptionRow(
+                        title = stringResource(R.string.end_of_chapter),
+                        isSelected = sleepMode is SleepTimerMode.EndOfChapter,
+                        onClick = {
+                            onSleepEndOfChapter()
+                            onDismiss()
+                        },
+                    )
+                    OptionDivider()
 
-                // 自定义时长
-                SleepOptionCard(
-                    title = stringResource(R.string.custom_duration),
-                    onClick = {
-                        onDismiss()
-                        onCustomDuration()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                    // 自定义时长
+                    SleepOptionRow(
+                        title = stringResource(R.string.custom_duration),
+                        hasChevron = true,
+                        onClick = {
+                            onDismiss()
+                            onCustomDuration()
+                        },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SleepOptionCard(
+private fun SleepOptionRow(
     title: String,
     modifier: Modifier = Modifier,
     badge: String? = null,
-    isHighlight: Boolean = false,
+    isPopular: Boolean = false,
+    isSelected: Boolean = false,
+    hasChevron: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = if (isHighlight) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        border = if (isHighlight) {
-            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-        } else {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        },
+    Row(
         modifier = modifier
-            .height(52.dp),
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(horizontal = 8.dp),
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (isPopular || isSelected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (isSelected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+        )
+
+        if (badge != null) {
+            Spacer(Modifier.width(10.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(6.dp),
             ) {
-                if (isHighlight) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                ) {
                     Icon(
                         Icons.Default.Star,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(13.dp),
                     )
-                    Spacer(Modifier.width(4.dp))
-                }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = if (isHighlight) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isHighlight) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-            }
-            if (badge != null) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 3.dp, end = 4.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                ) {
+                    Spacer(Modifier.width(3.dp))
                     Text(
                         text = badge,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
         }
+
+        Spacer(Modifier.weight(1f))
+
+        if (isSelected) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        } else if (hasChevron) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
+}
+
+@Composable
+private fun OptionDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+        thickness = 0.8.dp,
+    )
 }
