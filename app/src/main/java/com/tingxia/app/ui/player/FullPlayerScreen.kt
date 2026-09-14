@@ -1,5 +1,6 @@
 package com.tingxia.app.ui.player
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -18,7 +19,10 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,10 +38,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.font.FontWeight
+import kotlin.math.abs
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
@@ -80,6 +86,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
@@ -173,6 +180,7 @@ fun FullPlayerScreen(
     val bufferedMs = state.bufferedMs
 
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -299,402 +307,460 @@ fun FullPlayerScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 24.dp)
-                                .verticalScroll(rememberScrollState()),
+                                .padding(horizontal = 20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                        Spacer(Modifier.height(12.dp))
-                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                            val coverSize = minOf(maxWidth * 0.74f, 280.dp)
-                            // A slow, barely-there swell keeps the artwork alive while playing.
-                            val breathing = rememberInfiniteTransition(label = "coverBreath")
-                            val breathScale by breathing.animateFloat(
-                                initialValue = 1f,
-                                targetValue = 1.02f,
-                                animationSpec = infiniteRepeatable(
-                                    tween(2600, easing = FastOutSlowInEasing),
-                                    RepeatMode.Reverse,
-                                ),
-                                label = "coverScale",
-                            )
-                            // Ease back to rest on pause instead of snapping from mid-breath. Loading
-                            // keeps breathing: a frozen cover is what made a stall feel like a crash.
-                            val coverScale by animateFloatAsState(
-                                targetValue = if (state.isPlaying || loading) breathScale else 1f,
-                                animationSpec = tween(450, easing = FastOutSlowInEasing),
-                                label = "coverSettle",
-                            )
-                            Surface(
-                                shape = MaterialTheme.shapes.large,
-                                shadowElevation = 24.dp,
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .scale(coverScale),
-                            ) {
-                                BookCover(
-                                    title = state.bookTitle.orEmpty(),
-                                    coverPath = state.coverPath,
-                                    size = coverSize,
-                                    ratio = COVER_RATIO_PORTRAIT,
-                                    corner = CoverCorner.Hero,
-                                    framed = true,
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(24.dp))
-                        Text(
-                            text = state.bookTitle.orEmpty(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        // Chapter changes cross-fade: swapping two lines of text instantly is what made
-                        // 上一章/下一章 feel like a jump cut.
-                        AnimatedContent(
-                            targetState = state.chapterTitle.orEmpty()
-                                .ifEmpty { stringResource(R.string.nothing_playing) },
-                            transitionSpec = {
-                                (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 6 })
-                                    .togetherWith(fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 6 })
-                            },
-                            label = "chapterTitle",
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { title ->
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.headlineSmall.copy(shadow = onArtworkTextShadow),
-                                color = Color.White,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        if (state.chapterCount > 0) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = stringResource(
-                                    R.string.chapter_progress,
-                                    state.chapterIndex + 1,
-                                    state.chapterCount,
-                                ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.8f),
-                            )
-                        }
-                        // Reserved by the animation, not by a fixed spacer: the pill expands the column
-                        // instead of overlapping the artwork or the bar.
-                        AnimatedVisibility(
-                            visible = loading,
-                            enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-                            exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
-                        ) {
-                            BufferingPill(
-                                text = stringResource(
-                                    if (state.isPreparing) R.string.loading_chapter else R.string.buffering,
-                                ),
-                                modifier = Modifier.padding(top = 10.dp),
-                            )
-                        }
-                        Spacer(Modifier.height(20.dp))
-
-                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                            if (scrubbing) {
-                                // Floating bubble tracking the thumb so long chapters can be
-                                // scrubbed to a precise spot without guessing.
-                                val fraction = if (duration > 0f) (scrubValue / duration).coerceIn(0f, 1f) else 0f
-                                val bubbleWidth = 64.dp
-                                val x = (maxWidth - bubbleWidth) * fraction
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = Color.White,
-                                    shadowElevation = 6.dp,
-                                    modifier = Modifier
-                                        .offset(x = x, y = (-30).dp)
-                                        .width(bubbleWidth),
-                                ) {
-                                    Text(
-                                        text = formatDuration(scrubValue.toLong()),
-                                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(vertical = 5.dp),
-                                    )
-                                }
-                                // Fine-scrub hint: pulling down while scrubbing switches to
-                                // quarter sensitivity for long chapters.
-                                Text(
-                                    text = stringResource(
-                                        if (fineScrub) R.string.fine_scrub_active else R.string.fine_scrub_hint,
-                                    ),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = if (fineScrub) 1f else 0.65f),
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .offset(y = 26.dp),
-                                )
-                            }
-                            // Custom scrub area: a transparent drag surface over the Slider
-                            // visual. Horizontal drag scrubs; dragging downward past a
-                            // threshold drops sensitivity to 1/4 (fine mode), anchored at the
-                            // point fine mode was entered so the thumb doesn't jump.
-                            var dragAnchorX by remember { mutableFloatStateOf(0f) }
-                            var fineAnchorValue by remember { mutableFloatStateOf(0f) }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(44.dp)
-                                    .pointerInput(duration) {
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            if (duration <= 0f) return@awaitEachGesture
-                                            scrubbing = true
-                                            fineScrub = false
-                                            dragAnchorX = down.position.x
-                                            val widthPx = size.width.coerceAtLeast(1)
-                                            scrubValue = (down.position.x / widthPx * duration).coerceIn(0f, duration)
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            val fineThresholdPx = 40.dp.toPx()
-                                            while (true) {
-                                                val event = awaitPointerEvent()
-                                                val change = event.changes.firstOrNull { it.id == down.id }
-                                                    ?: break
-                                                if (!change.pressed) break
-                                                val pos = change.position
-                                                val dy = pos.y - down.position.y
-                                                val dx = pos.x - dragAnchorX
-                                                val nowFine = dy > fineThresholdPx
-                                                if (nowFine != fineScrub) {
-                                                    // Re-anchor when entering fine mode so the
-                                                    // value continues smoothly at 1/4 speed.
-                                                    fineScrub = nowFine
-                                                    dragAnchorX = pos.x
-                                                    fineAnchorValue = scrubValue
-                                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                }
-                                                val effectiveDx = pos.x - dragAnchorX
-                                                val sensitivity = if (fineScrub) 0.25f else 1f
-                                                val base = if (fineScrub) fineAnchorValue else 0f
-                                                val delta = effectiveDx / widthPx * duration * sensitivity
-                                                scrubValue = if (fineScrub) {
-                                                    (fineAnchorValue + delta).coerceIn(0f, duration)
-                                                } else {
-                                                    (down.position.x / widthPx * duration +
-                                                        (pos.x - down.position.x) / widthPx * duration * sensitivity
-                                                        ).coerceIn(0f, duration)
-                                                }
-                                                change.consume()
-                                            }
-                                            onSeek(scrubValue.toLong())
-                                            scrubbing = false
-                                            fineScrub = false
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        }
-                                    },
+                                    .weight(1f)
+                                    .padding(vertical = 4.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                PlayerScrubTrack(
-                                    position = { if (scrubbing) scrubValue else smoothPosition.value },
-                                    buffered = { bufferedMs.toFloat() },
-                                    durationMs = duration,
-                                    scrubbing = scrubbing,
-                                    // Also indeterminate before the duration lands: an online chapter
-                                    // reports 0 until the first bytes arrive, and an empty bar with no
-                                    // motion is indistinguishable from a broken one.
-                                    indeterminate = loading || duration <= 0f,
-                                )
+                                BoxWithConstraints(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    val coverSize = minOf(
+                                        maxWidth * 0.74f,
+                                        maxHeight * 0.75f * 0.94f,
+                                        240.dp,
+                                    ).coerceAtLeast(120.dp)
+                                    // A slow, barely-there swell keeps the artwork alive while playing.
+                                    val breathing = rememberInfiniteTransition(label = "coverBreath")
+                                    val breathScale by breathing.animateFloat(
+                                        initialValue = 1f,
+                                        targetValue = 1.02f,
+                                        animationSpec = infiniteRepeatable(
+                                            tween(2600, easing = FastOutSlowInEasing),
+                                            RepeatMode.Reverse,
+                                        ),
+                                        label = "coverScale",
+                                    )
+                                    // Ease back to rest on pause instead of snapping from mid-breath. Loading
+                                    // keeps breathing: a frozen cover is what made a stall feel like a crash.
+                                    val coverScale by animateFloatAsState(
+                                        targetValue = if (state.isPlaying || loading) breathScale else 1f,
+                                        animationSpec = tween(450, easing = FastOutSlowInEasing),
+                                        label = "coverSettle",
+                                    )
+                                    Surface(
+                                        shape = MaterialTheme.shapes.large,
+                                        shadowElevation = 20.dp,
+                                        modifier = Modifier
+                                            .scale(coverScale),
+                                    ) {
+                                        BookCover(
+                                            title = state.bookTitle.orEmpty(),
+                                            coverPath = state.coverPath,
+                                            size = coverSize,
+                                            ratio = COVER_RATIO_PORTRAIT,
+                                            corner = CoverCorner.Hero,
+                                            framed = true,
+                                        )
+                                    }
+                                }
                             }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            // Before the duration is known there is no honest number to show; a
-                            // confident 0:00 / 本章剩余 0:00 reads as a broken chapter.
-                            val timeUnknown = duration <= 0f
+                            Spacer(Modifier.height(8.dp))
                             Text(
-                                text = if (timeUnknown) TIME_PLACEHOLDER else formatDuration(position.toLong()),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontFeatureSettings = "tnum",
-                                    shadow = onArtworkTextShadow,
-                                ),
-                                color = Color.White.copy(alpha = 0.9f),
+                                text = state.bookTitle.orEmpty(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White.copy(alpha = 0.75f),
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            val speed = state.speed.coerceAtLeast(0.25f)
-                            val chapterRemainingMs = ((duration - position) / speed).toLong().coerceAtLeast(0L)
-                            val bookRemainingMs = ((state.bookDurationMs - state.bookPositionMs) / speed)
-                                .toLong().coerceAtLeast(0L)
-                            Text(
-                                text = when {
-                                    showBookRemaining && state.bookDurationMs > 0L ->
-                                        stringResource(R.string.remaining_book, formatDuration(bookRemainingMs))
-                                    timeUnknown ->
-                                        stringResource(R.string.remaining_chapter, TIME_PLACEHOLDER)
-                                    else ->
-                                        stringResource(R.string.remaining_chapter, formatDuration(chapterRemainingMs))
+                            Spacer(Modifier.height(2.dp))
+                            // Chapter changes cross-fade: swapping two lines of text instantly is what made
+                            // 上一章/下一章 feel like a jump cut.
+                            AnimatedContent(
+                                targetState = state.chapterTitle.orEmpty()
+                                    .ifEmpty { stringResource(R.string.nothing_playing) },
+                                transitionSpec = {
+                                    (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 6 })
+                                        .togetherWith(fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 6 })
                                 },
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontFeatureSettings = "tnum",
-                                    shadow = onArtworkTextShadow,
-                                ),
-                                color = Color.White.copy(alpha = 0.9f),
-                                modifier = Modifier.clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) { if (state.bookDurationMs > 0L) showBookRemaining = !showBookRemaining },
-                            )
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconButton(onClick = onPrev, modifier = Modifier.size(48.dp)) {
-                                Icon(
-                                    Icons.Default.SkipPrevious,
-                                    contentDescription = stringResource(R.string.previous_chapter),
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(26.dp),
+                                label = "chapterTitle",
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { title ->
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.titleLarge.copy(shadow = onArtworkTextShadow),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(52.dp)) {
-                                Icon(
-                                    Icons.Default.Replay30,
-                                    contentDescription = stringResource(R.string.rewind_30_seconds),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(34.dp),
-                                )
-                            }
-                            PlayerPrimaryButton(
-                                isPlaying = state.isPlaying,
-                                loading = loading,
-                                onClick = onToggle,
-                            )
-                            IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(52.dp)) {
-                                Icon(
-                                    Icons.Default.Forward30,
-                                    contentDescription = stringResource(R.string.forward_30_seconds),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(34.dp),
-                                )
-                            }
-                            IconButton(onClick = onNext, modifier = Modifier.size(48.dp)) {
-                                Icon(
-                                    Icons.Default.SkipNext,
-                                    contentDescription = stringResource(R.string.next_chapter),
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(26.dp),
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(28.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                        ) {
-                            PlayerToolButton(
-                                onClick = onOpenChapters,
-                                icon = Icons.Default.FormatListNumbered,
-                                label = if (state.chapterCount > 0) {
-                                    stringResource(
-                                        R.string.chapter_picker_button,
+                            if (state.chapterCount > 0) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = stringResource(
+                                        R.string.chapter_progress,
                                         state.chapterIndex + 1,
                                         state.chapterCount,
-                                    )
-                                } else {
-                                    stringResource(R.string.chapter_picker_title)
-                                },
-                                modifier = Modifier.weight(1f),
-                                enabled = state.chapterCount > 0,
-                            )
-                            PlayerToolButton(
-                                onClick = onAddBookmark,
-                                icon = Icons.Default.BookmarkAdd,
-                                label = stringResource(R.string.bookmark),
-                                modifier = Modifier.weight(1f),
-                            )
-                            val speedActive = state.speed != 1.0f
-                            PlayerToolButton(
-                                onClick = { speedSheetOpen = true },
-                                icon = Icons.Default.Speed,
-                                label = if (speedActive) {
-                                    PlaybackSpeeds.label(state.speed)
-                                } else {
-                                    stringResource(R.string.playback_speed)
-                                },
-                                modifier = Modifier.weight(1f),
-                                active = speedActive,
-                            )
-                            val sleepActive = state.sleepRemainingMs != null ||
-                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter
-                            val sleepLabel = when {
-                                state.sleepRemainingMs != null -> {
-                                    val ms = state.sleepRemainingMs!!
-                                    val m = (ms / 60_000).toInt()
-                                    val s = ((ms % 60_000) / 1000).toInt()
-                                    "%d:%02d".format(m, s)
-                                }
-                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter ->
-                                    stringResource(R.string.end_of_chapter)
-                                else -> stringResource(R.string.sleep)
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                )
                             }
-                            PlayerToolButton(
-                                onClick = { sleepSheetOpen = true },
-                                icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
-                                label = sleepLabel,
-                                modifier = Modifier.weight(1f),
-                                active = sleepActive,
-                            )
-                            val skipActive = state.skipIntroMs > 0L || state.skipOutroMs > 0L
-                            PlayerToolButton(
-                                onClick = { skipOffsetsDialog = true },
-                                icon = Icons.Default.ContentCut,
-                                label = if (skipActive) {
-                                    stringResource(
-                                        R.string.skip_active_summary,
-                                        state.skipIntroMs / 1_000L,
-                                        state.skipOutroMs / 1_000L,
+                            // Reserved by the animation, not by a fixed spacer: the pill expands the column
+                            // instead of overlapping the artwork or the bar.
+                            AnimatedVisibility(
+                                visible = loading,
+                                enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                                exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
+                            ) {
+                                BufferingPill(
+                                    text = stringResource(
+                                        if (state.isPreparing) R.string.loading_chapter else R.string.buffering,
+                                    ),
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+
+                            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                if (scrubbing) {
+                                    // Floating bubble tracking the thumb so long chapters can be
+                                    // scrubbed to a precise spot without guessing.
+                                    val fraction = if (duration > 0f) (scrubValue / duration).coerceIn(0f, 1f) else 0f
+                                    val bubbleWidth = 64.dp
+                                    val x = (maxWidth - bubbleWidth) * fraction
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = Color.White,
+                                        shadowElevation = 6.dp,
+                                        modifier = Modifier
+                                            .offset(x = x, y = (-30).dp)
+                                            .width(bubbleWidth),
+                                    ) {
+                                        Text(
+                                            text = formatDuration(scrubValue.toLong()),
+                                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(vertical = 5.dp),
+                                        )
+                                    }
+                                    // Fine-scrub hint: pulling down while scrubbing switches to
+                                    // quarter sensitivity for long chapters.
+                                    Text(
+                                        text = stringResource(
+                                            if (fineScrub) R.string.fine_scrub_active else R.string.fine_scrub_hint,
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = if (fineScrub) 1f else 0.65f),
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .offset(y = 26.dp),
                                     )
-                                } else {
-                                    stringResource(R.string.skip_offsets)
-                                },
-                                modifier = Modifier.weight(1f),
-                                active = skipActive,
-                            )
-                        }
-                        Spacer(Modifier.height(32.dp))
+                                }
+                                // Custom scrub area: a transparent drag surface over the Slider
+                                // visual. Horizontal drag scrubs; dragging downward past a
+                                // threshold drops sensitivity to 1/4 (fine mode), anchored at the
+                                // point fine mode was entered so the thumb doesn't jump.
+                                var dragAnchorX by remember { mutableFloatStateOf(0f) }
+                                var fineAnchorValue by remember { mutableFloatStateOf(0f) }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .pointerInput(duration) {
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false)
+                                                if (duration <= 0f) return@awaitEachGesture
+                                                scrubbing = true
+                                                fineScrub = false
+                                                dragAnchorX = down.position.x
+                                                val widthPx = size.width.coerceAtLeast(1)
+                                                scrubValue = (down.position.x / widthPx * duration).coerceIn(0f, duration)
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                val fineThresholdPx = 40.dp.toPx()
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    if (!change.pressed) break
+                                                    val pos = change.position
+                                                    val dy = pos.y - down.position.y
+                                                    val dx = pos.x - dragAnchorX
+                                                    val nowFine = dy > fineThresholdPx
+                                                    if (nowFine != fineScrub) {
+                                                        // Re-anchor when entering fine mode so the
+                                                        // value continues smoothly at 1/4 speed.
+                                                        fineScrub = nowFine
+                                                        dragAnchorX = pos.x
+                                                        fineAnchorValue = scrubValue
+                                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    }
+                                                    val effectiveDx = pos.x - dragAnchorX
+                                                    val sensitivity = if (fineScrub) 0.25f else 1f
+                                                    val base = if (fineScrub) fineAnchorValue else 0f
+                                                    val delta = effectiveDx / widthPx * duration * sensitivity
+                                                    scrubValue = if (fineScrub) {
+                                                        (fineAnchorValue + delta).coerceIn(0f, duration)
+                                                    } else {
+                                                        (down.position.x / widthPx * duration +
+                                                            (pos.x - down.position.x) / widthPx * duration * sensitivity
+                                                            ).coerceIn(0f, duration)
+                                                    }
+                                                    change.consume()
+                                                }
+                                                onSeek(scrubValue.toLong())
+                                                scrubbing = false
+                                                fineScrub = false
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    PlayerScrubTrack(
+                                        position = { if (scrubbing) scrubValue else smoothPosition.value },
+                                        buffered = { bufferedMs.toFloat() },
+                                        durationMs = duration,
+                                        scrubbing = scrubbing,
+                                        // Also indeterminate before the duration lands: an online chapter
+                                        // reports 0 until the first bytes arrive, and an empty bar with no
+                                        // motion is indistinguishable from a broken one.
+                                        indeterminate = loading || duration <= 0f,
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                // Before the duration is known there is no honest number to show; a
+                                // confident 0:00 / 本章剩余 0:00 reads as a broken chapter.
+                                val timeUnknown = duration <= 0f
+                                Text(
+                                    text = if (timeUnknown) TIME_PLACEHOLDER else formatDuration(position.toLong()),
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontFeatureSettings = "tnum",
+                                        shadow = onArtworkTextShadow,
+                                    ),
+                                    color = Color.White.copy(alpha = 0.9f),
+                                )
+                                val speed = state.speed.coerceAtLeast(0.25f)
+                                val chapterRemainingMs = ((duration - position) / speed).toLong().coerceAtLeast(0L)
+                                val bookRemainingMs = ((state.bookDurationMs - state.bookPositionMs) / speed)
+                                    .toLong().coerceAtLeast(0L)
+                                Text(
+                                    text = when {
+                                        showBookRemaining && state.bookDurationMs > 0L ->
+                                            stringResource(R.string.remaining_book, formatDuration(bookRemainingMs))
+                                        timeUnknown ->
+                                            stringResource(R.string.remaining_chapter, TIME_PLACEHOLDER)
+                                        else ->
+                                            stringResource(R.string.remaining_chapter, formatDuration(chapterRemainingMs))
+                                    },
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontFeatureSettings = "tnum",
+                                        shadow = onArtworkTextShadow,
+                                    ),
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) { if (state.bookDurationMs > 0L) showBookRemaining = !showBookRemaining },
+                                )
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                IconButton(onClick = onPrev, modifier = Modifier.size(44.dp)) {
+                                    Icon(
+                                        Icons.Default.SkipPrevious,
+                                        contentDescription = stringResource(R.string.previous_chapter),
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(26.dp),
+                                    )
+                                }
+                                IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(48.dp)) {
+                                    Icon(
+                                        Icons.Default.Replay30,
+                                        contentDescription = stringResource(R.string.rewind_30_seconds),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(32.dp),
+                                    )
+                                }
+                                PlayerPrimaryButton(
+                                    isPlaying = state.isPlaying,
+                                    loading = loading,
+                                    onClick = onToggle,
+                                )
+                                IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(48.dp)) {
+                                    Icon(
+                                        Icons.Default.Forward30,
+                                        contentDescription = stringResource(R.string.forward_30_seconds),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(32.dp),
+                                    )
+                                }
+                                IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) {
+                                    Icon(
+                                        Icons.Default.SkipNext,
+                                        contentDescription = stringResource(R.string.next_chapter),
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(26.dp),
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PlayerToolButton(
+                                    onClick = onOpenChapters,
+                                    icon = Icons.Default.FormatListNumbered,
+                                    label = if (state.chapterCount > 0) {
+                                        stringResource(
+                                            R.string.chapter_picker_button,
+                                            state.chapterIndex + 1,
+                                            state.chapterCount,
+                                        )
+                                    } else {
+                                        stringResource(R.string.chapter_picker_title)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = state.chapterCount > 0,
+                                )
+                                PlayerToolButton(
+                                    onClick = onAddBookmark,
+                                    icon = Icons.Default.BookmarkAdd,
+                                    label = stringResource(R.string.bookmark),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                val speedActive = state.speed != 1.0f
+                                PlayerToolButton(
+                                    onClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val nextSpeed = when {
+                                            abs(state.speed - 1.0f) < 0.05f -> 1.25f
+                                            abs(state.speed - 1.25f) < 0.05f -> 1.5f
+                                            abs(state.speed - 1.5f) < 0.05f -> 1.75f
+                                            abs(state.speed - 1.75f) < 0.05f -> 2.0f
+                                            else -> 1.0f
+                                        }
+                                        onSpeed(nextSpeed)
+                                        Toast.makeText(context, "播放倍速: ${PlaybackSpeeds.label(nextSpeed)}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        speedSheetOpen = true
+                                    },
+                                    icon = Icons.Default.Speed,
+                                    label = if (speedActive) {
+                                        PlaybackSpeeds.label(state.speed)
+                                    } else {
+                                        stringResource(R.string.playback_speed)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    active = speedActive,
+                                )
+                                val sleepActive = state.sleepRemainingMs != null ||
+                                    state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter
+                                val sleepLabel = when {
+                                    state.sleepRemainingMs != null -> {
+                                        val ms = state.sleepRemainingMs!!
+                                        val m = (ms / 60_000).toInt()
+                                        val s = ((ms % 60_000) / 1000).toInt()
+                                        "%d:%02d".format(m, s)
+                                    }
+                                    state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter ->
+                                        stringResource(R.string.end_of_chapter)
+                                    else -> stringResource(R.string.sleep)
+                                }
+                                PlayerToolButton(
+                                    onClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (!sleepActive) {
+                                            onSleep(10)
+                                            Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            when {
+                                                state.sleepRemainingMs != null && state.sleepRemainingMs!! <= 11 * 60_000L -> {
+                                                    onSleep(30)
+                                                    Toast.makeText(context, "已切换为 30 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                                }
+                                                state.sleepRemainingMs != null -> {
+                                                    onSleepEndOfChapter()
+                                                    Toast.makeText(context, "已设置为播完本章后关闭", Toast.LENGTH_SHORT).show()
+                                                }
+                                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter -> {
+                                                    onSleep(0)
+                                                    Toast.makeText(context, "已关闭定时", Toast.LENGTH_SHORT).show()
+                                                }
+                                                else -> {
+                                                    onSleep(10)
+                                                    Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        sleepSheetOpen = true
+                                    },
+                                    icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
+                                    label = sleepLabel,
+                                    modifier = Modifier.weight(1f),
+                                    active = sleepActive,
+                                )
+                                val skipActive = state.skipIntroMs > 0L || state.skipOutroMs > 0L
+                                PlayerToolButton(
+                                    onClick = { skipOffsetsDialog = true },
+                                    icon = Icons.Default.ContentCut,
+                                    label = if (skipActive) {
+                                        stringResource(
+                                            R.string.skip_active_summary,
+                                            state.skipIntroMs / 1_000L,
+                                            state.skipOutroMs / 1_000L,
+                                        )
+                                    } else {
+                                        stringResource(R.string.skip_offsets)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    active = skipActive,
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
                         }
                     }
                 }
             }
+
+            PlayerSpeedPopup(
+                visible = speedSheetOpen,
+                currentSpeed = state.speed,
+                usesBookSpeedOverride = state.usesBookSpeedOverride,
+                onSpeedSelected = onSpeed,
+                onUseGlobalSpeed = onUseGlobalSpeed,
+                onDismiss = { speedSheetOpen = false },
+            )
+
+            PlayerSleepPopup(
+                visible = sleepSheetOpen,
+                sleepRemainingMs = state.sleepRemainingMs,
+                sleepMode = state.sleepMode,
+                onSleepMinutes = onSleep,
+                onSleepEndOfChapter = onSleepEndOfChapter,
+                onExtendSleep = onExtendSleep,
+                onCustomDuration = { customSleepDialog = true },
+                onDismiss = { sleepSheetOpen = false },
+            )
         }
     }
-
-    PlayerSpeedSheet(
-        visible = speedSheetOpen,
-        currentSpeed = state.speed,
-        usesBookSpeedOverride = state.usesBookSpeedOverride,
-        onSpeedSelected = onSpeed,
-        onUseGlobalSpeed = onUseGlobalSpeed,
-        onDismiss = { speedSheetOpen = false },
-    )
-
-    PlayerSleepSheet(
-        visible = sleepSheetOpen,
-        sleepRemainingMs = state.sleepRemainingMs,
-        sleepMode = state.sleepMode,
-        onSleepMinutes = onSleep,
-        onSleepEndOfChapter = onSleepEndOfChapter,
-        onExtendSleep = onExtendSleep,
-        onCustomDuration = { customSleepDialog = true },
-        onDismiss = { sleepSheetOpen = false },
-    )
 
     if (skipOffsetsDialog) {
         SkipOffsetsDialog(
@@ -796,12 +862,14 @@ private fun PlayerPrimaryButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlayerToolButton(
     onClick: () -> Unit,
     icon: ImageVector,
     label: String,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     active: Boolean = false,
     enabled: Boolean = true,
 ) {
@@ -812,29 +880,38 @@ private fun PlayerToolButton(
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        // Width comes from the caller (a weight in the 5-up tool row); a fixed 72dp made the
-        // row overflow on narrow phones once 选集 joined it.
-        modifier = modifier.height(64.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .then(
+                if (enabled && onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else if (enabled) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
+            .padding(vertical = 2.dp),
     ) {
-        // Active tools sit on a soft halo with crisp border; on the blurred artwork backdrop
-        // a plain colour shift alone was too subtle to read as "on".
         Surface(
-            onClick = onClick,
-            enabled = enabled,
             shape = CircleShape,
             color = if (active) Color.White.copy(alpha = 0.22f) else Color.Transparent,
-            border = if (active) androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)) else null,
-            modifier = Modifier.size(44.dp),
+            border = if (active) BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)) else null,
+            modifier = Modifier.size(40.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     icon,
                     contentDescription = label,
                     tint = tint,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
+        Spacer(Modifier.height(3.dp))
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
