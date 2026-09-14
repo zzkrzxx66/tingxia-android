@@ -1,7 +1,7 @@
 package com.tingxia.app.player
 
 object PlaybackSpeeds {
-    val ALL = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)
+    val ALL = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
 
     fun label(speed: Float): String {
         return if (speed == speed.toInt().toFloat()) {

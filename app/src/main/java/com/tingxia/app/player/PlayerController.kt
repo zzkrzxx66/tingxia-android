@@ -431,23 +431,23 @@ class PlayerController @Inject constructor(
     }
 
     fun setSpeed(speed: Float, asBookDefault: Boolean = true) {
-        require(speed in PlaybackSpeeds.ALL) { "不支持的播放倍速" }
-        controller?.setPlaybackSpeed(speed)
+        val targetSpeed = PlaybackSpeeds.ALL.minByOrNull { kotlin.math.abs(it - speed) } ?: speed
+        controller?.setPlaybackSpeed(targetSpeed)
         _state.value = _state.value.copy(
-            speed = speed,
+            speed = targetSpeed,
             usesBookSpeedOverride = asBookDefault && _state.value.bookId != null,
         )
         val bookId = _state.value.bookId
         scope.launch {
             if (asBookDefault && bookId != null) {
-                bookRepository.setBookPlaybackSpeed(bookId, speed)
+                bookRepository.setBookPlaybackSpeed(bookId, targetSpeed)
                 refreshQueueMetadata(bookId)
             } else {
-                preferences.setDefaultSpeed(speed)
+                preferences.setDefaultSpeed(targetSpeed)
             }
         }
         if (bookId != null) {
-            val args = bundleOf("bookId" to bookId, "speed" to speed)
+            val args = bundleOf("bookId" to bookId, "speed" to targetSpeed)
             controller?.sendCustomCommand(
                 SessionCommand(CustomCommands.SET_BOOK_SPEED, Bundle.EMPTY),
                 args,
