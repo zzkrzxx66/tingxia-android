@@ -61,6 +61,8 @@ class CancellableIoTest {
         val failure = runCatching {
             cancellableIo(cancel = {}) { throw error }
         }.exceptionOrNull()
-        assertEquals(error, failure)
+        // Coroutine stack-trace recovery may copy the exception instance.
+        assertTrue(failure is IOException)
+        assertEquals(error.message, failure?.message)
     }
 }
