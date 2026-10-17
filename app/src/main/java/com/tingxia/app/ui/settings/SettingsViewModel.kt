@@ -102,9 +102,16 @@ class SettingsViewModel @Inject constructor(
 
     fun clearCache() {
         viewModelScope.launch {
-            cacheManager.clearAll()
-            _cacheBytes.value = 0L
-            _message.value = "已清空全部缓存"
+            try {
+                cacheManager.clearAll()
+                _cacheBytes.value = cacheManager.cachedBytes()
+                _message.value = "已清空全部缓存"
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                refreshCacheUsage()
+                _error.value = error.message ?: "清理缓存失败"
+            }
         }
     }
 

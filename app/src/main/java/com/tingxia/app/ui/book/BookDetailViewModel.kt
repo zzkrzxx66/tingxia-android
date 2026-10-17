@@ -129,19 +129,20 @@ class BookDetailViewModel @Inject constructor(
         if (ids.isEmpty()) return
         viewModelScope.launch {
             val book = book.value ?: return@launch
-            ids.forEach { chapterId ->
-                val itemId = chapters.value.firstOrNull { it.id == chapterId }?.remoteItemId
-                    ?: return@forEach
-                try {
-                    cacheManager.cache.removeResource(
-                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
-                    )
-                } catch (_: Exception) {
+            try {
+                val keys = chapters.value.filter { it.id in ids }.mapNotNull { chapter ->
+                    chapter.remoteItemId?.let { itemId ->
+                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId)
+                    }
                 }
-                bookRepository.setChapterCached(chapterId, false)
+                cacheManager.remove(keys)
+                _message.value = app.getString(R.string.cache_cleared)
+                clearChapterSelection()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _error.value = error.message ?: "清理缓存失败"
             }
-            _message.value = app.getString(R.string.cache_cleared)
-            clearChapterSelection()
         }
     }
 
@@ -613,16 +614,14 @@ class BookDetailViewModel @Inject constructor(
             val book = book.value ?: return@launch
             val itemId = chapter.remoteItemId ?: return@launch
             try {
-                cacheManager.cache.removeResource(
-                    cacheManager.cacheKeyForChapter(
-                        book.remoteAudioBookId.orEmpty(),
-                        itemId,
-                        book.remoteToneId,
-                    ),
-                )
-            } catch (_: Exception) {
+                cacheManager.remove(listOf(
+                    cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
+                ))
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _error.value = error.message ?: "清理缓存失败"
             }
-            bookRepository.setChapterCached(chapter.id, false)
         }
     }
 
@@ -630,19 +629,16 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val book = book.value ?: return@launch
-                val chapters = chapters.value
-                chapters.forEach { ch ->
-                    val itemId = ch.remoteItemId ?: return@forEach
-                    val key = cacheManager.cacheKeyForChapter(
+                val keys = chapters.value.mapNotNull { ch ->
+                    val itemId = ch.remoteItemId ?: return@mapNotNull null
+                    cacheManager.cacheKeyForChapter(
                         book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId,
                     )
-                    try {
-                        cacheManager.cache.removeResource(key)
-                    } catch (_: Exception) {
-                    }
                 }
-                bookRepository.clearCachedFlagForBook(bookId)
+                cacheManager.remove(keys)
                 _message.value = app.getString(R.string.cache_cleared)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (e: Exception) {
                 _error.value = e.message
             }

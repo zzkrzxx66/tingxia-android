@@ -24,6 +24,7 @@ import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.data.model.toModel
 import com.tingxia.app.data.policy.OnlineMetaSyncPolicy
 import com.tingxia.app.data.policy.SafPermissionPolicy
+import com.tingxia.app.data.policy.remoteTotalDuration
 import com.tingxia.app.data.remote.FqAudioChapter
 import com.tingxia.app.data.remote.FqAudioMeta
 import com.tingxia.app.data.remote.FqAudioTone
@@ -230,8 +231,18 @@ class BookRepository @Inject constructor(
         )
         if (fresh.isNotEmpty()) {
             bookDao.addNewChapterCount(bookId, fresh.size)
-            meta?.totalDurationMs?.takeIf { it > 0L }?.let { bookDao.updateTotalDuration(bookId, it) }
             invalidateOffsetIndex(bookId)
+        }
+        // Refresh even without new chapters, repairing totals saved by older versions.
+        meta?.totalDurationMs?.takeIf { it > 0L }?.let { upstreamTotal ->
+            bookDao.updateTotalDuration(
+                bookId,
+                remoteTotalDuration(
+                    upstreamTotal,
+                    chapterDao.totalDuration(bookId),
+                    chapterDao.hasUnknownDurations(bookId),
+                ),
+            )
         }
         RemoteUpdateResult(
             bookId = bookId,
@@ -288,7 +299,14 @@ class BookRepository @Inject constructor(
             // overwriting them with the whole-file duration would corrupt progress.
             if (book.sourceType != "FQNOVEL") return@withTransaction
             if (chapterDao.setDurationIfUnknown(bookId, chapterId, durationMs) > 0) {
-                bookDao.updateTotalDuration(bookId, chapterDao.totalDuration(bookId))
+                bookDao.updateTotalDuration(
+                    bookId,
+                    remoteTotalDuration(
+                        book.totalDurationMs,
+                        chapterDao.totalDuration(bookId),
+                        chapterDao.hasUnknownDurations(bookId),
+                    ),
+                )
             }
         }
         invalidateOffsetIndex(bookId)
@@ -840,12 +858,6 @@ class BookRepository @Inject constructor(
             chapterDao.markInProgress(chapterId)
         }
     }
-
-    suspend fun setChapterCached(chapterId: Long, cached: Boolean) =
-        chapterDao.setChapterCached(chapterId, cached)
-
-    suspend fun clearCachedFlagForBook(bookId: Long) =
-        chapterDao.clearCachedFlagForBook(bookId)
 
     suspend fun setChapterCompleted(chapterId: Long, completed: Boolean) {
         chapterDao.setCompleted(chapterId, completed)

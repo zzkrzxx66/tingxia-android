@@ -1,15 +1,25 @@
 package com.tingxia.app.player
 
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheEvictor
+import androidx.media3.datasource.cache.CacheSpan
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import com.tingxia.app.data.db.ChapterDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
@@ -26,14 +36,61 @@ import javax.inject.Singleton
 @Singleton
 class CacheManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    chapterDao: ChapterDao,
 ) {
+    private val refreshRequests = Channel<Unit>(Channel.CONFLATED)
+    private val synchronizer = CacheStatusSynchronizer(
+        entries = chapterDao::cacheEntries,
+        isFullyCached = ::isFullyCached,
+        update = { entry, cached ->
+            chapterDao.updateCachedRecording(
+                entry.chapterId, entry.audioBookId, entry.itemId, entry.toneId, cached,
+            )
+        },
+    )
+
     val cache: Cache by lazy {
         val dir = File(context.cacheDir, "audio_cache").apply { mkdirs() }
+        val lru = LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES)
+        val evictor = object : CacheEvictor by lru {
+            override fun onCacheInitialized() {
+                lru.onCacheInitialized()
+                refreshRequests.trySend(Unit)
+            }
+
+            override fun onSpanAdded(cache: Cache, span: CacheSpan) {
+                lru.onSpanAdded(cache, span)
+                refreshRequests.trySend(Unit)
+            }
+
+            override fun onSpanRemoved(cache: Cache, span: CacheSpan) {
+                lru.onSpanRemoved(cache, span)
+                refreshRequests.trySend(Unit)
+            }
+        }
         SimpleCache(
             dir,
-            LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES),
+            evictor,
             StandaloneDatabaseProvider(context),
         )
+    }
+
+    init {
+        // Cache callbacks run under SimpleCache's lock. Only signal here; query Room
+        // and read the cache later on IO, coalescing bursts of span changes.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            for (request in refreshRequests) {
+                delay(250)
+                try {
+                    synchronizeCacheStatus()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Log.w("TingXiaCache", "Could not reconcile cached chapters", error)
+                }
+            }
+        }
+        refreshRequests.trySend(Unit)
     }
 
     /** Cache data-source factory used by the player for remote items only. */
@@ -57,7 +114,7 @@ class CacheManager @Inject constructor(
                 androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH,
                 Long.MIN_VALUE,
             )
-            if (length == Long.MIN_VALUE) return false
+            if (length <= 0L) return false
             cache.getCachedBytes(key, 0, length) >= length
         } catch (_: Exception) {
             false
@@ -75,34 +132,26 @@ class CacheManager @Inject constructor(
         remoteItemIds: List<String>,
         toneId: String? = com.tingxia.app.data.remote.FqEndpoints.DEFAULT_TONE,
     ): Set<String> {
-        val out = HashSet<String>()
-        remoteItemIds.forEach { itemId ->
-            val key = cacheKeyForChapter(bookRemoteAudioBookId, itemId, toneId)
-            val spans = cache.getCachedSpans(key)
-            if (spans.isNotEmpty()) {
-                // Fully cached iff the cache reports zero remaining bytes.
-                val remaining = cache.getCachedLength(key, 0, Long.MAX_VALUE)
-                val contentLength = cache.getContentMetadata(key)
-                    .get(androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH,
-                        Long.MIN_VALUE)
-                if (contentLength != Long.MIN_VALUE) {
-                    val cached = cache.getCachedBytes(key, 0, contentLength)
-                    if (cached >= contentLength) out += itemId
-                } else if (remaining != Long.MAX_VALUE) {
-                    out += itemId
-                }
-            }
+        return remoteItemIds.filterTo(HashSet()) { itemId ->
+            isFullyCached(cacheKeyForChapter(bookRemoteAudioBookId, itemId, toneId))
         }
-        return out
     }
 
-    suspend fun clearAll() {
-        withContext(Dispatchers.IO) {
-            try {
-                cache.keys.forEach { key -> cache.removeResource(key) }
-            } catch (_: Exception) {
-            }
+    suspend fun synchronizeCacheStatus() = withContext(Dispatchers.IO) {
+        synchronizer.refresh()
+    }
+
+    suspend fun remove(keys: Collection<String>) = withContext(Dispatchers.IO) {
+        try {
+            keys.distinct().forEach { cache.removeResource(it) }
+        } finally {
+            // Partial failures must also leave the indicators consistent with disk.
+            synchronizeCacheStatus()
         }
+    }
+
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        remove(cache.keys.toList())
     }
 
     companion object {

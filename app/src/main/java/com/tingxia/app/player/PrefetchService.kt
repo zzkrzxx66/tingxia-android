@@ -21,8 +21,8 @@ import com.tingxia.app.TingXiaApp
 import com.tingxia.app.data.repo.BookRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
@@ -30,7 +30,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -51,7 +50,7 @@ class PrefetchService : Service() {
     @Inject lateinit var fqNovelApi: com.tingxia.app.data.remote.FqNovelApi
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var job: Job? = null
+    private val tasks = PrefetchTaskRunner(scope)
 
     data class PrefetchState(
         val running: Boolean = false,
@@ -94,29 +93,32 @@ class PrefetchService : Service() {
 
     /** Download one chapter into the cache, without a foreground notification. */
     private fun cacheSingleChapter(bookId: Long, chapterId: Long) {
+        if (chapterId in _state.value.singleChapterIds) return
+        _state.value = _state.value.copy(
+            singleChapterIds = _state.value.singleChapterIds + chapterId,
+        )
         scope.launch {
-            _state.value = _state.value.copy(
-                singleChapterIds = _state.value.singleChapterIds + chapterId,
-            )
             try {
                 val book = withContext(Dispatchers.IO) { bookRepository.getBook(bookId) }
                 val chapter = withContext(Dispatchers.IO) { bookRepository.getChapter(chapterId) }
-                if (book != null && chapter != null && !chapter.remoteItemId.isNullOrBlank()) {
+                if (book != null && chapter?.bookId == bookId && !chapter.remoteItemId.isNullOrBlank()) {
                     val ok = withContext(Dispatchers.IO) {
                         prefetchUrl(cacheUrlFor(book, chapter.remoteItemId!!), cacheKeyFor(book, chapter))
                     }
                     if (ok) {
-                        withContext(Dispatchers.IO) {
-                            bookRepository.setChapterCached(chapterId, true)
-                        }
+                        cacheManager.synchronizeCacheStatus()
                         fillDuration(book, chapter)
                     }
                 }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w("TingXiaPrefetch", "Chapter download failed", error)
             } finally {
                 _state.value = _state.value.copy(
                     singleChapterIds = _state.value.singleChapterIds - chapterId,
                 )
-                if (job?.isActive != true && _state.value.singleChapterIds.isEmpty()) {
+                if (!tasks.isRunning && _state.value.singleChapterIds.isEmpty()) {
                     stopSelf()
                 }
             }
@@ -148,23 +150,26 @@ class PrefetchService : Service() {
         if (chapter.durationMs > 0L) return
         val itemId = chapter.remoteItemId?.takeIf { it.isNotBlank() } ?: return
         val audioBookId = book.remoteAudioBookId?.takeIf { it.isNotBlank() } ?: return
-        runCatching {
-            withContext(Dispatchers.IO) {
-                fqNovelApi.chapterDurationMs(
-                    audioBookId,
-                    itemId,
-                    com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId),
-                )
-            }
-        }.getOrNull()?.takeIf { it > 0L }?.let { durationMs ->
+        val durationMs = try {
+            fqNovelApi.chapterDurationMs(
+                audioBookId,
+                itemId,
+                com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            return
+        }
+        if (durationMs > 0L) {
             withContext(Dispatchers.IO) {
                 bookRepository.recordRemoteChapterDuration(book.id, chapter.id, durationMs)
             }
         }
     }
 
-    /** Blocking download of one URL into the shared cache. Caller provides the dispatcher. */
-    private fun prefetchUrl(url: String, key: String): Boolean {
+    /** Cancel CacheWriter as soon as the request is cancelled, then await its cleanup. */
+    private suspend fun prefetchUrl(url: String, key: String): Boolean {
         return try {
             val dataSourceFactory = CacheDataSource.Factory()
                 .setCache(cacheManager.cache)
@@ -174,13 +179,13 @@ class PrefetchService : Service() {
             val dataSource = dataSourceFactory.createDataSource()
             val writer = CacheWriter(dataSource, dataSpec, null) { _, _, _ -> }
             try {
-                writer.cache()
-                true
+                cancellableIo(cancel = writer::cancel) { writer.cache() }
+                cacheManager.isFullyCached(key)
             } finally {
                 runCatching { dataSource.close() }
             }
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is CancellationException) throw e
             false
         }
     }
@@ -195,79 +200,78 @@ class PrefetchService : Service() {
         count: Int = -1,
         chapterIds: List<Long> = emptyList(),
     ) {
-        job?.cancel()
-        job = scope.launch {
-            _state.value = PrefetchState(running = true, bookId = bookId)
-            startForegroundWithNotification(buildNotification(_state.value))
-            try {
-                val book = withContext(Dispatchers.IO) { bookRepository.getBook(bookId) }
-                val chapters = withContext(Dispatchers.IO) { bookRepository.getChapters(bookId) }
-                if (book == null || chapters.isEmpty()) {
-                    finish(cancelled = true)
-                    return@launch
-                }
-                val selection = chapterIds.toSet()
-                val targets = chapters
-                    .filter { !it.remoteItemId.isNullOrBlank() }
-                    .sortedBy { it.index }
-                    .let { list ->
-                        if (selection.isNotEmpty()) {
-                            list.filter { it.id in selection }
-                        } else {
-                            val tail = if (fromIndex > 0) list.filter { it.index >= fromIndex } else list
-                            if (count > 0) tail.take(count) else tail
-                        }
-                    }
+        _state.value = PrefetchState(
+            running = true,
+            bookId = bookId,
+            singleChapterIds = _state.value.singleChapterIds,
+        )
+        startForegroundWithNotification(buildNotification(_state.value))
+        tasks.replace(onFinished = { error ->
+            if (error != null && error !is CancellationException) {
+                android.util.Log.w("TingXiaPrefetch", "Download queue failed", error)
                 _state.value = _state.value.copy(
-                    bookTitle = book.title,
-                    totalCount = targets.size,
+                    doneCount = _state.value.doneCount + 1,
+                    failedCount = _state.value.failedCount + 1,
+                )
+            }
+            finish(cancelled = error is CancellationException)
+        }) {
+            val book = withContext(Dispatchers.IO) { bookRepository.getBook(bookId) }
+            val chapters = withContext(Dispatchers.IO) { bookRepository.getChapters(bookId) }
+            if (book == null || chapters.isEmpty()) {
+                throw CancellationException("Book has no chapters")
+            }
+            val selection = chapterIds.toSet()
+            val targets = chapters
+                .filter { !it.remoteItemId.isNullOrBlank() }
+                .sortedBy { it.index }
+                .let { list ->
+                    if (selection.isNotEmpty()) {
+                        list.filter { it.id in selection }
+                    } else {
+                        val tail = if (fromIndex > 0) list.filter { it.index >= fromIndex } else list
+                        if (count > 0) tail.take(count) else tail
+                    }
+                }
+            _state.value = _state.value.copy(
+                bookTitle = book.title,
+                totalCount = targets.size,
+            )
+            updateNotification()
+
+            targets.forEach { chapter ->
+                currentCoroutineContext().ensureActive()
+                _state.value = _state.value.copy(currentChapterTitle = chapter.displayTitle)
+                updateNotification()
+                // Ask the service to decrypt and remux ahead of the download, so the
+                // first byte does not wait on ffmpeg.
+                withContext(Dispatchers.IO) {
+                    chapter.remoteItemId?.let { itemId ->
+                        fqNovelApi.warm(
+                            book.remoteAudioBookId.orEmpty(),
+                            itemId,
+                            com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId),
+                        )
+                    }
+                }
+                val ok = withContext(Dispatchers.IO) {
+                    prefetchUrl(cacheUrlFor(book, chapter.remoteItemId!!), cacheKeyFor(book, chapter))
+                }
+                if (ok) {
+                    cacheManager.synchronizeCacheStatus()
+                    fillDuration(book, chapter)
+                }
+                _state.value = _state.value.copy(
+                    doneCount = _state.value.doneCount + 1,
+                    failedCount = _state.value.failedCount + if (ok) 0 else 1,
                 )
                 updateNotification()
-
-                targets.forEach { chapter ->
-                    currentCoroutineContext().ensureActive()
-                    _state.value = _state.value.copy(currentChapterTitle = chapter.displayTitle)
-                    updateNotification()
-                    // Ask the service to decrypt and remux ahead of the download, so the
-                    // first byte does not wait on ffmpeg.
-                    withContext(Dispatchers.IO) {
-                        chapter.remoteItemId?.let { itemId ->
-                            fqNovelApi.warm(
-                                book.remoteAudioBookId.orEmpty(),
-                                itemId,
-                                com.tingxia.app.data.remote.FqEndpoints.normalizeTone(book.remoteToneId),
-                            )
-                        }
-                    }
-                    val ok = withContext(Dispatchers.IO) {
-                        prefetchUrl(cacheUrlFor(book, chapter.remoteItemId!!), cacheKeyFor(book, chapter))
-                    }
-                    if (ok) {
-                        withContext(Dispatchers.IO) {
-                            bookRepository.setChapterCached(chapter.id, true)
-                        }
-                        fillDuration(book, chapter)
-                    }
-                    _state.value = _state.value.copy(
-                        doneCount = _state.value.doneCount + 1,
-                        failedCount = _state.value.failedCount + if (ok) 0 else 1,
-                    )
-                    updateNotification()
-                }
-                finish(cancelled = false)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    finish(cancelled = true)
-                } else {
-                    finish(cancelled = false)
-                }
             }
         }
     }
 
     private fun cancelJob() {
-        job?.cancel()
-        finish(cancelled = true)
+        if (tasks.isRunning) tasks.cancel() else finish(cancelled = true)
     }
 
     private fun finish(cancelled: Boolean) {
@@ -278,7 +282,7 @@ class PrefetchService : Service() {
         )
         updateNotification()
         stopForeground(STOP_FOREGROUND_DETACH)
-        stopSelf()
+        if (_state.value.singleChapterIds.isEmpty()) stopSelf()
     }
 
     private fun startForegroundWithNotification(notification: Notification) {
@@ -352,7 +356,6 @@ class PrefetchService : Service() {
     }
 
     override fun onDestroy() {
-        job?.cancel()
         scope.cancel()
         super.onDestroy()
     }

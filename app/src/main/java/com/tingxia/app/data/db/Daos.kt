@@ -284,11 +284,40 @@ interface ChapterDao {
         completedAt: Long = System.currentTimeMillis(),
     )
 
-    @Query("UPDATE chapters SET isCached = :cached WHERE id = :chapterId")
-    suspend fun setChapterCached(chapterId: Long, cached: Boolean)
-
     @Query("UPDATE chapters SET isCached = 0 WHERE bookId = :bookId")
     suspend fun clearCachedFlagForBook(bookId: Long)
+
+    @Query(
+        """
+        SELECT c.id AS chapterId, b.remoteAudioBookId AS audioBookId,
+               c.remoteItemId AS itemId,
+               COALESCE(NULLIF(TRIM(b.remoteToneId), ''), '0') AS toneId, c.isCached
+        FROM chapters c JOIN books b ON b.id = c.bookId
+        WHERE b.sourceType = 'FQNOVEL'
+          AND b.remoteAudioBookId IS NOT NULL AND c.remoteItemId IS NOT NULL
+        """,
+    )
+    suspend fun cacheEntries(): List<ChapterCacheEntry>
+
+    // A voice switch may race with a cache scan. Never apply the old recording's result.
+    @Query(
+        """
+        UPDATE chapters SET isCached = :cached
+        WHERE id = :chapterId AND remoteItemId = :itemId AND isCached != :cached
+          AND bookId IN (
+              SELECT id FROM books WHERE sourceType = 'FQNOVEL'
+                AND remoteAudioBookId = :audioBookId
+                AND COALESCE(NULLIF(TRIM(remoteToneId), ''), '0') = :toneId
+          )
+        """,
+    )
+    suspend fun updateCachedRecording(
+        chapterId: Long,
+        audioBookId: String,
+        itemId: String,
+        toneId: String,
+        cached: Boolean,
+    )
 
     @Query("UPDATE chapters SET customTitle = :customTitle WHERE id = :chapterId")
     suspend fun updateCustomTitle(chapterId: Long, customTitle: String?)
@@ -298,6 +327,9 @@ interface ChapterDao {
 
     @Query("SELECT COALESCE(SUM(durationMs), 0) FROM chapters WHERE bookId = :bookId")
     suspend fun totalDuration(bookId: Long): Long
+
+    @Query("SELECT EXISTS(SELECT 1 FROM chapters WHERE bookId = :bookId AND durationMs <= 0)")
+    suspend fun hasUnknownDurations(bookId: Long): Boolean
 
     @Query("SELECT COALESCE(MAX(`index`), -1) FROM chapters WHERE bookId = :bookId")
     suspend fun maxIndex(bookId: Long): Int

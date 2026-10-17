@@ -242,18 +242,20 @@ class PlayerViewModel @Inject constructor(
         if (ids.isEmpty()) return
         viewModelScope.launch {
             val book = bookRepository.getBook(bookId) ?: return@launch
-            ids.forEach { chapterId ->
-                val itemId = chapters.value.firstOrNull { it.id == chapterId }?.remoteItemId ?: return@forEach
-                try {
-                    cacheManager.cache.removeResource(
-                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
-                    )
-                } catch (_: Exception) {
+            try {
+                val keys = chapters.value.filter { it.id in ids }.mapNotNull { chapter ->
+                    chapter.remoteItemId?.let { itemId ->
+                        cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId)
+                    }
                 }
-                bookRepository.setChapterCached(chapterId, false)
+                cacheManager.remove(keys)
+                _toast.value = app.getString(R.string.cache_cleared)
+                clearSelection()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _toast.value = error.message ?: "清理缓存失败"
             }
-            _toast.value = app.getString(R.string.cache_cleared)
-            clearSelection()
         }
     }
 
@@ -286,12 +288,14 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val book = bookRepository.getBook(bookId) ?: return@launch
             try {
-                cacheManager.cache.removeResource(
+                cacheManager.remove(listOf(
                     cacheManager.cacheKeyForChapter(book.remoteAudioBookId.orEmpty(), itemId, book.remoteToneId),
-                )
-            } catch (_: Exception) {
+                ))
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _toast.value = error.message ?: "清理缓存失败"
             }
-            bookRepository.setChapterCached(chapter.id, false)
         }
     }
 

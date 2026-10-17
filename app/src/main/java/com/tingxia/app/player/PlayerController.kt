@@ -292,15 +292,9 @@ class PlayerController @Inject constructor(
         c.prepare()
         c.play()
         if (book.isRemote) {
-            // Pre-populate the cached flag from whatever is already on disk
-            // (playback itself fills the cache as it streams).
+            // Reconcile both newly cached and evicted recordings against disk.
             scope.launch {
-                chapters.forEach { ch ->
-                    val itemId = ch.remoteItemId ?: return@forEach
-                    if (!ch.isCached && isChapterFullyCached(book, itemId)) {
-                        bookRepository.setChapterCached(ch.id, true)
-                    }
-                }
+                cacheManager.synchronizeCacheStatus()
             }
         }
 
@@ -748,8 +742,8 @@ class PlayerController @Inject constructor(
             val index = chapters.indexOfFirst { it.id == chapterId }
             if (index < 0) return@launch
             chapters.drop(index + 1).take(lookahead).forEach { chapter ->
-                if (chapter.isCached) return@forEach
                 val itemId = chapter.remoteItemId?.takeIf { it.isNotBlank() } ?: return@forEach
+                if (isChapterFullyCached(book, itemId)) return@forEach
                 runCatching { fqNovelApi.warm(audioBookId, itemId, tone) }
             }
         }
