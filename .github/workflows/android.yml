@@ -26,7 +26,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -91,7 +91,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run migration instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
