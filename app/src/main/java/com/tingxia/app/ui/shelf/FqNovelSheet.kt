@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -79,6 +80,11 @@ fun FqNovelCatalogScreen(
     onOpenBook: (Long) -> Unit,
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
+    val catalogError by viewModel.error.collectAsStateWithLifecycle()
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    androidx.compose.runtime.LaunchedEffect(catalogError) {
+        catalogError?.let { snackbar.showSnackbar(it); viewModel.clearError() }
+    }
     val fqSearch by viewModel.fqSearch.collectAsStateWithLifecycle()
     val fqQuery by viewModel.fqQuery.collectAsStateWithLifecycle()
     val fqHasSearched by viewModel.fqHasSearched.collectAsStateWithLifecycle()
@@ -90,6 +96,7 @@ fun FqNovelCatalogScreen(
     val fqImporting by viewModel.fqImporting.collectAsStateWithLifecycle()
     val fqHotBooks by viewModel.fqHotBooks.collectAsStateWithLifecycle()
     val fqSections by viewModel.fqSections.collectAsStateWithLifecycle()
+    val discoverError by viewModel.discoverError.collectAsStateWithLifecycle()
     val fqHistory by viewModel.fqHistory.collectAsStateWithLifecycle()
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -101,6 +108,7 @@ fun FqNovelCatalogScreen(
     }
 
     Scaffold(
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
@@ -134,6 +142,8 @@ fun FqNovelCatalogScreen(
                 hotBooks = fqHotBooks,
                 sections = fqSections,
                 history = fqHistory,
+                discoverError = discoverError,
+                onRetryDiscover = viewModel::loadFqDiscover,
                 onQueryChange = viewModel::setFqQuery,
                 onSearch = viewModel::searchFqNovel,
                 onLoadMore = viewModel::loadMoreFqNovel,
@@ -164,6 +174,8 @@ fun FqNovelCatalog(
     hotBooks: List<FqSearchBook> = emptyList(),
     sections: List<FqDiscoverSection> = emptyList(),
     history: List<String> = emptyList(),
+    discoverError: String? = null,
+    onRetryDiscover: () -> Unit = {},
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
     onLoadMore: () -> Unit,
@@ -245,6 +257,8 @@ fun FqNovelCatalog(
                 onSelectBook = onSelectBook,
                 onSearch = onSearch,
                 onClearHistory = onClearHistory,
+                error = discoverError,
+                onRetry = onRetryDiscover,
             )
             hasSearched && searchResults.isEmpty() && !loading -> OnlineEmpty(query)
             else -> LazyColumn(
@@ -304,6 +318,8 @@ private fun OnlineWelcome(
     onSelectBook: (FqSearchBook) -> Unit,
     onSearch: (String) -> Unit,
     onClearHistory: () -> Unit,
+    error: String? = null,
+    onRetry: () -> Unit = {},
 ) {
     // Sections come from the service; the flat hot list is the fallback when they fail.
     if (sections.isEmpty() && hotBooks.isEmpty()) {
@@ -322,7 +338,12 @@ private fun OnlineWelcome(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(stringResource(R.string.online_hot_books), style = MaterialTheme.typography.titleMedium)
             }
-            items(6) { ShimmerTile() }
+            if (error != null) item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                }
+            } else items(6) { ShimmerTile() }
         }
         return
     }

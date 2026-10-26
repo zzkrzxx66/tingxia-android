@@ -104,6 +104,8 @@ class BookRepository @Inject constructor(
 
     suspend fun getRecentBook(): Book? = bookDao.getRecentBook()?.toModel()
 
+    fun observeChapterTimings() = chapterDao.observeTimings()
+
     suspend fun getChapters(bookId: Long): List<Chapter> =
         chapterDao.getChapters(bookId).map { it.toModel() }
 
@@ -202,17 +204,23 @@ class BookRepository @Inject constructor(
         bookId: Long,
         chapters: List<FqAudioChapter>,
         meta: FqAudioMeta?,
+        expectedAudioBookId: String? = null,
+        expectedToneId: String? = null,
     ): RemoteUpdateResult = database.withTransaction {
         val book = bookDao.getBook(bookId)
             ?: return@withTransaction RemoteUpdateResult(bookId, "", 0, null, null, checked = false)
         if (book.sourceType != "FQNOVEL" || book.remoteAudioBookId.isNullOrBlank()) {
             return@withTransaction RemoteUpdateResult(bookId, book.title, 0, null, null, checked = false)
         }
+        if ((expectedAudioBookId != null && expectedAudioBookId != book.remoteAudioBookId) ||
+            (expectedToneId != null && expectedToneId != (book.remoteToneId ?: "0"))) {
+            return@withTransaction RemoteUpdateResult(bookId, book.title, 0, null, null, checked = false)
+        }
         val now = System.currentTimeMillis()
         val toneId = book.remoteToneId?.takeIf { it.isNotBlank() } ?: "0"
         val known = chapterDao.remoteItemIds(bookId).toHashSet()
         var nextIndex = chapterDao.maxIndex(bookId) + 1
-        val fresh = chapters.filter { it.itemId !in known }
+        val fresh = chapters.distinctBy { it.itemId }.filter { it.itemId !in known }
         if (fresh.isNotEmpty()) {
             chapterDao.insertAll(
                 fresh.map { chapter ->
@@ -280,9 +288,12 @@ class BookRepository @Inject constructor(
         // The old voice's audio is a different recording; drop the cache flags so the
         // chapter list stops claiming those chapters are available offline.
         chapterDao.clearCachedFlagForBook(bookId)
+        bookDao.updateTotalDuration(bookId, 0L)
+        invalidateOffsetIndex(bookId)
         chapterDao.getChapters(bookId).forEach { chapter ->
             chapterDao.update(
                 chapter.copy(
+                    durationMs = 0L,
                     uri = "fqnovel://$audioBookId/${chapter.remoteItemId}?toneId=$toneId",
                     stableKey = "fqnovel:$audioBookId:$toneId:${chapter.remoteItemId}",
                 ),
@@ -291,13 +302,14 @@ class BookRepository @Inject constructor(
         true
     }
 
-    suspend fun recordRemoteChapterDuration(bookId: Long, chapterId: Long, durationMs: Long) {
+    suspend fun recordRemoteChapterDuration(bookId: Long, chapterId: Long, durationMs: Long, toneId: String? = null) {
         if (durationMs <= 0L) return
         database.withTransaction {
             val book = bookDao.getBook(bookId) ?: return@withTransaction
             // Embedded-chapter (m4b) durations are already the clip-window length;
             // overwriting them with the whole-file duration would corrupt progress.
             if (book.sourceType != "FQNOVEL") return@withTransaction
+            if (toneId != null && (book.remoteToneId ?: "0") != toneId) return@withTransaction
             if (chapterDao.setDurationIfUnknown(bookId, chapterId, durationMs) > 0) {
                 bookDao.updateTotalDuration(
                     bookId,
@@ -1019,11 +1031,11 @@ class BookRepository @Inject constructor(
         if (book.sourceType == "LOCAL") bookDao.setNeedsReauth(bookId, needs)
     }
 
-    suspend fun checkBookAccess(bookId: Long): Boolean {
-        val book = bookDao.getBook(bookId) ?: return false
+    suspend fun checkBookAccess(bookId: Long): Boolean = withContext(Dispatchers.IO) {
+        val book = bookDao.getBook(bookId) ?: return@withContext false
         if (book.sourceType != "LOCAL") {
             if (book.needsReauth) bookDao.setNeedsReauth(bookId, false)
-            return true
+            return@withContext true
         }
         val ok = if (book.rootUri.startsWith("multi://")) {
             chapterDao.getChapters(bookId).all { canAccessUri(Uri.parse(it.uri)) }
@@ -1035,7 +1047,7 @@ class BookRepository @Inject constructor(
         } else if (ok && book.needsReauth) {
             bookDao.setNeedsReauth(bookId, false)
         }
-        return ok
+        ok
     }
 
     fun canAccessUri(uri: Uri): Boolean {
@@ -1070,6 +1082,8 @@ class BookRepository @Inject constructor(
         offsetIndexCache[bookId] = index
         return index
     }
+
+    fun invalidateAllOffsetIndices() { offsetIndexCache.clear() }
 
     private fun invalidateOffsetIndex(bookId: Long) {
         offsetIndexCache.remove(bookId)

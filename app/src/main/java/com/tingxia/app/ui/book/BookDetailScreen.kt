@@ -134,6 +134,8 @@ fun BookDetailScreen(
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val book by viewModel.book.collectAsStateWithLifecycle()
+    val remainingMs by viewModel.remainingMs.collectAsStateWithLifecycle()
+    val readingFontSize by viewModel.readingFontSize.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val prefetchState by viewModel.prefetchState.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
@@ -775,10 +777,7 @@ fun BookDetailScreen(
                             Text(
                                 stringResource(
                                     R.string.remaining_time,
-                                    formatDuration(
-                                        ((book?.totalDurationMs ?: 0L) -
-                                            (book?.linearPositionMs ?: 0L)).coerceAtLeast(0L),
-                                    ),
+                                    remainingMs?.let(::formatDuration) ?: "--:--",
                                 ),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1091,6 +1090,9 @@ fun BookDetailScreen(
             error = chapterTextState.error,
             onSeek = { positionMs -> viewModel.playChapterAt(positionMs) },
             onDismiss = viewModel::closeChapterText,
+            onRetry = viewModel::retryChapterText,
+            fontSize = readingFontSize,
+            onFontSizeChange = viewModel::setReadingFontSize,
         )
     }
 

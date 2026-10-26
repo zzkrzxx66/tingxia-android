@@ -1,5 +1,6 @@
 package com.tingxia.app.data.db
 
+import androidx.room.Transaction
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -205,6 +206,9 @@ interface BookDao {
 
 @Dao
 interface ChapterDao {
+    @Query("SELECT id, bookId, `index`, durationMs, clipStartMs, clipEndMs FROM chapters ORDER BY bookId, `index`")
+    fun observeTimings(): kotlinx.coroutines.flow.Flow<List<ChapterTiming>>
+
     @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY `index` ASC")
     suspend fun getForBook(bookId: Long): List<ChapterEntity>
 
@@ -383,8 +387,19 @@ interface BookmarkDao {
 
 @Dao
 interface ListenSessionDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(session: ListenSessionEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(session: ListenSessionEntity): Long
+
+    @Query("UPDATE listen_sessions SET listenedMs = listenedMs + :delta WHERE bookId = :bookId AND dayStartMs = :dayStartMs")
+    suspend fun increment(bookId: Long, dayStartMs: Long, delta: Long)
+
+    @Transaction
+    suspend fun accumulate(session: ListenSessionEntity) {
+        if (insert(session) == -1L) increment(session.bookId, session.dayStartMs, session.listenedMs)
+    }
+
+    @Query("SELECT * FROM listen_sessions WHERE bookId = :bookId ORDER BY dayStartMs")
+    suspend fun getForBook(bookId: Long): List<ListenSessionEntity>
 
     @Query("SELECT COALESCE(SUM(listenedMs), 0) FROM listen_sessions")
     suspend fun totalListenedMs(): Long
@@ -434,3 +449,9 @@ data class BookListening(
     val coverPath: String?,
     val listenedMs: Long,
 )
+
+
+data class ChapterTiming(val id: Long, val bookId: Long, val index: Int, val durationMs: Long, val clipStartMs: Long?, val clipEndMs: Long?) {
+    fun asChapter() = com.tingxia.app.data.model.Chapter(id = id, bookId = bookId, title = "", uri = "", index = index,
+        durationMs = durationMs, fileName = "", clipStartMs = clipStartMs, clipEndMs = clipEndMs)
+}

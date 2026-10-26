@@ -48,9 +48,9 @@ class StatsRepository @Inject constructor(
                 }
                 while (remaining > 0L) {
                     val dayStart = dayStartMs(cursor)
-                    val dayEnd = dayStart + DAY_MS
+                    val dayEnd = shiftDay(dayStart, 1)
                     val chunk = minOf(remaining, dayEnd - cursor).coerceAtLeast(1L)
-                    listenSessionDao.insert(
+                    listenSessionDao.accumulate(
                         ListenSessionEntity(
                             bookId = bookId,
                             dayStartMs = dayStart,
@@ -66,7 +66,7 @@ class StatsRepository @Inject constructor(
 
     suspend fun stats(): ListeningStats = withContext(Dispatchers.IO) {
         val today = dayStartMs(System.currentTimeMillis())
-        val weekAgo = today - 6 * DAY_MS
+        val weekAgo = shiftDay(today, -6)
         ListeningStats(
             totalListenedMs = listenSessionDao.totalListenedMs(),
             weekListenedMs = listenSessionDao.listenedMsSince(weekAgo),
@@ -88,7 +88,13 @@ class StatsRepository @Inject constructor(
 
     companion object {
         const val DAY_MS = 24 * 3600_000L
-        private const val MAX_SESSION_DELTA_MS = 60_000L
+        private const val MAX_SESSION_DELTA_MS = 24 * 3600_000L
+
+        fun shiftDay(dayStart: Long, days: Int): Long = Calendar.getInstance().run {
+            timeInMillis = dayStart
+            add(Calendar.DATE, days)
+            timeInMillis
+        }
 
         fun dayStartMs(epochMs: Long): Long {
             val cal = Calendar.getInstance()

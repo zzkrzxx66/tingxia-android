@@ -46,7 +46,7 @@ Kotlin · Jetpack Compose · Hilt · Room · Media3 (ExoPlayer) · DataStore · 
 
 产物：`app/build/outputs/apk/debug/app-debug.apk`
 
-备份文件只保存书架元数据、章节状态、进度、书签和设置，不包含音频源文件；恢复到没有目录权限的设备后，需要重新授权原目录。多文件导入使用系统持久化 URI，不复制音频文件。
+备份文件保存书架元数据、章节状态、进度、书签、听书统计和设置，不包含音频源文件及私有封面。恢复前显示预览，覆盖书籍进度并合并书签与统计，完成后播放器保持暂停；恢复到没有目录权限的设备后，需要重新授权原目录。多文件导入使用系统持久化 URI，不复制音频文件。
 
 GitHub Actions：推送后自动 `assembleDebug` 并上传 APK Artifact。
 CI 同时运行 JVM 测试、Lint、Release/R8 构建，并在 API 26/35 模拟器验证 Room 迁移与数据库约束。
@@ -61,3 +61,5 @@ app/src/main/java/com/tingxia/app/
   data/        # Room / 导入 / Repository
   di/          # Hilt
 ```
+
+主动下载的在线章节保存在应用文件目录并持久保护；1 GiB LRU 上限仅用于临时播放缓存。下载占用受设备剩余存储空间限制，清理缓存会同时移除相应下载保护。数据库升级至 v12，备份格式升级至 v2，仍可导入 v1 备份。

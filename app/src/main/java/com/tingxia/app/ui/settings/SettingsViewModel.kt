@@ -74,17 +74,37 @@ class SettingsViewModel @Inject constructor(
             try {
                 backupRepository.exportTo(uri)
                 _message.value = "备份已导出"
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "导出备份失败"
             }
         }
     }
 
+    private val _backupPreview = kotlinx.coroutines.flow.MutableStateFlow<com.tingxia.app.data.backup.BackupDocument?>(null)
+    val backupPreview: StateFlow<com.tingxia.app.data.backup.BackupDocument?> = _backupPreview
+    private var restoreJob: kotlinx.coroutines.Job? = null
+
     fun importBackup(uri: Uri) {
+        restoreJob?.cancel()
+        _backupPreview.value = null
+        restoreJob = viewModelScope.launch {
+            try { _backupPreview.value = backupRepository.readFrom(uri)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { _error.value = e.message ?: "无法读取备份" }
+        }
+    }
+
+    fun dismissBackupPreview() { _backupPreview.value = null }
+
+    fun confirmRestore() {
+        val document = _backupPreview.value ?: return
+        _backupPreview.value = null
         viewModelScope.launch {
             try {
-                val result = backupRepository.importFrom(uri)
+                val result = backupRepository.restore(document)
                 _message.value = "已恢复 ${result.restoredBooks + result.createdReauthBooks} 本书、${result.restoredBookmarks} 个书签"
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "导入备份失败"
             }

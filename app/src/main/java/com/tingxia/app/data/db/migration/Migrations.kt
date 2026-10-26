@@ -268,3 +268,49 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         db.execSQL("ALTER TABLE books ADD COLUMN remoteNewChapterCount INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/** v11 → v12: stable chapter positions and one listening aggregate per book/day. */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Legacy positions excluded the intro. Embedded chapter positions remain relative
+        // to their own chapter, so the source file's outer window must not be added.
+        val intro = "CASE WHEN c.durationMs > 0 THEN MIN(b.skipIntroMs, MAX(0, c.durationMs - MIN(1000, c.durationMs))) ELSE b.skipIntroMs END"
+        db.execSQL("""
+            UPDATE bookmarks SET positionMs = positionMs + COALESCE((
+                SELECT $intro FROM chapters c JOIN books b ON b.id = c.bookId
+                WHERE c.id = bookmarks.chapterId AND b.id = bookmarks.bookId
+            ), 0)
+        """.trimIndent())
+        db.execSQL("""
+            UPDATE books SET currentPositionMs = currentPositionMs + COALESCE((
+                SELECT $intro FROM chapters c JOIN books b ON b.id = c.bookId
+                WHERE c.id = books.currentChapterId AND b.id = books.id
+            ), 0) WHERE lastPlayedAt > 0
+        """.trimIndent())
+        db.execSQL("""
+            UPDATE books SET listenedDurationMs = COALESCE((
+                SELECT SUM(c.durationMs) FROM chapters c
+                WHERE c.bookId = books.id AND c.`index` < (
+                    SELECT current.`index` FROM chapters current WHERE current.id = books.currentChapterId
+                )
+            ), 0) + currentPositionMs
+        """.trimIndent())
+        db.execSQL("UPDATE books SET totalDurationMs = 0 WHERE sourceType = 'FQNOVEL' AND (skipIntroMs > 0 OR skipOutroMs > 0)")
+        // Old playback reports may have stored a clipped duration. Refresh these facts
+        // from the original recording rather than guessing which reports were affected.
+        db.execSQL("""
+            UPDATE chapters SET durationMs = 0 WHERE bookId IN (
+                SELECT id FROM books WHERE sourceType = 'FQNOVEL' AND (skipIntroMs > 0 OR skipOutroMs > 0)
+            )
+        """.trimIndent())
+        db.execSQL("""
+            CREATE TEMP TABLE listening_totals AS
+            SELECT MIN(id) AS id, bookId, dayStartMs, SUM(listenedMs) AS listenedMs
+            FROM listen_sessions GROUP BY bookId, dayStartMs
+        """.trimIndent())
+        db.execSQL("DELETE FROM listen_sessions")
+        db.execSQL("INSERT INTO listen_sessions (id, bookId, dayStartMs, listenedMs) SELECT id, bookId, dayStartMs, listenedMs FROM listening_totals")
+        db.execSQL("DROP TABLE listening_totals")
+        db.execSQL("CREATE UNIQUE INDEX index_listen_sessions_bookId_dayStartMs ON listen_sessions (bookId, dayStartMs)")
+    }
+}

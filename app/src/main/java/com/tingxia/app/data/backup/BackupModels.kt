@@ -34,7 +34,19 @@ data class BackupBook(
     val description: String? = null,
     val category: String? = null,
     val wordCount: Long = 0L,
+    val metaSyncSourceId: String? = null,
+    val metaSyncedAt: Long = 0L,
+    val metaSyncBackup: String? = null,
+    val remoteScore: String? = null,
+    val remoteListenCount: Long = 0L,
+    val remoteFinished: Boolean? = null,
+    val remoteLastChapterTitle: String? = null,
+    val remoteUpdateCheckedAt: Long = 0L,
+    val remoteNewChapterCount: Int = 0,
+    val listening: List<BackupListening> = emptyList(),
 )
+
+data class BackupListening(val dayStartMs: Long, val listenedMs: Long)
 
 data class BackupChapter(
     val key: String,

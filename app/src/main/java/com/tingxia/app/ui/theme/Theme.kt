@@ -266,8 +266,10 @@ val dynamicColorSupported: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODE
  * Scrim laid over the blurred cover artwork behind immersive headers and the
  * player, so foreground text keeps its contrast regardless of the artwork.
  */
+val LocalAppDarkTheme = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 val playerScrim: Color
-    @Composable get() = if (isSystemInDarkTheme()) {
+    @Composable get() = if (LocalAppDarkTheme.current) {
         Color.Black.copy(alpha = 0.55f)
     } else {
         Color(0xFF0E1512).copy(alpha = 0.42f)
@@ -286,10 +288,12 @@ fun TingXiaTheme(
         darkTheme -> DarkColors
         else -> LightColors
     }
+    androidx.compose.runtime.CompositionLocalProvider(LocalAppDarkTheme provides darkTheme) {
     MaterialTheme(
         colorScheme = colorScheme,
         typography = TingXiaTypography,
         shapes = TingXiaShapes,
         content = content,
     )
+    }
 }

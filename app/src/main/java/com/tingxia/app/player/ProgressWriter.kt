@@ -33,6 +33,7 @@ class ProgressWriter(
         val positionMs: Long,
         val isFinal: Boolean = false,
         val ack: Channel<Boolean>? = null,
+        val barrierOnly: Boolean = false,
     )
 
     private val channel = Channel<Write>(capacity = Channel.UNLIMITED)
@@ -41,7 +42,9 @@ class ProgressWriter(
     private val writerJob: Job = scope.launch(writerDispatcher) {
         for (write in channel) {
             val ok = try {
-                if (write.isFinal) {
+                if (write.barrierOnly) {
+                    true
+                } else if (write.isFinal) {
                     saveWithRetry(write.bookId, write.chapterId, write.positionMs)
                 } else {
                     save(write.bookId, write.chapterId, write.positionMs)
@@ -69,6 +72,14 @@ class ProgressWriter(
                 positionMs = positionMs.coerceAtLeast(0L),
             ),
         )
+    }
+
+    /** Waits for all queued writes even when the player currently has no item. */
+    suspend fun flushPending(timeoutMs: Long = 1_500): Boolean {
+        if (closed.get()) return false
+        val ack = Channel<Boolean>(1)
+        if (!channel.trySend(Write(0, 0, 0, ack = ack, barrierOnly = true)).isSuccess) return false
+        return withTimeoutOrNull(timeoutMs) { ack.receiveCatching().getOrNull() ?: false } ?: false
     }
 
     /**

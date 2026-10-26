@@ -198,7 +198,7 @@ private fun WeekChart(daily: List<DailyListening>) {
     val dayFormat = remember { SimpleDateFormat("E", Locale.getDefault()) }
     val byDay = daily.associateBy { it.dayStartMs }
     val today = StatsRepository.dayStartMs(System.currentTimeMillis())
-    val days = (6 downTo 0).map { today - it * StatsRepository.DAY_MS }
+    val days = (6 downTo 0).map { StatsRepository.shiftDay(today, -it) }
     val maxMs = (daily.maxOfOrNull { it.listenedMs } ?: 1L).coerceAtLeast(1L)
     var animationTriggered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {

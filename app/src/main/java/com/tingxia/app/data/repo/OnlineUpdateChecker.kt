@@ -15,6 +15,9 @@ import com.tingxia.app.data.model.Book
 import com.tingxia.app.data.remote.FqNovelApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,20 +36,23 @@ class OnlineUpdateChecker @Inject constructor(
     private val preferences: UserPreferencesRepository,
 ) {
 
+    private val sweepMutex = Mutex()
+    private var retryAfterMs = 0L
+
     /** Check one book. Returns null when it is not an online book or the request failed. */
     suspend fun check(book: Book): BookRepository.RemoteUpdateResult? {
         if (!book.isRemote) return null
         val audioBookId = book.remoteAudioBookId?.takeIf { it.isNotBlank() } ?: return null
-        return runCatching {
-            val meta = if (book.isTtsVoice) null else fqNovelApi.audioMeta(audioBookId)
+        return try {
+            val meta = if (book.isTtsVoice) fqNovelApi.novelMeta(audioBookId) else fqNovelApi.audioMeta(audioBookId)
             val chapters = if (book.isTtsVoice) {
                 fqNovelApi.novelChapters(audioBookId)
             } else {
                 fqNovelApi.audioChapters(audioBookId)
             }
-            if (chapters.isEmpty()) return@runCatching null
-            bookRepository.applyRemoteUpdate(book.id, chapters, meta)
-        }.getOrNull()
+            if (chapters.isEmpty()) return null
+            bookRepository.applyRemoteUpdate(book.id, chapters, meta, audioBookId, book.remoteToneId ?: "0")
+        } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
     }
 
     suspend fun check(bookId: Long): BookRepository.RemoteUpdateResult? =
@@ -56,17 +62,22 @@ class OnlineUpdateChecker @Inject constructor(
      * Check every online book, at most once per [minIntervalMs]. Runs on app start, so it
      * costs one catalogue request per online book and only when the user opens the app.
      */
-    suspend fun sweep(minIntervalMs: Long = DEFAULT_SWEEP_INTERVAL_MS): List<BookRepository.RemoteUpdateResult> {
-        if (!preferences.updateCheckEnabled.first()) return emptyList()
+    suspend fun sweep(minIntervalMs: Long = DEFAULT_SWEEP_INTERVAL_MS): List<BookRepository.RemoteUpdateResult> = sweepMutex.withLock {
+        if (!preferences.updateCheckEnabled.first()) return@withLock emptyList()
         val now = System.currentTimeMillis()
         val last = preferences.lastUpdateSweepAt.first()
-        if (now - last < minIntervalMs) return emptyList()
-        preferences.setLastUpdateSweepAt(now)
-        val updated = bookRepository.getRemoteBooks()
-            .filter { it.remoteFinished != true }
-            .mapNotNull { book -> check(book)?.takeIf { it.addedCount > 0 } }
+        if (now < retryAfterMs || (last > 0L && now >= last && now - last < minIntervalMs)) return@withLock emptyList()
+        val books = bookRepository.getRemoteBooks().filter { it.remoteFinished != true }
+        val checked = books.map { check(it) }
+        if (checked.all { it?.checked == true }) {
+            preferences.setLastUpdateSweepAt(System.currentTimeMillis())
+            retryAfterMs = 0L
+        } else {
+            retryAfterMs = now + 60_000L
+        }
+        val updated = checked.mapNotNull { it?.takeIf { result -> result.addedCount > 0 } }
         if (updated.isNotEmpty()) notify(updated)
-        return updated
+        updated
     }
 
     private fun notify(results: List<BookRepository.RemoteUpdateResult>) {

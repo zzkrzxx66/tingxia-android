@@ -11,6 +11,7 @@ import com.tingxia.app.data.db.migration.MIGRATION_4_5
 import com.tingxia.app.data.db.migration.MIGRATION_7_8
 import com.tingxia.app.data.db.migration.MIGRATION_8_9
 import com.tingxia.app.data.db.migration.MIGRATION_9_10
+import com.tingxia.app.data.db.migration.MIGRATION_11_12
 import com.tingxia.app.data.db.migration.MIGRATION_10_11
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -437,6 +438,36 @@ class MigrationTest {
                 assertEquals(552683L, c.getLong(1))
                 assertEquals(1, c.getInt(2))
                 assertEquals(3, c.getInt(3))
+            }
+            close()
+        }
+    }
+
+
+    @Test
+    fun migrate11To12_convertsPositionsAndAggregatesListeningWithoutLoss() {
+        helper.createDatabase(testDb, 11).apply {
+            // Fresh Room schemas have no SQL defaults; fill every non-null field explicitly.
+            execSQL("""INSERT INTO books (id, title, rootUri, totalDurationMs, lastPlayedAt, currentChapterId,
+                currentPositionMs, listenedDurationMs, createdAt, needsReauth, autoPlayNext, lastScannedAt,
+                skipIntroMs, skipOutroMs, sourceType, wordCount, metaSyncedAt, remoteListenCount, remoteUpdateCheckedAt, remoteNewChapterCount)
+                VALUES (1, 'book', 'root', 10000, 1, 1, 1000, 1000, 1, 0, 1, 0, 2000, 3000, 'LOCAL', 0, 0, 0, 0, 0)""")
+            execSQL("""INSERT INTO chapters (id, bookId, title, uri, `index`, durationMs, fileName, relativePath, fileSize, completionState, isCached)
+                VALUES (1, 1, 'chapter', 'uri', 0, 10000, 'file', 'file', 1, 1, 0)""")
+            execSQL("INSERT INTO bookmarks (id, bookId, chapterId, positionMs, createdAt) VALUES (1, 1, 1, 1200, 1)")
+            execSQL("INSERT INTO listen_sessions (bookId, dayStartMs, listenedMs) VALUES (1, 0, 500), (1, 0, 600), (1, 86400000, 700)")
+            close()
+        }
+        helper.runMigrationsAndValidate(testDb, 12, true, MIGRATION_11_12).apply {
+            query("SELECT currentPositionMs, listenedDurationMs FROM books WHERE id = 1").use {
+                assertTrue(it.moveToFirst()); assertEquals(3000L, it.getLong(0)); assertEquals(3000L, it.getLong(1))
+            }
+            query("SELECT positionMs FROM bookmarks WHERE id = 1").use { assertTrue(it.moveToFirst()); assertEquals(3200L, it.getLong(0)) }
+            query("SELECT COUNT(*), SUM(listenedMs) FROM listen_sessions").use {
+                assertTrue(it.moveToFirst()); assertEquals(2, it.getInt(0)); assertEquals(1800L, it.getLong(1))
+            }
+            query("SELECT listenedMs FROM listen_sessions WHERE dayStartMs = 0").use {
+                assertTrue(it.moveToFirst()); assertEquals(1100L, it.getLong(0))
             }
             close()
         }

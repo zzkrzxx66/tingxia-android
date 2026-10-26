@@ -36,6 +36,31 @@ class OnlineBookIntegrityTest {
     @After
     fun tearDown() = db.close()
 
+
+    @Test fun lateDurationAndCatalogueResultsCannotMutateSwitchedVoice() = runBlocking {
+        val bookId = remoteBook(tone = "5")
+        val chapterId = chapter(bookId, "201", 0, duration = 60000)
+        repository.switchTtsTone(bookId, "6")
+        repository.recordRemoteChapterDuration(bookId, chapterId, 120000, "5")
+        assertEquals(0L, db.chapterDao().getChapter(chapterId)!!.durationMs)
+        assertEquals(0L, db.bookDao().getBook(bookId)!!.totalDurationMs)
+        val stale = repository.applyRemoteUpdate(bookId, listOf(FqAudioChapter("202", "late", 1)), null, "100", "5")
+        assertFalse(stale.checked)
+        assertEquals(1, db.chapterDao().getChapters(bookId).size)
+        repository.recordRemoteChapterDuration(bookId, chapterId, 90000, "6")
+        assertEquals(90000L, db.chapterDao().getChapter(chapterId)!!.durationMs)
+    }
+
+    @Test fun listeningAccumulatesAtomicallyIntoOneRowPerDay() = runBlocking {
+        val bookId = remoteBook()
+        val stats = com.tingxia.app.data.repo.StatsRepository(db.listenSessionDao(), db.bookDao())
+        val noon = com.tingxia.app.data.repo.StatsRepository.dayStartMs(System.currentTimeMillis()) + 3600000L
+        stats.recordListening(bookId, 500, noon)
+        stats.recordListening(bookId, 600, noon)
+        assertEquals(1, db.listenSessionDao().getForBook(bookId).size)
+        assertEquals(1100L, db.listenSessionDao().totalListenedMs())
+    }
+
     @Test
     fun durationBackfillKeepsWholeBookEstimateUntilEveryChapterIsKnown() = runBlocking {
         val bookId = remoteBook(total = 3_600_000)

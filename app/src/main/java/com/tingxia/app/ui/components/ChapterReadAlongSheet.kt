@@ -48,8 +48,10 @@ fun ChapterReadAlongSheet(
     error: String?,
     onSeek: ((Long) -> Unit)?,
     onDismiss: () -> Unit,
+    onRetry: () -> Unit = {},
+    fontSize: Float = 17f,
+    onFontSizeChange: (Float) -> Unit = {},
 ) {
-    var fontSize by remember { mutableFloatStateOf(17f) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
     val ranges = rememberReadAlongRanges(timeline)
@@ -76,7 +78,7 @@ fun ChapterReadAlongSheet(
                 }
                 Spacer(Modifier.size(8.dp))
                 IconButton(
-                    onClick = { fontSize = (fontSize - 1f).coerceAtLeast(12f) },
+                    onClick = { onFontSizeChange((fontSize - 1f).coerceAtLeast(12f)) },
                     enabled = fontSize > 12f,
                 ) {
                     Icon(
@@ -85,7 +87,7 @@ fun ChapterReadAlongSheet(
                     )
                 }
                 IconButton(
-                    onClick = { fontSize = (fontSize + 1f).coerceAtMost(26f) },
+                    onClick = { onFontSizeChange((fontSize + 1f).coerceAtMost(26f)) },
                     enabled = fontSize < 26f,
                 ) {
                     Icon(
@@ -116,12 +118,10 @@ fun ChapterReadAlongSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                error != null -> Text(
-                    error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(vertical = 24.dp),
-                )
+                error != null -> Column {
+                    Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 16.dp))
+                    androidx.compose.material3.TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                }
                 timeline == null || timeline.paragraphs.isEmpty() -> Text(
                     stringResource(R.string.chapter_text_missing),
                     style = MaterialTheme.typography.bodyMedium,

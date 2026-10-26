@@ -64,14 +64,17 @@ fun PlayerTextPage(
     chapterTitle: String,
     positionMs: Long,
     durationMs: Long,
+    playbackPositionMs: Long = positionMs,
     isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     onToggle: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
+    fontSize: Float = 17f,
+    onFontSizeChange: (Float) -> Unit = {},
+    onRetry: () -> Unit = {},
 ) {
-    var fontSize by remember { mutableFloatStateOf(17f) }
     var follow by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
     val ranges = rememberReadAlongRanges(timeline)
@@ -93,6 +96,7 @@ fun PlayerTextPage(
             if (interaction is DragInteraction.Start) follow = false
         }
     }
+    LaunchedEffect(timeline) { follow = true; listState.scrollToItem(0) }
     LaunchedEffect(activeSentence, follow) {
         if (!follow || activeSentence < 0) return@LaunchedEffect
         val paragraph = timeline?.sentences?.getOrNull(activeSentence)?.spans?.firstOrNull()?.paragraph
@@ -137,7 +141,7 @@ fun PlayerTextPage(
                 }
             }
             IconButton(
-                onClick = { fontSize = (fontSize - 1f).coerceAtLeast(12f) },
+                onClick = { onFontSizeChange((fontSize - 1f).coerceAtLeast(12f)) },
                 enabled = fontSize > 12f,
             ) {
                 Icon(
@@ -147,7 +151,7 @@ fun PlayerTextPage(
                 )
             }
             IconButton(
-                onClick = { fontSize = (fontSize + 1f).coerceAtMost(26f) },
+                onClick = { onFontSizeChange((fontSize + 1f).coerceAtMost(26f)) },
                 enabled = fontSize < 26f,
             ) {
                 Icon(
@@ -177,12 +181,10 @@ fun PlayerTextPage(
                         color = Color.White.copy(alpha = 0.8f),
                     )
                 }
-                error != null -> Text(
-                    error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 48.dp),
-                )
+                error != null -> Column(Modifier.padding(horizontal = 24.dp, vertical = 32.dp)) {
+                    Text(error, color = Color.White.copy(alpha = 0.8f))
+                    androidx.compose.material3.TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                }
                 timeline == null || timeline.paragraphs.isEmpty() -> Text(
                     stringResource(R.string.chapter_text_missing),
                     style = MaterialTheme.typography.bodyMedium,
@@ -221,7 +223,7 @@ fun PlayerTextPage(
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                formatDuration(positionMs),
+                formatDuration(playbackPositionMs),
                 style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                 color = Color.White.copy(alpha = 0.75f),
             )

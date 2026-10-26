@@ -34,3 +34,7 @@ out/
 keystore/*
 !keystore/tingxia-debug.jks
 !keystore/README.md
+
+# Python service build artifacts
+__pycache__/
+*.pyc

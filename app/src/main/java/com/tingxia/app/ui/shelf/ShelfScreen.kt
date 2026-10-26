@@ -112,6 +112,7 @@ fun ShelfScreen(
     viewModel: ShelfViewModel = hiltViewModel(),
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
+    val remainingByBook by viewModel.remainingByBook.collectAsStateWithLifecycle()
     val recent by viewModel.recent.collectAsStateWithLifecycle()
     val hasReauthBooks by viewModel.hasReauthBooks.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -123,7 +124,7 @@ fun ShelfScreen(
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
-    var isListView by rememberSaveable { mutableStateOf(false) }
+    val isListView by viewModel.isListView.collectAsStateWithLifecycle()
     val topBarScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     LaunchedEffect(error) {
@@ -170,7 +171,7 @@ fun ShelfScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
-                    IconButton(onClick = { isListView = !isListView }) {
+                    IconButton(onClick = { viewModel.setListView(!isListView) }) {
                         Icon(
                             if (isListView) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
                             contentDescription = stringResource(
@@ -284,6 +285,7 @@ fun ShelfScreen(
                                     item(key = "continue_bar") {
                                         ContinueListeningBar(
                                             book = book,
+                                            remainingMs = remainingByBook[book.id],
                                             onOpen = { onOpenBook(book.id) },
                                             onPlay = { onPlayBook(book.id) },
                                         )
@@ -299,6 +301,7 @@ fun ShelfScreen(
                             items(books, key = { it.id }) { book ->
                                 BookListItem(
                                     book = book,
+                                    remainingMs = remainingByBook[book.id],
                                     isCurrent = book.id == playingBookId,
                                     isPlaying = isPlaying && book.id == playingBookId,
                                     onClick = { onOpenBook(book.id) },
@@ -323,6 +326,7 @@ fun ShelfScreen(
                         // on a normal phone instead of three.
                         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val columns = when {
+                            maxWidth < 360.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f -> 2
                             maxWidth < 600.dp -> 3
                             maxWidth < 840.dp -> 4
                             else -> 6
@@ -352,6 +356,7 @@ fun ShelfScreen(
                                     item(span = { GridItemSpan(maxLineSpan) }) {
                                         ContinueListeningBar(
                                             book = book,
+                                            remainingMs = remainingByBook[book.id],
                                             onOpen = { onOpenBook(book.id) },
                                             onPlay = { onPlayBook(book.id) },
                                         )
@@ -592,6 +597,7 @@ private fun BookGridItem(
 @Composable
 private fun BookListItem(
     book: Book,
+    remainingMs: Long?,
     isCurrent: Boolean,
     isPlaying: Boolean,
     onClick: () -> Unit,
@@ -678,12 +684,11 @@ private fun BookListItem(
                     )
                     Spacer(Modifier.height(3.dp))
                 }
-                val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
                 val progressText = if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
                     stringResource(
                         R.string.shelf_continue_inline,
                         (book.progressFraction * 100).toInt(),
-                        formatDuration(remainingMs),
+                        remainingMs?.let(::formatDuration) ?: "--:--",
                     )
                 } else if (book.totalDurationMs > 0) {
                     formatDuration(book.totalDurationMs)
@@ -740,6 +745,7 @@ private fun sortLabel(sort: ShelfSort): String = when (sort) {
 @Composable
 private fun ContinueListeningBar(
     book: Book,
+    remainingMs: Long?,
     onOpen: () -> Unit,
     onPlay: () -> Unit,
 ) {
@@ -774,13 +780,12 @@ private fun ContinueListeningBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    val remainingMs = (book.totalDurationMs - book.linearPositionMs).coerceAtLeast(0L)
                     Text(
                         if (book.lastPlayedAt > 0) {
                             stringResource(
                                 R.string.shelf_continue_inline,
                                 (book.progressFraction * 100).toInt(),
-                                formatDuration(remainingMs),
+                                remainingMs?.let(::formatDuration) ?: "--:--",
                             )
                         } else {
                             stringResource(R.string.shelf_continue_title)

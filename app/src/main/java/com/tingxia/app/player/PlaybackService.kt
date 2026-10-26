@@ -75,10 +75,18 @@ class PlaybackService : MediaSessionService() {
     private var lastPositionMs: Long = 0L
 
     // Real-listening-time tracking: wall-clock deltas between ticker ticks while playing.
-    private var lastPlayingTickElapsedMs: Long = -1L
+    private val listeningTracker = ListeningTracker()
+    private val statsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val statsWrites = kotlinx.coroutines.channels.Channel<suspend () -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
 
     override fun onCreate() {
         super.onCreate()
+        statsScope.launch {
+            for (write in statsWrites) {
+                try { write() } catch (error: Exception) { Log.w(TAG, "Listening write failed", error) }
+            }
+            statsScope.cancel()
+        }
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this)
                 .setChannelId(TingXiaApp.PLAYBACK_CHANNEL_ID)
@@ -256,7 +264,7 @@ class PlaybackService : MediaSessionService() {
                         val (book, chapters, plan) = resume
                         lastBookId = book.id
                         lastChapterId = chapters[plan.startIndex].id
-                        lastPositionMs = plan.startPositionMs
+                        lastPositionMs = plan.startPositionMs + chapters[plan.startIndex].playbackOffsetMs(book)
                         currentAutoPlayNext = book.autoPlayNext
                         session.player.setPlaybackSpeed(plan.speed)
                         updatePauseAtEnd(session.player)
@@ -303,12 +311,14 @@ class PlaybackService : MediaSessionService() {
         }
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                trackListening(player)
                 if (!isPlaying) {
                     serviceScope.launch { captureAndEnqueueCurrent(player) }
                 }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                trackListening(player)
                 if (mediaItem == null) {
                     PlaybackWidgetUpdater.clear(this@PlaybackService)
                 } else {
@@ -352,7 +362,7 @@ class PlaybackService : MediaSessionService() {
                 }
             }
 
-                override fun onPlaybackStateChanged(playbackState: Int) {
+            override fun onPlaybackStateChanged(playbackState: Int) {
                 if (player.currentMediaItem != null) {
                     PlaybackWidgetUpdater.update(this@PlaybackService, player)
                 }
@@ -366,24 +376,35 @@ class PlaybackService : MediaSessionService() {
                 }
                 // Media3 Player must only be queried on its application thread.
                 // Capture both values before dispatching the database write to IO.
+                val item = player.currentMediaItem
                 val readyDurationMs = player.duration
-                val readyIds = parseIds(player.currentMediaItem)
-                if (playbackState == Player.STATE_READY && readyDurationMs > 0L && readyIds != null) {
+                val readyIds = parseIds(item)
+                // Only an open-ended clip can reveal the original recording duration.
+                // A finite clip's duration must never overwrite source metadata.
+                if (playbackState == Player.STATE_READY && readyDurationMs > 0L && readyIds != null && item != null &&
+                    item.clippingConfiguration.endPositionMs == C.TIME_END_OF_SOURCE
+                ) {
                     val (bookId, chapterId) = readyIds
-                    if (bookId > 0L && chapterId > 0L) {
-                        serviceScope.launch(Dispatchers.IO) {
-                            bookRepository.recordRemoteChapterDuration(bookId, chapterId, readyDurationMs)
-                        }
+                    val sourceDuration = readyDurationMs + item.clippingConfiguration.startPositionMs
+                    val tone = item.mediaMetadata.extras?.getString(PlayerController.KEY_TONE_ID) ?: "0"
+                    serviceScope.launch {
+                        try {
+                            bookRepository.recordRemoteChapterDuration(bookId, chapterId, sourceDuration, tone)
+                            val book = bookRepository.getBook(bookId) ?: return@launch
+                            val chapter = bookRepository.getChapter(chapterId) ?: return@launch
+                            if (book.isRemote && book.skipOutroMs > 0L && player.currentMediaItem == item && (book.remoteToneId ?: "0") == tone) {
+                                player.replaceMediaItem(player.currentMediaItemIndex, chapter.toMediaItem(book, player.mediaItemCount,
+                                    item.mediaMetadata.extras?.getLong(PlayerController.KEY_CHAPTER_START_OFFSET_MS) ?: 0L))
+                            }
+                        } catch (error: kotlinx.coroutines.CancellationException) { throw error
+                        } catch (error: Exception) { Log.w(TAG, "Could not update recording duration", error) }
                     }
                 }
             }
 
-                override fun onPlayerError(error: PlaybackException) {
+            override fun onPlayerError(error: PlaybackException) {
                 val bookId = lastBookId
-                val isPermission =
-                    error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
-                        error.cause is SecurityException
+                val isPermission = error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION || error.cause is SecurityException
                 if (isPermission && bookId != null && bookId > 0L) {
                     serviceScope.launch(Dispatchers.IO) {
                         try {
@@ -415,7 +436,7 @@ class PlaybackService : MediaSessionService() {
     private suspend fun handleEnter(player: Player, newItem: MediaItem?) {
         val enter = withContext(Dispatchers.Main.immediate) {
             val newIds = parseIds(newItem)
-            val newPos = player.currentPosition.coerceAtLeast(0L)
+            val newPos = newItem?.chapterPosition(player.currentPosition) ?: 0L
             if (newIds != null) {
                 lastBookId = newIds.first
                 lastChapterId = newIds.second
@@ -426,29 +447,23 @@ class PlaybackService : MediaSessionService() {
         enter?.let { progressWriter?.enqueue(it.first, it.second, it.third) }
     }
 
-    private suspend fun trackListening(player: Player) {
-        val now = SystemClock.elapsedRealtime()
-        val snapshot = withContext(Dispatchers.Main.immediate) {
-            val playing = player.isPlaying
-            val bookId = parseIds(player.currentMediaItem)?.first ?: lastBookId
-            if (playing && bookId != null) bookId else null
-        }
-        if (snapshot != null) {
-            val prev = lastPlayingTickElapsedMs
-            lastPlayingTickElapsedMs = now
-            if (prev > 0L) {
-                val delta = (now - prev).coerceAtLeast(0L)
-                if (delta > 0L) statsRepository.recordListening(snapshot, delta)
-            }
-        } else {
-            lastPlayingTickElapsedMs = -1L
-        }
+    private fun trackListening(player: Player, stopping: Boolean = false) {
+        val segment = listeningTracker.update(
+            parseIds(player.currentMediaItem)?.first, player.isPlaying && !stopping,
+            SystemClock.elapsedRealtime(), System.currentTimeMillis(),
+        ) ?: return
+        statsWrites.trySend { statsRepository.recordListening(segment.bookId, segment.elapsedMs, segment.endedAtMs) }
+    }
+
+    private suspend fun flushStats() {
+        val ack = kotlinx.coroutines.CompletableDeferred<Unit>()
+        if (statsWrites.trySend { ack.complete(Unit) }.isSuccess) ack.await()
     }
 
     private suspend fun captureAndEnqueueCurrent(player: Player) {
         val snap = withContext(Dispatchers.Main.immediate) {
             val ids = parseIds(player.currentMediaItem)
-            val pos = player.currentPosition.coerceAtLeast(0L)
+            val pos = player.currentMediaItem?.chapterPosition(player.currentPosition) ?: 0L
             if (ids != null) {
                 lastBookId = ids.first
                 lastChapterId = ids.second
@@ -581,16 +596,18 @@ class PlaybackService : MediaSessionService() {
         val requestedBookId = args.getLong(PlaybackStateKeys.MUTATION_BOOK_ID, -1L)
         val clearPlaylist = args.getBoolean(PlaybackStateKeys.MUTATION_CLEAR_PLAYLIST, false)
         val ids = parseIds(player.currentMediaItem)
-        val wasActive = ids?.first == requestedBookId
+        val activeBookId = ids?.first
+        val wasActive = activeBookId != null && (requestedBookId <= 0L || activeBookId == requestedBookId)
         val wasPlaying = wasActive && player.isPlaying
         val chapterId = if (wasActive) ids?.second else null
-        val positionMs = if (wasActive) player.currentPosition.coerceAtLeast(0L) else 0L
+        val positionMs = if (wasActive) player.currentMediaItem?.chapterPosition(player.currentPosition) ?: 0L else 0L
         if (wasActive) player.pause()
         serviceScope.launch {
+            flushStats()
             val saved = if (wasActive) {
-                progressWriter?.flushWithCurrent(requestedBookId, chapterId, positionMs) ?: false
+                progressWriter?.flushWithCurrent(activeBookId, chapterId, positionMs) ?: false
             } else {
-                true
+                progressWriter?.flushPending() ?: true
             }
             if (saved && wasActive && clearPlaylist) {
                 player.clearMediaItems()
@@ -600,6 +617,7 @@ class PlaybackService : MediaSessionService() {
                 clearSleep(restoreVolume = true)
             }
             val resultExtras = Bundle().apply {
+                putLong(PlaybackStateKeys.MUTATION_BOOK_ID, activeBookId ?: -1L)
                 putBoolean(PlaybackStateKeys.MUTATION_WAS_ACTIVE, wasActive)
                 putBoolean(PlaybackStateKeys.MUTATION_WAS_PLAYING, wasPlaying)
                 putLong(PlaybackStateKeys.MUTATION_CHAPTER_ID, chapterId ?: -1L)
@@ -647,6 +665,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        mediaSession?.player?.let { trackListening(it, stopping = true) }
+        statsWrites.close()
         tickerJob?.cancel()
         sleepJob?.cancel()
         fadeJob?.cancel()
@@ -673,7 +693,7 @@ class PlaybackService : MediaSessionService() {
             val ids = parseIds(player.currentMediaItem)
             b = ids?.first ?: lastBookId
             ch = ids?.second ?: lastChapterId
-            pos = if (ids != null) player.currentPosition.coerceAtLeast(0L) else lastPositionMs
+            pos = if (ids != null) player.currentMediaItem?.chapterPosition(player.currentPosition) ?: lastPositionMs else lastPositionMs
         } else {
             b = lastBookId
             ch = lastChapterId

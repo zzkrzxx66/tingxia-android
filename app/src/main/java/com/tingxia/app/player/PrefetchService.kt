@@ -163,7 +163,7 @@ class PrefetchService : Service() {
         }
         if (durationMs > 0L) {
             withContext(Dispatchers.IO) {
-                bookRepository.recordRemoteChapterDuration(book.id, chapter.id, durationMs)
+                bookRepository.recordRemoteChapterDuration(book.id, chapter.id, durationMs, book.remoteToneId ?: "0")
             }
         }
     }
@@ -171,6 +171,7 @@ class PrefetchService : Service() {
     /** Cancel CacheWriter as soon as the request is cancelled, then await its cleanup. */
     private suspend fun prefetchUrl(url: String, key: String): Boolean {
         return try {
+            cacheManager.pin(key)
             val dataSourceFactory = CacheDataSource.Factory()
                 .setCache(cacheManager.cache)
                 .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())

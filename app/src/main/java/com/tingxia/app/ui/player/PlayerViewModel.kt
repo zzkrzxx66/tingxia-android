@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import com.tingxia.app.data.policy.LatestRequest
 import javax.inject.Inject
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -42,6 +45,7 @@ class PlayerViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val chapterTextRepository: ChapterTextRepository,
     private val cacheManager: CacheManager,
+    private val preferences: com.tingxia.app.data.repo.UserPreferencesRepository,
 ) : ViewModel() {
 
     val state: StateFlow<PlayerUiState> = playerController.state
@@ -63,64 +67,65 @@ class PlayerViewModel @Inject constructor(
     private val _chapterText = MutableStateFlow(ChapterTextUiState())
     val chapterText: StateFlow<ChapterTextUiState> = _chapterText.asStateFlow()
 
-    /** Whether the book being played has a text edition to read along with. */
-    val textAvailable: StateFlow<Boolean> = state
-        .map { it.bookId }
-        .distinctUntilChanged()
-        .map { bookId ->
-            bookId?.let { id ->
-                bookRepository.getBook(id)?.let { chapterTextRepository.canShowText(it) }
-            } ?: false
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    private data class TextKey(val bookId: Long, val chapterId: Long, val toneId: String)
+    private val textRequests = LatestRequest<TextKey>()
+    private var textJob: Job? = null
+    private var loadedTextKey: TextKey? = null
+    private fun currentTextKey(): TextKey? = state.value.let {
+        TextKey(it.bookId ?: return null, it.chapterId ?: return null, it.toneId)
+    }
+    private val liveBook = state.map { it.bookId }.distinctUntilChanged().flatMapLatest { id ->
+        if (id == null) flowOf(null) else bookRepository.observeBook(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /**
-     * Load the text for the chapter in the player, once per chapter. The player's text page
-     * asks for this when it becomes visible, so opening the player costs nothing.
-     */
+    val globalDefaultSpeed = preferences.defaultSpeed
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1f)
+    val readingFontSize = preferences.readingFontSize
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 17f)
+    fun setReadingFontSize(size: Float) { viewModelScope.launch { preferences.setReadingFontSize(size) } }
+
+    val textAvailable: StateFlow<Boolean> = liveBook.map { book ->
+        book?.let(chapterTextRepository::canShowText) ?: false
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     fun ensureChapterText() {
-        val chapterId = state.value.chapterId ?: return
-        val current = _chapterText.value
-        if (current.loading) return
-        if (current.chapterId == chapterId && (current.timeline != null || current.error != null)) return
-        loadChapterText(chapterId)
+        val key = currentTextKey() ?: return
+        if (loadedTextKey == key && (_chapterText.value.loading || _chapterText.value.timeline != null)) return
+        loadChapterText(key)
     }
 
-    /** Open the text of the chapter that is currently loaded in the player. */
-    fun openChapterText() {
-        val chapterId = state.value.chapterId ?: return
-        loadChapterText(chapterId)
-    }
+    fun openChapterText() { currentTextKey()?.let(::loadChapterText) }
 
-    private fun loadChapterText(chapterId: Long) {
-        val bookId = state.value.bookId ?: return
-        _chapterText.value = ChapterTextUiState(
-            visible = true,
-            loading = true,
-            chapterTitle = state.value.chapterTitle.orEmpty(),
-            chapterId = chapterId,
-        )
-        viewModelScope.launch {
+    private fun loadChapterText(key: TextKey) {
+        textJob?.cancel()
+        val ticket = textRequests.begin(key)
+        loadedTextKey = key
+        _chapterText.value = ChapterTextUiState(visible = true, loading = true,
+            chapterTitle = state.value.chapterTitle.orEmpty(), chapterId = key.chapterId)
+        textJob = viewModelScope.launch {
             try {
-                val book = bookRepository.getBook(bookId) ?: error("书籍不存在")
-                val list = chapters.value.ifEmpty { bookRepository.getChapters(bookId) }
-                val chapter = list.firstOrNull { it.id == chapterId } ?: error("章节不存在")
+                val book = bookRepository.getBook(key.bookId) ?: error("书籍不存在")
+                val list = bookRepository.getChapters(key.bookId)
+                val chapter = list.firstOrNull { it.id == key.chapterId } ?: error("章节不存在")
                 val timeline = chapterTextRepository.timelineFor(book, chapter, list)
-                _chapterText.value = _chapterText.value.copy(
-                    loading = false,
-                    chapterTitle = timeline.title.ifBlank { chapter.displayTitle },
-                    timeline = timeline,
-                )
-            } catch (e: Exception) {
-                _chapterText.value = _chapterText.value.copy(
-                    loading = false,
-                    error = e.message ?: app.getString(R.string.chapter_text_failed),
-                )
+                if (!textRequests.accepts(ticket) || currentTextKey() != key || (book.remoteToneId ?: "0") != key.toneId) return@launch
+                _chapterText.value = _chapterText.value.copy(loading = false,
+                    chapterTitle = timeline.title.ifBlank { chapter.displayTitle }, timeline = timeline)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (textRequests.accepts(ticket) && currentTextKey() == key) {
+                    _chapterText.value = _chapterText.value.copy(loading = false,
+                        error = error.message ?: app.getString(R.string.chapter_text_failed))
+                }
             }
         }
     }
 
     fun closeChapterText() {
+        textJob?.cancel()
+        textRequests.clear()
+        loadedTextKey = null
         _chapterText.value = ChapterTextUiState()
     }
 
@@ -159,6 +164,18 @@ class PlayerViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    init {
+        viewModelScope.launch {
+            state.map { Triple(it.bookId, it.chapterId, it.toneId) }.distinctUntilChanged().collect {
+                if (_chapterText.value.visible) ensureChapterText()
+            }
+        }
+    }
+
+    val remainingBookMs = combine(state, chapters, liveBook) { player, list, book ->
+        book?.let { com.tingxia.app.player.remainingPlaybackMs(it, list, player.chapterId, player.chapterPositionMs) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     fun connect() = playerController.connect()
 
     fun playBook(
@@ -175,10 +192,11 @@ class PlayerViewModel @Inject constructor(
 
     fun togglePlayPause() = playerController.togglePlayPause()
     fun seekTo(ms: Long) = playerController.seekTo(ms)
+    fun seekChapterPosition(ms: Long) = playerController.seekChapterPosition(ms)
     fun seekBy(delta: Long) = playerController.seekBy(delta)
     fun nextChapter() = playerController.nextChapter()
     fun previousChapter() = playerController.previousChapter()
-    fun setSpeed(speed: Float) = playerController.setSpeed(speed, asBookDefault = true)
+    fun setSpeed(speed: Float, forBook: Boolean = true) = playerController.setSpeed(speed, asBookDefault = forBook)
     fun useGlobalSpeed() = playerController.useGlobalSpeed()
     fun setSleepMinutes(minutes: Int) = playerController.setSleepMinutes(minutes)
     fun setSleepEndOfChapter() = playerController.setSleepMode(SleepTimerMode.EndOfChapter)
@@ -305,7 +323,7 @@ class PlayerViewModel @Inject constructor(
         val chapterId = s.chapterId ?: return
         viewModelScope.launch {
             try {
-                bookmarkRepository.addBookmark(bookId, chapterId, s.positionMs)
+                bookmarkRepository.addBookmark(bookId, chapterId, s.chapterPositionMs)
                 _toast.value = app.getString(R.string.bookmark_added)
             } catch (e: Exception) {
                 _toast.value = e.message ?: app.getString(R.string.bookmark_add_failed)

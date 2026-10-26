@@ -9,7 +9,6 @@ import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheEvictor
 import androidx.media3.datasource.cache.CacheSpan
-import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import com.tingxia.app.data.db.ChapterDao
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -49,9 +48,19 @@ class CacheManager @Inject constructor(
         },
     )
 
+    private val pinPreferences = context.getSharedPreferences("offline_audio", Context.MODE_PRIVATE)
+    private val pinnedKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().apply {
+        addAll(pinPreferences.getStringSet("keys", emptySet()).orEmpty())
+    }
+
+    @Volatile private var preserveLegacy = File(context.cacheDir, "audio_cache").exists()
+
     val cache: Cache by lazy {
-        val dir = File(context.cacheDir, "audio_cache").apply { mkdirs() }
-        val lru = LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES)
+        val dir = File(context.filesDir, "audio_cache")
+        val legacy = File(context.cacheDir, "audio_cache")
+        if (!dir.exists() && legacy.exists()) check(legacy.renameTo(dir)) { "无法迁移音频缓存" }
+        check(dir.exists() || dir.mkdirs()) { "无法创建音频缓存目录" }
+        val lru = PinnedCacheEvictor(MAX_CACHE_BYTES) { preserveLegacy || pinnedKeys.contains(it) }
         val evictor = object : CacheEvictor by lru {
             override fun onCacheInitialized() {
                 lru.onCacheInitialized()
@@ -79,6 +88,19 @@ class CacheManager @Inject constructor(
         // Cache callbacks run under SimpleCache's lock. Only signal here; query Room
         // and read the cache later on IO, coalescing bursts of span changes.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            if (preserveLegacy) {
+                try {
+                    val oldDownloads = chapterDao.cacheEntries().filter { it.isCached }.map { entry ->
+                        cacheKeyForChapter(entry.audioBookId, entry.itemId, entry.toneId)
+                    }
+                    synchronized(pinnedKeys) {
+                        val updated = pinnedKeys.toSet() + oldDownloads
+                        check(pinPreferences.edit().putStringSet("keys", updated).commit()) { "无法迁移下载保护" }
+                        pinnedKeys.addAll(oldDownloads)
+                    }
+                    preserveLegacy = false
+                } catch (error: Exception) { Log.w("TingXiaCache", "Keeping legacy downloads protected", error) }
+            }
             for (request in refreshRequests) {
                 delay(250)
                 try {
@@ -91,6 +113,23 @@ class CacheManager @Inject constructor(
             }
         }
         refreshRequests.trySend(Unit)
+    }
+
+    /** Persist protection before writing bytes; Android cache cleanup cannot remove these files. */
+    suspend fun pin(key: String) = withContext(Dispatchers.IO) {
+        synchronized(pinnedKeys) {
+            val updated = pinnedKeys.toSet() + key
+            check(pinPreferences.edit().putStringSet("keys", updated).commit()) { "无法保存下载保护状态" }
+            pinnedKeys.add(key)
+        }
+    }
+
+    private fun unpin(key: String) {
+        synchronized(pinnedKeys) {
+            val updated = pinnedKeys.toSet() - key
+            check(pinPreferences.edit().putStringSet("keys", updated).commit()) { "无法清除下载保护状态" }
+            pinnedKeys.remove(key)
+        }
     }
 
     /** Cache data-source factory used by the player for remote items only. */
@@ -143,7 +182,7 @@ class CacheManager @Inject constructor(
 
     suspend fun remove(keys: Collection<String>) = withContext(Dispatchers.IO) {
         try {
-            keys.distinct().forEach { cache.removeResource(it) }
+            keys.distinct().forEach { key -> cache.removeResource(key); unpin(key) }
         } finally {
             // Partial failures must also leave the indicators consistent with disk.
             synchronizeCacheStatus()
@@ -151,7 +190,7 @@ class CacheManager @Inject constructor(
     }
 
     suspend fun clearAll() = withContext(Dispatchers.IO) {
-        remove(cache.keys.toList())
+        remove((cache.keys + pinnedKeys).toList())
     }
 
     companion object {

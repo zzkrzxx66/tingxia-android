@@ -41,6 +41,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.font.FontWeight
 import kotlin.math.abs
@@ -79,6 +80,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -135,7 +137,12 @@ fun FullPlayerScreen(
     onSeekBy: (Long) -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    onSpeed: (Float) -> Unit,
+    onSpeed: (Float, Boolean) -> Unit,
+    globalDefaultSpeed: Float = 1f,
+    readingFontSize: Float = 17f,
+    onReadingFontSize: (Float) -> Unit = {},
+    remainingBookMs: Long? = null,
+    onSeekChapterPosition: (Long) -> Unit = onSeek,
     onUseGlobalSpeed: () -> Unit = {},
     onSleep: (Int) -> Unit,
     onSleepEndOfChapter: () -> Unit = {},
@@ -149,11 +156,12 @@ fun FullPlayerScreen(
     timelineLoading: Boolean = false,
     timelineError: String? = null,
     onEnsureTimeline: () -> Unit = {},
+    onRetryTimeline: () -> Unit = onEnsureTimeline,
 ) {
     val pagerState = rememberPagerState(initialPage = PAGE_COVER, pageCount = { PAGE_COUNT })
     val scope = rememberCoroutineScope()
     // Load the text the first time the page is reached, not on every player open.
-    LaunchedEffect(pagerState.currentPage, textAvailable, state.chapterId) {
+    LaunchedEffect(pagerState.currentPage, textAvailable, state.bookId, state.chapterId, state.toneId) {
         if (textAvailable && pagerState.currentPage == PAGE_TEXT) onEnsureTimeline()
     }
     var scrubbing by remember { mutableStateOf(false) }
@@ -181,6 +189,8 @@ fun FullPlayerScreen(
 
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var toolBarHeight by remember { mutableFloatStateOf(70f) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -295,25 +305,32 @@ fun FullPlayerScreen(
                             loading = timelineLoading,
                             error = timelineError,
                             chapterTitle = state.chapterTitle.orEmpty(),
-                            positionMs = state.positionMs,
+                            positionMs = state.chapterPositionMs,
+                            playbackPositionMs = state.positionMs,
                             durationMs = state.durationMs,
                             isPlaying = state.isPlaying,
-                            onSeek = onSeek,
+                            onSeek = onSeekChapterPosition,
+                            fontSize = readingFontSize,
+                            onFontSizeChange = onReadingFontSize,
+                            onRetry = onRetryTimeline,
                             onToggle = onToggle,
                             onPrev = onPrev,
                             onNext = onNext,
                         )
                     } else {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val compact = maxHeight < 420.dp * density.fontScale.coerceAtLeast(1f)
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                                 .padding(horizontal = 20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .weight(1f)
+                                    .then(if (compact) Modifier.height(0.dp) else Modifier.weight(1f))
                                     .padding(vertical = 4.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -325,7 +342,7 @@ fun FullPlayerScreen(
                                         maxWidth * 0.74f,
                                         maxHeight * 0.75f * 0.94f,
                                         240.dp,
-                                    ).coerceAtLeast(120.dp)
+                                    ).coerceAtLeast(0.dp)
                                     // A slow, barely-there swell keeps the artwork alive while playing.
                                     val breathing = rememberInfiniteTransition(label = "coverBreath")
                                     val breathScale by breathing.animateFloat(
@@ -545,12 +562,11 @@ fun FullPlayerScreen(
                                 )
                                 val speed = state.speed.coerceAtLeast(0.25f)
                                 val chapterRemainingMs = ((duration - position) / speed).toLong().coerceAtLeast(0L)
-                                val bookRemainingMs = ((state.bookDurationMs - state.bookPositionMs) / speed)
-                                    .toLong().coerceAtLeast(0L)
+                                val bookRemainingMs = remainingBookMs?.let { (it / speed).toLong().coerceAtLeast(0L) }
                                 Text(
                                     text = when {
-                                        showBookRemaining && state.bookDurationMs > 0L ->
-                                            stringResource(R.string.remaining_book, formatDuration(bookRemainingMs))
+                                        showBookRemaining ->
+                                            stringResource(R.string.remaining_book, bookRemainingMs?.let(::formatDuration) ?: TIME_PLACEHOLDER)
                                         timeUnknown ->
                                             stringResource(R.string.remaining_chapter, TIME_PLACEHOLDER)
                                         else ->
@@ -564,7 +580,7 @@ fun FullPlayerScreen(
                                     modifier = Modifier.clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
-                                    ) { if (state.bookDurationMs > 0L) showBookRemaining = !showBookRemaining },
+                                    ) { showBookRemaining = !showBookRemaining },
                                 )
                             }
 
@@ -616,7 +632,7 @@ fun FullPlayerScreen(
 
                             Spacer(Modifier.height(14.dp))
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().onSizeChanged { toolBarHeight = with(density) { it.height.toDp().value } },
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -643,22 +659,7 @@ fun FullPlayerScreen(
                                 )
                                 val speedActive = state.speed != 1.0f
                                 PlayerToolButton(
-                                    onClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        val nextSpeed = when {
-                                            abs(state.speed - 1.0f) < 0.05f -> 1.25f
-                                            abs(state.speed - 1.25f) < 0.05f -> 1.5f
-                                            abs(state.speed - 1.5f) < 0.05f -> 1.75f
-                                            abs(state.speed - 1.75f) < 0.05f -> 2.0f
-                                            else -> 1.0f
-                                        }
-                                        onSpeed(nextSpeed)
-                                        Toast.makeText(context, "播放倍速: ${PlaybackSpeeds.label(nextSpeed)}", Toast.LENGTH_SHORT).show()
-                                    },
-                                    onLongClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        speedSheetOpen = true
-                                    },
+                                    onClick = { speedSheetOpen = true },
                                     icon = Icons.Default.Speed,
                                     label = if (speedActive) {
                                         PlaybackSpeeds.label(state.speed)
@@ -682,36 +683,7 @@ fun FullPlayerScreen(
                                     else -> stringResource(R.string.sleep)
                                 }
                                 PlayerToolButton(
-                                    onClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (!sleepActive) {
-                                            onSleep(10)
-                                            Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            when {
-                                                state.sleepRemainingMs != null && state.sleepRemainingMs!! <= 11 * 60_000L -> {
-                                                    onSleep(30)
-                                                    Toast.makeText(context, "已切换为 30 分钟定时关闭", Toast.LENGTH_SHORT).show()
-                                                }
-                                                state.sleepRemainingMs != null -> {
-                                                    onSleepEndOfChapter()
-                                                    Toast.makeText(context, "已设置为播完本章后关闭", Toast.LENGTH_SHORT).show()
-                                                }
-                                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter -> {
-                                                    onSleep(0)
-                                                    Toast.makeText(context, "已关闭定时", Toast.LENGTH_SHORT).show()
-                                                }
-                                                else -> {
-                                                    onSleep(10)
-                                                    Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        sleepSheetOpen = true
-                                    },
+                                    onClick = { sleepSheetOpen = true },
                                     icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
                                     label = sleepLabel,
                                     modifier = Modifier.weight(1f),
@@ -736,6 +708,7 @@ fun FullPlayerScreen(
                             }
                             Spacer(Modifier.height(8.dp))
                         }
+                        }
                     }
                 }
             }
@@ -743,6 +716,8 @@ fun FullPlayerScreen(
             PlayerSpeedPopup(
                 visible = speedSheetOpen,
                 currentSpeed = state.speed,
+                globalSpeed = globalDefaultSpeed,
+                bottomOffsetDp = toolBarHeight + 16f,
                 usesBookSpeedOverride = state.usesBookSpeedOverride,
                 onSpeedSelected = onSpeed,
                 onUseGlobalSpeed = onUseGlobalSpeed,
@@ -753,6 +728,7 @@ fun FullPlayerScreen(
                 visible = sleepSheetOpen,
                 sleepRemainingMs = state.sleepRemainingMs,
                 sleepMode = state.sleepMode,
+                bottomOffsetDp = toolBarHeight + 16f,
                 onSleepMinutes = onSleep,
                 onSleepEndOfChapter = onSleepEndOfChapter,
                 onExtendSleep = onExtendSleep,

@@ -86,6 +86,16 @@ fun SettingsScreen(
     val errorPolicy by viewModel.playbackErrorPolicy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val backupPreview by viewModel.backupPreview.collectAsStateWithLifecycle()
+    backupPreview?.let { document ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::dismissBackupPreview,
+            title = { Text(stringResource(R.string.import_backup)) },
+            text = { Text("将恢复 ${document.books.size} 本书、${document.books.sumOf { it.bookmarks.size }} 个书签和设置。已有书籍的进度会被覆盖，书签与统计将合并；恢复后播放器保持暂停。音频和私有封面需保留在本机。") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::confirmRestore) { Text("恢复") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = viewModel::dismissBackupPreview) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     val snackbar = remember { SnackbarHostState() }
     var speedExpanded by remember { mutableStateOf(false) }
 

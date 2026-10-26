@@ -16,6 +16,7 @@ import com.tingxia.app.data.db.migration.MIGRATION_7_8
 import com.tingxia.app.data.db.migration.MIGRATION_8_9
 import com.tingxia.app.data.db.migration.MIGRATION_9_10
 import com.tingxia.app.data.db.migration.MIGRATION_10_11
+import com.tingxia.app.data.db.migration.MIGRATION_11_12
 import com.tingxia.app.data.db.ListenSessionDao
 import dagger.Module
 import dagger.Provides
@@ -35,7 +36,7 @@ object AppModule {
             .addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                MIGRATION_9_10, MIGRATION_10_11,
+                MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
             )
             .build()
 

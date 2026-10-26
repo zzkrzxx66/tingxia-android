@@ -37,6 +37,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collectLatest
 import javax.inject.Inject
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -51,6 +54,7 @@ class BookDetailViewModel @Inject constructor(
     private val updateChecker: OnlineUpdateChecker,
     private val chapterTextRepository: ChapterTextRepository,
     val cacheManager: CacheManager,
+    private val preferences: com.tingxia.app.data.repo.UserPreferencesRepository,
 ) : ViewModel() {
 
     private val bookId: Long = checkNotNull(savedStateHandle["bookId"])
@@ -63,6 +67,13 @@ class BookDetailViewModel @Inject constructor(
 
     val bookmarks: StateFlow<List<Bookmark>> = bookmarkRepository.observeBookmarks(bookId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val readingFontSize = preferences.readingFontSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 17f)
+    fun setReadingFontSize(value: Float) { viewModelScope.launch { preferences.setReadingFontSize(value) } }
+    val remainingMs = combine(book, chapters, preferences.defaultSpeed) { book, list, globalSpeed ->
+        book?.let { com.tingxia.app.player.remainingPlaybackMs(it, list, it.currentChapterId, it.currentPositionMs)
+            ?.let { duration -> (duration / (it.playbackSpeed ?: globalSpeed).coerceAtLeast(0.25f)).toLong() } }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _reauthing = MutableStateFlow(false)
     val reauthing: StateFlow<Boolean> = _reauthing.asStateFlow()
@@ -157,6 +168,7 @@ class BookDetailViewModel @Inject constructor(
                     ids.size,
                 )
                 clearChapterSelection()
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新章节状态失败"
             }
@@ -199,6 +211,7 @@ class BookDetailViewModel @Inject constructor(
             try {
                 val results = fqNovelApi.search(normalized).books
                 _metaSync.value = _metaSync.value.copy(candidates = results, loading = false, searched = true)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _metaSync.value = _metaSync.value.copy(loading = false, searched = true)
                 _error.value = e.message ?: "在线搜索失败"
@@ -237,6 +250,7 @@ class BookDetailViewModel @Inject constructor(
                         suggestedOffset = ChapterTitleAligner.suggestedOffset(local, remoteTitles),
                     ),
                 )
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _metaSync.value = _metaSync.value.copy(applying = false)
                 _error.value = e.message ?: "同步在线信息失败"
@@ -274,6 +288,7 @@ class BookDetailViewModel @Inject constructor(
             _metaSync.value = _metaSync.value.copy(alignment = null, applying = true)
             try {
                 commitMetaSync(current.candidate, current.plan.updates)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _metaSync.value = _metaSync.value.copy(applying = false)
                 _error.value = e.message ?: "同步在线信息失败"
@@ -288,6 +303,7 @@ class BookDetailViewModel @Inject constructor(
             _metaSync.value = _metaSync.value.copy(alignment = null, applying = true)
             try {
                 commitMetaSync(current.candidate, emptyMap())
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _metaSync.value = _metaSync.value.copy(applying = false)
                 _error.value = e.message ?: "同步在线信息失败"
@@ -305,6 +321,7 @@ class BookDetailViewModel @Inject constructor(
                 bookRepository.clearOnlineMeta(bookId)
                 playerController.refreshQueueMetadata(bookId)
                 _message.value = app.getString(R.string.meta_sync_cleared)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: app.getString(R.string.meta_sync_clear_failed)
             }
@@ -353,6 +370,7 @@ class BookDetailViewModel @Inject constructor(
                 playerController.prepareLibraryMutation(bookId, clearPlaylist = true)
                 bookRepository.removeBook(bookId)
                 onDone()
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "移除书籍失败"
             }
@@ -375,6 +393,7 @@ class BookDetailViewModel @Inject constructor(
                 ambiguousDecisions.clear()
                 _rescanPreview.value = e.preview
                 _message.value = "请确认新目录中的章节对应关系"
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "重新授权失败"
             } finally {
@@ -406,6 +425,7 @@ class BookDetailViewModel @Inject constructor(
                     _message.value = "目录无变化"
                     _rescanPreview.value = null
                 }
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "重新扫描失败"
             } finally {
@@ -495,6 +515,7 @@ class BookDetailViewModel @Inject constructor(
                         wasPlaying = mutation.wasPlaying,
                     )
                 }
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 if (mutation.wasActive && mutation.wasPlaying) playerController.play()
                 _error.value = e.message ?: "应用扫描结果失败"
@@ -516,6 +537,7 @@ class BookDetailViewModel @Inject constructor(
                 bookRepository.updateBookCover(bookId, uri)
                 playerController.refreshQueueMetadata(bookId)
                 _message.value = if (uri == null) "已移除自定义封面" else "封面已更新"
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新封面失败"
             }
@@ -526,6 +548,7 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 playerController.setAutoPlayNext(bookId, enabled)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新连播设置失败"
             }
@@ -537,6 +560,7 @@ class BookDetailViewModel @Inject constructor(
             try {
                 playerController.setSkipOffsets(bookId, skipIntroMs, skipOutroMs)
                 _message.value = app.getString(R.string.skip_offsets_saved)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: app.getString(R.string.skip_offsets_failed)
             }
@@ -547,6 +571,7 @@ class BookDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 bookRepository.setChapterCompleted(chapterId, completed)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新章节状态失败"
             }
@@ -558,6 +583,7 @@ class BookDetailViewModel @Inject constructor(
             try {
                 bookRepository.setAllChaptersCompleted(bookId, completed)
                 _message.value = if (completed) "已将全书标记为完成" else "已清除全书完成状态"
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新全书状态失败"
             }
@@ -570,6 +596,7 @@ class BookDetailViewModel @Inject constructor(
                 bookRepository.updateBookMetadata(bookId, title, author)
                 playerController.refreshQueueMetadata(bookId)
                 _message.value = "书籍信息已更新"
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新书籍信息失败"
             }
@@ -581,6 +608,7 @@ class BookDetailViewModel @Inject constructor(
             try {
                 bookRepository.updateChapterTitle(chapterId, title)
                 playerController.refreshQueueMetadata(bookId)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "更新章节标题失败"
             }
@@ -639,6 +667,7 @@ class BookDetailViewModel @Inject constructor(
                 _message.value = app.getString(R.string.cache_cleared)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message
             }
@@ -664,6 +693,7 @@ class BookDetailViewModel @Inject constructor(
                     result.addedCount > 0 -> app.getString(R.string.book_update_added, result.addedCount)
                     else -> app.getString(R.string.book_update_none)
                 }
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: app.getString(R.string.book_update_failed)
             } finally {
@@ -678,6 +708,11 @@ class BookDetailViewModel @Inject constructor(
         if (book.remoteNewChapterCount <= 0) return
         viewModelScope.launch { bookRepository.clearNewChapterBadge(bookId) }
     }
+
+    private var voiceJob: Job? = null
+    private var textJob: Job? = null
+    private var textGeneration = 0L
+    private var switchingVoice = false
 
     private val _voiceSwitch = MutableStateFlow(VoiceSwitchUiState())
     val voiceSwitch: StateFlow<VoiceSwitchUiState> = _voiceSwitch.asStateFlow()
@@ -699,10 +734,13 @@ class BookDetailViewModel @Inject constructor(
             loading = true,
             currentToneId = book.remoteToneId,
         )
-        viewModelScope.launch {
+        voiceJob?.cancel()
+        voiceJob = viewModelScope.launch {
             try {
                 val voices = fqNovelApi.voices(novelBookId)
+                if (!_voiceSwitch.value.visible) return@launch
                 _voiceSwitch.value = _voiceSwitch.value.copy(loading = false, voices = voices)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 _voiceSwitch.value = VoiceSwitchUiState()
                 _error.value = e.message ?: app.getString(R.string.book_switch_voice_failed)
@@ -711,22 +749,35 @@ class BookDetailViewModel @Inject constructor(
     }
 
     fun closeVoiceSwitch() {
+        voiceJob?.cancel()
         _voiceSwitch.value = VoiceSwitchUiState()
     }
 
     fun switchVoice(tone: FqTtsTone) {
+        if (switchingVoice) return
+        switchingVoice = true
         viewModelScope.launch {
+            var snapshot: LibraryMutationSnapshot? = null
             try {
+                snapshot = playerController.prepareLibraryMutation(bookId, clearPlaylist = true)
                 val changed = bookRepository.switchTtsTone(bookId, tone.toneId.toString())
                 closeVoiceSwitch()
                 if (changed) {
-                    playerController.refreshQueueMetadata(bookId)
+                    val openChapter = chapters.value.firstOrNull { it.id == _chapterText.value.chapterId }
+                    if (_chapterText.value.visible && openChapter != null) {
+                        bookRepository.getBook(bookId)?.let { loadChapterText(it, openChapter) }
+                    }
                     _message.value = app.getString(R.string.book_switch_voice_done)
-                } else {
-                    _error.value = app.getString(R.string.book_switch_voice_failed)
+                } else _error.value = app.getString(R.string.book_switch_voice_failed)
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                _error.value = error.message ?: app.getString(R.string.book_switch_voice_failed)
+            } finally {
+                val previous = snapshot
+                if (previous?.wasActive == true) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    playerController.refreshPlaylistAfterRescan(bookId, previous.chapterId, previous.positionMs, previous.wasPlaying)
                 }
-            } catch (e: Exception) {
-                _error.value = e.message ?: app.getString(R.string.book_switch_voice_failed)
+                switchingVoice = false
             }
         }
     }
@@ -748,17 +799,26 @@ class BookDetailViewModel @Inject constructor(
 
     fun openChapterText(chapter: Chapter) {
         val book = book.value ?: return
+        loadChapterText(book, chapter)
+    }
+
+    private fun loadChapterText(book: Book, chapter: Chapter) {
+        textJob?.cancel()
+        val generation = ++textGeneration
         _chapterText.value = ChapterTextUiState(
             visible = true,
             loading = true,
             chapterTitle = chapter.displayTitle,
             chapterId = chapter.id,
         )
-        viewModelScope.launch {
+        textJob = viewModelScope.launch {
             try {
                 val timeline = chapterTextRepository.timelineFor(book, chapter, chapters.value)
+                if (generation != textGeneration || !_chapterText.value.visible) return@launch
                 _chapterText.value = _chapterText.value.copy(loading = false, timeline = timeline)
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
+                if (generation != textGeneration) return@launch
                 _chapterText.value = _chapterText.value.copy(
                     loading = false,
                     error = e.message ?: app.getString(R.string.chapter_text_failed),
@@ -775,7 +835,13 @@ class BookDetailViewModel @Inject constructor(
         }
     }
 
+    fun retryChapterText() {
+        chapters.value.firstOrNull { it.id == _chapterText.value.chapterId }?.let(::openChapterText)
+    }
+
     fun closeChapterText() {
+        textJob?.cancel()
+        textGeneration++
         _chapterText.value = ChapterTextUiState()
     }
 

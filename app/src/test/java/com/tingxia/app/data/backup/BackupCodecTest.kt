@@ -22,9 +22,16 @@ class BackupCodecTest {
                 shelfSort = ShelfSort.TITLE,
                 shelfFilter = ShelfFilter.COMPLETED,
                 playbackErrorPolicy = PlaybackErrorPolicy.SKIP,
+                readingFontSize = 22f,
+                shelfListView = true,
+                updateCheckEnabled = false,
             ),
             books = listOf(
                 BackupBook(
+                    metaSyncSourceId = "linked",
+                    metaSyncBackup = "snapshot",
+                    remoteFinished = false,
+                    listening = listOf(BackupListening(1000, 5000)),
                     title = "测试书",
                     author = "作者",
                     rootUri = "content://tree/book",
@@ -75,6 +82,7 @@ class BackupCodecTest {
         assertEquals(source.books.single().chapters.single().customTitle, restored.books.single().chapters.single().customTitle)
         assertEquals(source.books.single().bookmarks.single().note, restored.books.single().bookmarks.single().note)
         assertNull(restored.books.single().chapters.single().completedAt)
+        assertEquals(source.books, restored.books)
     }
 
     @Test
@@ -123,5 +131,22 @@ class BackupCodecTest {
 
         assertEquals(0L, book.skipIntroMs)
         assertEquals(0L, book.skipOutroMs)
+    }
+
+    @Test fun oldCoordinatesAreConvertedOnceAndNewFormatDoesNotShiftAgain() {
+        val settings = PreferencesSnapshot(ThemeMode.SYSTEM, 1f, ShelfSort.RECENT, ShelfFilter.ALL, PlaybackErrorPolicy.STOP)
+        val chapter = BackupChapter("key", "c", "uri", "file", "file", 1, null, null, 10000, 0, null, 1, null)
+        val book = BackupBook("b", null, "root", 10000, 1, "key", 1000, 1000, 0, null, true, 0, null,
+            listOf(chapter), listOf(BackupBookmark("key", 1200, null, 0)), skipIntroMs = 2000)
+        val old = BackupDocument(1, 0, settings, listOf(book))
+        val upgraded = BackupCodec.decode(BackupCodec.encode(old))
+        assertEquals(3000L, upgraded.books.single().currentPositionMs)
+        assertEquals(3200L, upgraded.books.single().bookmarks.single().positionMs)
+        val next = upgraded.copy(formatVersion = BackupCodec.CURRENT_FORMAT_VERSION)
+        assertEquals(next, BackupCodec.decode(BackupCodec.encode(next)))
+    }
+    @Test fun deeplyNestedInputIsRejectedBeforeStackOverflow() {
+        val json = "[".repeat(200) + "0" + "]".repeat(200)
+        assertTrue(runCatching { BackupCodec.decode(json) }.exceptionOrNull() is IllegalArgumentException)
     }
 }

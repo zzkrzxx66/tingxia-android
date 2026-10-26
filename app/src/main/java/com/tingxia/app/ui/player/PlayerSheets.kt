@@ -38,6 +38,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,13 +67,19 @@ import kotlin.math.abs
 fun PlayerSpeedPopup(
     visible: Boolean,
     currentSpeed: Float,
+    globalSpeed: Float = 1f,
+    bottomOffsetDp: Float = 88f,
     usesBookSpeedOverride: Boolean,
-    onSpeedSelected: (Float) -> Unit,
+    onSpeedSelected: (Float, Boolean) -> Unit,
     onUseGlobalSpeed: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
+    BackHandler(onBack = onDismiss)
+    var forBook by remember { mutableStateOf(true) }
+    val selectedSpeed = if (forBook) currentSpeed else globalSpeed
+    val maxPanelHeight = (LocalConfiguration.current.screenHeightDp - bottomOffsetDp - 100f).coerceAtLeast(120f).dp
 
     Box(
         modifier = Modifier
@@ -87,7 +102,7 @@ fun PlayerSpeedPopup(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 88.dp)
+                .padding(bottom = bottomOffsetDp.dp)
                 .navigationBarsPadding()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -96,7 +111,7 @@ fun PlayerSpeedPopup(
                 ),
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.heightIn(max = maxPanelHeight).verticalScroll(rememberScrollState()).padding(18.dp),
             ) {
                 // Header
                 Row(
@@ -116,7 +131,7 @@ fun PlayerSpeedPopup(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = stringResource(R.string.cancel),
@@ -131,18 +146,18 @@ fun PlayerSpeedPopup(
                 SingleChoiceSegmentedButtonRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(34.dp),
+                        .heightIn(min = 48.dp),
                 ) {
                     val scopeOptions = listOf(
                         stringResource(R.string.speed_for_this_book),
                         stringResource(R.string.speed_for_global),
                     )
                     scopeOptions.forEachIndexed { index, label ->
-                        val selected = if (index == 0) usesBookSpeedOverride else !usesBookSpeedOverride
+                        val selected = if (index == 0) forBook else !forBook
                         SegmentedButton(
                             selected = selected,
                             onClick = {
-                                if (index == 1) onUseGlobalSpeed()
+                                forBook = index == 0
                             },
                             shape = SegmentedButtonDefaults.itemShape(index, scopeOptions.size),
                         ) {
@@ -153,53 +168,26 @@ fun PlayerSpeedPopup(
 
                 Spacer(Modifier.height(14.dp))
 
-                // 4x2 Speed Grid
-                val speedOptionsRow1 = listOf(0.75f, 1.0f, 1.25f, 1.5f)
-                val speedOptionsRow2 = listOf(1.75f, 2.0f, 2.5f, 3.0f)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    speedOptionsRow1.forEach { speed ->
-                        SpeedChip(
-                            speed = speed,
-                            isSelected = abs(speed - currentSpeed) < 0.01f,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                onSpeedSelected(speed)
+                val columns = if (LocalConfiguration.current.screenWidthDp < 360 ||
+                    androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 2 else 4
+                val speedRows = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f).chunked(columns)
+                speedRows.forEachIndexed { index, speeds ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        speeds.forEach { speed ->
+                            SpeedChip(speed, abs(speed - selectedSpeed) < 0.01f, Modifier.weight(1f)) {
+                                onSpeedSelected(speed, forBook)
                                 onDismiss()
-                            },
-                        )
+                            }
+                        }
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    speedOptionsRow2.forEach { speed ->
-                        SpeedChip(
-                            speed = speed,
-                            isSelected = abs(speed - currentSpeed) < 0.01f,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                onSpeedSelected(speed)
-                                onDismiss()
-                            },
-                        )
+                if (forBook && usesBookSpeedOverride) {
+                    TextButton(onClick = { onUseGlobalSpeed(); onDismiss() }) {
+                        Text(stringResource(R.string.speed_inherit_global))
                     }
                 }
-
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "💡 单击底栏「倍速」即可快速步进切换",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                )
             }
         }
     }
@@ -223,7 +211,7 @@ private fun SpeedChip(
         border = if (!isSelected) {
             BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         } else null,
-        modifier = modifier.height(42.dp),
+        modifier = modifier.heightIn(min = 48.dp),
     ) {
         Row(
             horizontalArrangement = Arrangement.Center,
@@ -262,6 +250,7 @@ fun PlayerSleepPopup(
     visible: Boolean,
     sleepRemainingMs: Long?,
     sleepMode: SleepTimerMode,
+    bottomOffsetDp: Float = 88f,
     onSleepMinutes: (Int) -> Unit,
     onSleepEndOfChapter: () -> Unit,
     onExtendSleep: () -> Unit,
@@ -270,6 +259,8 @@ fun PlayerSleepPopup(
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
+    BackHandler(onBack = onDismiss)
+    val maxPanelHeight = (LocalConfiguration.current.screenHeightDp - bottomOffsetDp - 100f).coerceAtLeast(120f).dp
     val isTimerActive = sleepRemainingMs != null || sleepMode is SleepTimerMode.EndOfChapter
 
     Box(
@@ -293,7 +284,7 @@ fun PlayerSleepPopup(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 88.dp)
+                .padding(bottom = bottomOffsetDp.dp)
                 .navigationBarsPadding()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -302,7 +293,7 @@ fun PlayerSleepPopup(
                 ),
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.heightIn(max = maxPanelHeight).verticalScroll(rememberScrollState()).padding(18.dp),
             ) {
                 // Header
                 Row(
@@ -352,7 +343,7 @@ fun PlayerSleepPopup(
                         }
                         Spacer(Modifier.width(8.dp))
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = stringResource(R.string.cancel),
@@ -611,7 +602,7 @@ fun PlayerSpeedSheet(
     visible: Boolean,
     currentSpeed: Float,
     usesBookSpeedOverride: Boolean,
-    onSpeedSelected: (Float) -> Unit,
+    onSpeedSelected: (Float, Boolean) -> Unit,
     onUseGlobalSpeed: () -> Unit,
     onDismiss: () -> Unit,
 ) = PlayerSpeedPopup(

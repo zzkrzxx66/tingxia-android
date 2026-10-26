@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.collection.LruCache
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +32,7 @@ private val accentCache = LruCache<String, Color>(128)
 @Composable
 fun rememberCoverAccent(coverPath: String?): Color {
     val fallback = MaterialTheme.colorScheme.primary
-    val dark = isSystemInDarkTheme()
+    val dark = LocalAppDarkTheme.current
     val context = LocalContext.current
     if (coverPath.isNullOrBlank()) return fallback
     val key = "$coverPath|${if (dark) "d" else "l"}"

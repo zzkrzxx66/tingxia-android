@@ -265,6 +265,20 @@ class FqNovelApi(
         items.toChapterList()
     }
 
+    /** TTS catalogue facts from the novel record returned by the existing tones API. */
+    suspend fun novelMeta(bookId: String): FqAudioMeta? = withContext(Dispatchers.IO) {
+        val infos = get("/audio/tones/$bookId").optJSONObject("data")?.optJSONArray("book_infos")
+        val info = (0 until (infos?.length() ?: 0)).mapNotNull { infos?.optJSONObject(it) }
+            .firstOrNull { it.optString("book_id") == bookId } ?: return@withContext null
+        val finished = when {
+            info.has("finished") -> info.optBoolean("finished")
+            info.has("creation_status") -> info.optString("creation_status") == "0"
+            else -> null
+        }
+        FqAudioMeta(bookId, info.optString("book_name").takeIf { it.isNotBlank() }, null, null, null,
+            0, 0L, null, 0L, null, null, 0L, finished, bookId)
+    }
+
     suspend fun audioMeta(audioBookId: String): FqAudioMeta? = withContext(Dispatchers.IO) {
         val data = get("/audio/meta/$audioBookId").optJSONObject("data") ?: return@withContext null
         FqAudioMeta(

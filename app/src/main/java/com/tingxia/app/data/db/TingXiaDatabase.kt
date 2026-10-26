@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [BookEntity::class, ChapterEntity::class, BookmarkEntity::class, ListenSessionEntity::class],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class TingXiaDatabase : RoomDatabase() {

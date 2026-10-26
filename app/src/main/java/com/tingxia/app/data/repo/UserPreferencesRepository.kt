@@ -32,6 +32,9 @@ data class PreferencesSnapshot(
     val shelfSort: ShelfSort,
     val shelfFilter: ShelfFilter,
     val playbackErrorPolicy: PlaybackErrorPolicy,
+    val shelfListView: Boolean = false,
+    val readingFontSize: Float = 17f,
+    val updateCheckEnabled: Boolean = true,
 )
 
 @Singleton
@@ -46,6 +49,8 @@ class UserPreferencesRepository @Inject constructor(
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val SHELF_LIST_VIEW = booleanPreferencesKey("shelf_list_view")
+        val READING_FONT_SIZE = floatPreferencesKey("reading_font_size")
         val DEFAULT_SPEED = floatPreferencesKey("default_speed")
         val SHELF_SORT = stringPreferencesKey("shelf_sort")
         val SHELF_FILTER = stringPreferencesKey("shelf_filter")
@@ -72,6 +77,11 @@ class UserPreferencesRepository @Inject constructor(
     val dynamicColor: Flow<Boolean> = preferencesFlow.map { prefs ->
         prefs[Keys.DYNAMIC_COLOR] ?: false
     }
+
+    val shelfListView: Flow<Boolean> = preferencesFlow.map { it[Keys.SHELF_LIST_VIEW] ?: false }
+    val readingFontSize: Flow<Float> = preferencesFlow.map { (it[Keys.READING_FONT_SIZE] ?: 17f).coerceIn(12f, 26f) }
+    suspend fun setShelfListView(value: Boolean) { context.dataStore.edit { it[Keys.SHELF_LIST_VIEW] = value } }
+    suspend fun setReadingFontSize(value: Float) { context.dataStore.edit { it[Keys.READING_FONT_SIZE] = value.coerceIn(12f, 26f) } }
 
     val defaultSpeed: Flow<Float> = preferencesFlow.map { prefs ->
         prefs[Keys.DEFAULT_SPEED] ?: 1.0f
@@ -167,13 +177,23 @@ class UserPreferencesRepository @Inject constructor(
         context.dataStore.edit { it[Keys.LAST_UPDATE_SWEEP_AT] = value }
     }
 
-    suspend fun snapshot(): PreferencesSnapshot = PreferencesSnapshot(
-        themeMode = themeMode.first(),
-        defaultSpeed = defaultSpeed.first(),
-        shelfSort = shelfSort.first(),
-        shelfFilter = shelfFilter.first(),
-        playbackErrorPolicy = playbackErrorPolicy.first(),
-    )
+    suspend fun snapshot(): PreferencesSnapshot {
+        val prefs = preferencesFlow.first()
+        fun <T : Enum<T>> choice(key: Preferences.Key<String>, fallback: T, parse: (String) -> T): T =
+            prefs[key]?.let { runCatching { parse(it) }.getOrDefault(fallback) } ?: fallback
+        return PreferencesSnapshot(
+            themeMode = choice(Keys.THEME_MODE,
+                if (prefs.contains(Keys.DARK_THEME)) { if (prefs[Keys.DARK_THEME] == true) ThemeMode.DARK else ThemeMode.LIGHT } else ThemeMode.SYSTEM,
+                ThemeMode::valueOf),
+            defaultSpeed = prefs[Keys.DEFAULT_SPEED] ?: 1f,
+            shelfSort = choice(Keys.SHELF_SORT, ShelfSort.RECENT, ShelfSort::valueOf),
+            shelfFilter = choice(Keys.SHELF_FILTER, ShelfFilter.ALL, ShelfFilter::valueOf),
+            playbackErrorPolicy = choice(Keys.PLAYBACK_ERROR_POLICY, PlaybackErrorPolicy.STOP, PlaybackErrorPolicy::valueOf),
+            shelfListView = prefs[Keys.SHELF_LIST_VIEW] ?: false,
+            readingFontSize = (prefs[Keys.READING_FONT_SIZE] ?: 17f).coerceIn(12f, 26f),
+            updateCheckEnabled = prefs[Keys.UPDATE_CHECK_ENABLED] ?: true,
+        )
+    }
 
     suspend fun restore(snapshot: PreferencesSnapshot) {
         context.dataStore.edit {
@@ -182,6 +202,9 @@ class UserPreferencesRepository @Inject constructor(
             it[Keys.SHELF_SORT] = snapshot.shelfSort.name
             it[Keys.SHELF_FILTER] = snapshot.shelfFilter.name
             it[Keys.PLAYBACK_ERROR_POLICY] = snapshot.playbackErrorPolicy.name
+            it[Keys.SHELF_LIST_VIEW] = snapshot.shelfListView
+            it[Keys.READING_FONT_SIZE] = snapshot.readingFontSize.coerceIn(12f, 26f)
+            it[Keys.UPDATE_CHECK_ENABLED] = snapshot.updateCheckEnabled
             it.remove(Keys.DARK_THEME)
         }
     }

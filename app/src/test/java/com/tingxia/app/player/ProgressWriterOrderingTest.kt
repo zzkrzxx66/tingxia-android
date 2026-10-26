@@ -22,6 +22,21 @@ class ProgressWriterOrderingTest {
 
     data class Save(val bookId: Long, val chapterId: Long, val positionMs: Long)
 
+    @Test fun emptyQueueMutationBarrierWaitsForPendingWritesWithoutInventingProgress() = runTest {
+        val saved = mutableListOf<Long>()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val writer = ProgressWriter(this, { _, _, position -> delay(100); saved.add(position) }, dispatcher)
+        writer.enqueue(1, 2, 1000)
+        val barrier = async { writer.flushPending() }
+        runCurrent()
+        assertFalse(barrier.isCompleted)
+        advanceTimeBy(100)
+        runCurrent()
+        assertTrue(barrier.await())
+        assertEquals(listOf(1000L), saved)
+        writer.cancel()
+    }
+
     @Test
     fun fifo_andFinalLast_despiteSlowSaves() = runTest {
         val saved = CopyOnWriteArrayList<Save>()

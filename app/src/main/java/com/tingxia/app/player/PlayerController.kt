@@ -52,6 +52,8 @@ data class PlayerUiState(
     val chapterIndex: Int = 0,
     val chapterCount: Int = 0,
     val positionMs: Long = 0L,
+    val playbackOffsetMs: Long = 0L,
+    val toneId: String = "0",
     val durationMs: Long = 0L,
     val bufferedMs: Long = 0L,
     /** Linear position across the whole book (sum of chapter durations + current). */
@@ -68,9 +70,12 @@ data class PlayerUiState(
     val needsReauth: Boolean = false,
     val lastError: String? = null,
     val errorCanSkip: Boolean = false,
-)
+) {
+    val chapterPositionMs: Long get() = positionMs + playbackOffsetMs
+}
 
 data class LibraryMutationSnapshot(
+    val bookId: Long? = null,
     val wasActive: Boolean = false,
     val wasPlaying: Boolean = false,
     val chapterId: Long? = null,
@@ -141,9 +146,10 @@ class PlayerController @Inject constructor(
 
         override fun onPlayerError(error: PlaybackException) {
             val bookId = _state.value.bookId
-            val isPermission = error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
-                error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
-                error.cause is SecurityException
+            val isPermission = (
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
+                    error.cause is SecurityException
+            )
             clearLoadingState()
             if (isPermission && bookId != null) {
                 _state.value = _state.value.copy(
@@ -278,7 +284,7 @@ class PlayerController @Inject constructor(
             startChapter.durationMs, book.skipIntroMs, book.skipOutroMs,
             startChapter.clipStartMs, startChapter.clipEndMs,
         )
-        val startPos = clampToChapterClip(requestedPos, startClip, startChapter.durationMs)
+        val startPos = startChapter.toPlaybackPosition(book, requestedPos)
 
         val items = buildQueueItems(book, chapters)
         val c = controller ?: run {
@@ -321,7 +327,7 @@ class PlayerController @Inject constructor(
         wasPlaying: Boolean,
     ) {
         ensureConnected()
-        if (_state.value.bookId != bookId) return
+        if (_state.value.bookId != null && _state.value.bookId != bookId) return
         val book = bookRepository.getBook(bookId) ?: return
         val chapters = bookRepository.getChapters(bookId)
         if (chapters.isEmpty()) return
@@ -329,12 +335,9 @@ class PlayerController @Inject constructor(
         val startId = chapterId ?: chapters.first().id
         val startIndex = chapters.indexOfFirst { it.id == startId }.coerceAtLeast(0)
         val ch = chapters[startIndex]
-        val clip = chapterClip(
-            ch.durationMs, book.skipIntroMs, book.skipOutroMs,
-            ch.clipStartMs, ch.clipEndMs,
-        )
-        val pos = clampToChapterClip(positionMs, clip, ch.durationMs)
+        val pos = ch.toPlaybackPosition(book, positionMs)
         c.setMediaItems(buildQueueItems(book, chapters), startIndex, pos)
+        c.setPlaybackSpeed(book.playbackSpeed ?: preferences.defaultSpeed.first())
         c.prepare()
         if (wasPlaying) c.play() else c.pause()
         _state.value = _state.value.copy(chapterCount = chapters.size)
@@ -377,6 +380,7 @@ class PlayerController @Inject constructor(
         }
         val extras = result.extras
         val snapshot = LibraryMutationSnapshot(
+            bookId = extras.getLong(PlaybackStateKeys.MUTATION_BOOK_ID, -1L).takeIf { it > 0L },
             wasActive = extras.getBoolean(PlaybackStateKeys.MUTATION_WAS_ACTIVE, false),
             wasPlaying = extras.getBoolean(PlaybackStateKeys.MUTATION_WAS_PLAYING, false),
             chapterId = extras.getLong(PlaybackStateKeys.MUTATION_CHAPTER_ID, -1L).takeIf { it > 0L },
@@ -395,11 +399,19 @@ class PlayerController @Inject constructor(
 
     fun togglePlayPause() {
         val c = controller ?: return
-        if (c.isPlaying) pause() else play()
+        if (c.isPlaying) {
+            pause()
+        } else {
+            play()
+        }
     }
 
     fun seekTo(positionMs: Long) {
         controller?.seekTo(positionMs.coerceAtLeast(0L))
+    }
+
+    fun seekChapterPosition(positionMs: Long) {
+        seekTo((positionMs - _state.value.playbackOffsetMs).coerceAtLeast(0L))
     }
 
     fun seekBy(deltaMs: Long) {
@@ -425,27 +437,23 @@ class PlayerController @Inject constructor(
     }
 
     fun setSpeed(speed: Float, asBookDefault: Boolean = true) {
-        val targetSpeed = PlaybackSpeeds.ALL.minByOrNull { kotlin.math.abs(it - speed) } ?: speed
-        controller?.setPlaybackSpeed(targetSpeed)
-        _state.value = _state.value.copy(
-            speed = targetSpeed,
-            usesBookSpeedOverride = asBookDefault && _state.value.bookId != null,
-        )
+        val targetSpeed = PlaybackSpeeds.ALL.minByOrNull { kotlin.math.abs(it - speed) } ?: 1f
         val bookId = _state.value.bookId
         scope.launch {
             if (asBookDefault && bookId != null) {
                 bookRepository.setBookPlaybackSpeed(bookId, targetSpeed)
-                refreshQueueMetadata(bookId)
+                if (_state.value.bookId == bookId) {
+                    controller?.setPlaybackSpeed(targetSpeed)
+                    _state.value = _state.value.copy(speed = targetSpeed, usesBookSpeedOverride = true)
+                    refreshQueueMetadata(bookId)
+                }
             } else {
                 preferences.setDefaultSpeed(targetSpeed)
+                if (_state.value.bookId == bookId && !_state.value.usesBookSpeedOverride) {
+                    controller?.setPlaybackSpeed(targetSpeed)
+                    _state.value = _state.value.copy(speed = targetSpeed)
+                }
             }
-        }
-        if (bookId != null) {
-            val args = bundleOf("bookId" to bookId, "speed" to targetSpeed)
-            controller?.sendCustomCommand(
-                SessionCommand(CustomCommands.SET_BOOK_SPEED, Bundle.EMPTY),
-                args,
-            )
         }
     }
 
@@ -454,6 +462,7 @@ class PlayerController @Inject constructor(
         scope.launch {
             bookRepository.setBookPlaybackSpeed(bookId, null)
             val speed = preferences.defaultSpeed.first()
+            if (_state.value.bookId != bookId) return@launch
             controller?.setPlaybackSpeed(speed)
             _state.value = _state.value.copy(speed = speed, usesBookSpeedOverride = false)
             refreshQueueMetadata(bookId)
@@ -700,6 +709,8 @@ class PlayerController @Inject constructor(
             usesBookSpeedOverride = usesBookSpeedOverride,
             skipIntroMs = skipIntroMs,
             skipOutroMs = skipOutroMs,
+            playbackOffsetMs = extras?.getLong(KEY_PLAYBACK_OFFSET_MS) ?: 0L,
+            toneId = extras?.getString(KEY_TONE_ID) ?: "0",
             coverPath = item.mediaMetadata.artworkUri?.let { uri ->
                 // Restore plain filesystem paths from file: URIs so covers still resolve
                 // after process death (SAF file: persist permission is not guaranteed).
@@ -755,7 +766,7 @@ class PlayerController @Inject constructor(
             ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong(KEY_CHAPTER_START_OFFSET_MS)
             ?: return
         _state.value = _state.value.copy(
-            bookPositionMs = offset + c.currentPosition.coerceAtLeast(0L),
+            bookPositionMs = offset + c.currentPosition.coerceAtLeast(0L) + _state.value.playbackOffsetMs,
         )
     }
 
@@ -876,6 +887,8 @@ class PlayerController @Inject constructor(
         const val KEY_BOOK_SPEED_OVERRIDE = "book_speed_override"
         const val KEY_SKIP_INTRO_MS = "skip_intro_ms"
         const val KEY_SKIP_OUTRO_MS = "skip_outro_ms"
+        const val KEY_PLAYBACK_OFFSET_MS = "playback_offset_ms"
+        const val KEY_TONE_ID = "tone_id"
         const val KEY_BOOK_TOTAL_MS = "book_total_ms"
         const val KEY_CHAPTER_START_OFFSET_MS = "chapter_start_offset_ms"
 
@@ -928,6 +941,8 @@ fun Chapter.toMediaItem(
         PlayerController.KEY_BOOK_SPEED_OVERRIDE to (book.playbackSpeed != null),
         PlayerController.KEY_SKIP_INTRO_MS to book.skipIntroMs,
         PlayerController.KEY_SKIP_OUTRO_MS to book.skipOutroMs,
+        PlayerController.KEY_PLAYBACK_OFFSET_MS to playbackOffsetMs(book),
+        PlayerController.KEY_TONE_ID to (book.remoteToneId ?: "0"),
         PlayerController.KEY_BOOK_TOTAL_MS to book.totalDurationMs,
         PlayerController.KEY_CHAPTER_START_OFFSET_MS to chapterStartOffsetMs,
     )
@@ -979,3 +994,7 @@ fun Chapter.toMediaItem(
         .setClippingConfiguration(clipping)
         .build()
 }
+
+/** The live queue carries its actual clip offset even while settings are changing. */
+fun MediaItem.chapterPosition(positionMs: Long): Long = positionMs.coerceAtLeast(0L) +
+    (mediaMetadata.extras?.getLong(PlayerController.KEY_PLAYBACK_OFFSET_MS) ?: 0L)

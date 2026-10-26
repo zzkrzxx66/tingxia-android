@@ -37,6 +37,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -66,8 +67,10 @@ CONTAINERS = {
 FALLBACK_CONTAINER = (".m4a", "audio/mp4", ["-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart"])
 CONTENT_TYPES = {suffix: mime for suffix, mime, _ in list(CONTAINERS.values()) + [FALLBACK_CONTAINER]}
 
-locks: dict[str, threading.Lock] = {}
-locks_guard = threading.Lock()
+locks: dict[str, tuple[threading.Lock, int]] = {}
+locks_guard = threading.RLock()
+prepare_slots = threading.BoundedSemaphore(max(1, int(os.environ.get("PREPARE_WORKERS", "4"))))
+MAX_WARM_QUEUE = max(WARM_WORKERS, int(os.environ.get("MAX_WARM_QUEUE", "32")))
 warm_pool = ThreadPoolExecutor(max_workers=WARM_WORKERS, thread_name_prefix="warm")
 warming: set[str] = set()
 stats_guard = threading.Lock()
@@ -79,9 +82,27 @@ def bump(counter: str, delta: int = 1) -> None:
         stats[counter] = stats.get(counter, 0) + delta
 
 
-def chapter_lock(key: str) -> threading.Lock:
+@contextmanager
+def chapter_lease(key: str):
+    """Protect preparing/serving chapters and retire unused per-chapter locks."""
     with locks_guard:
-        return locks.setdefault(key, threading.Lock())
+        lock, references = locks.get(key, (threading.Lock(), 0))
+        locks[key] = (lock, references + 1)
+    try:
+        yield lock
+    finally:
+        with locks_guard:
+            _, references = locks[key]
+            if references == 1:
+                del locks[key]
+            else:
+                locks[key] = (lock, references - 1)
+
+
+@contextmanager
+def chapter_lock(key: str):
+    with chapter_lease(key) as lock, lock:
+        yield
 
 
 def decode_spade_a(encoded: str) -> bytes:
@@ -132,8 +153,12 @@ def cached_path(audio_book_id: str, item_id: str, tone_id: str) -> pathlib.Path 
     stem = f"{audio_book_id}_{tone_id}_{item_id}"
     for suffix in CONTENT_TYPES:
         candidate = CACHE_DIR / f"{stem}{suffix}"
-        if candidate.is_file() and candidate.stat().st_size > 0:
-            return candidate
+        try:
+            if candidate.is_file() and candidate.stat().st_size > 0:
+                return candidate
+        except FileNotFoundError:
+            # An unleased warm probe can race with housekeeping; treat it as a miss.
+            continue
     return None
 
 
@@ -157,11 +182,20 @@ def download(url: str, target: pathlib.Path) -> None:
         shutil.copyfileobj(response, output, length=1024 * 1024)
 
 
-def enforce_cache_budget() -> None:
+def enforce_cache_budget(keep: pathlib.Path | None = None) -> None:
     """Drop the least recently used chapters once the cache exceeds its budget."""
     if MAX_CACHE_BYTES <= 0:
         return
     try:
+        with locks_guard:
+            _enforce_cache_budget(keep)
+    except OSError as exc:
+        logging.warning("cache housekeeping failed: %s", exc)
+
+
+def _enforce_cache_budget(keep: pathlib.Path | None) -> None:
+    try:
+        active_stems = {"_".join(key.split("/")) for key in locks}
         entries = []
         total = 0
         for path in CACHE_DIR.iterdir():
@@ -169,7 +203,8 @@ def enforce_cache_budget() -> None:
                 continue
             info = path.stat()
             total += info.st_size
-            entries.append((max(info.st_atime, info.st_mtime), info.st_size, path))
+            if path != keep and path.stem not in active_stems:
+                entries.append((max(info.st_atime, info.st_mtime), info.st_size, path))
         if total <= MAX_CACHE_BYTES:
             return
         entries.sort(key=lambda entry: entry[0])
@@ -189,54 +224,55 @@ def enforce_cache_budget() -> None:
 
 def prepare_chapter(audio_book_id: str, item_id: str, tone_id: str) -> pathlib.Path:
     key = f"{audio_book_id}/{tone_id}/{item_id}"
-    existing = cached_path(audio_book_id, item_id, tone_id)
-    if existing:
-        bump("hits")
-        return existing
     with chapter_lock(key):
         existing = cached_path(audio_book_id, item_id, tone_id)
         if existing:
             bump("hits")
             return existing
-        bump("misses")
-        play_path = f"/audio/play/{audio_book_id}/{item_id}?toneId={urllib.parse.quote(tone_id)}&download=false"
-        data = json_request(play_path).get("data")
-        if isinstance(data, list):
-            data = data[0] if data else None
-        if not isinstance(data, dict):
-            raise RuntimeError("upstream returned no audio data")
-        source_url = data.get("main_url") or data.get("backup_url")
-        wrapped_key = data.get("encryption_key")
-        if not source_url or not wrapped_key:
-            raise RuntimeError("upstream audio data is incomplete")
-        aes_key = decode_spade_a(wrapped_key)
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="fq-audio-", dir=CACHE_DIR) as tmp:
-            encrypted = pathlib.Path(tmp) / "encrypted"
-            try:
-                download(source_url, encrypted)
-            except urllib.error.HTTPError:
-                backup = data.get("backup_url")
-                if not backup or backup == source_url:
-                    raise
-                download(backup, encrypted)
-            codec = probe_codec(encrypted, aes_key.hex())
-            suffix, _, output_args = CONTAINERS.get(codec, FALLBACK_CONTAINER)
-            if codec not in CONTAINERS:
-                logging.info("unknown codec %s, transcoding to aac", codec)
-            normalized = pathlib.Path(tmp) / f"normalized{suffix}"
-            command = [
-                "ffmpeg", "-hide_banner", "-loglevel", "error",
-                "-decryption_key", aes_key.hex(), "-i", str(encrypted), "-map", "0:a:0",
-                *output_args, "-y", str(normalized),
-            ]
-            subprocess.run(command, check=True, timeout=max(180, TIMEOUT * 6))
-            if normalized.stat().st_size <= 0:
-                raise RuntimeError("ffmpeg produced an empty file")
-            target = CACHE_DIR / f"{audio_book_id}_{tone_id}_{item_id}{suffix}"
-            os.replace(normalized, target)
-        bump("prepared")
-        enforce_cache_budget()
+        if not prepare_slots.acquire(timeout=TIMEOUT):
+            raise RuntimeError("audio preparation capacity exhausted")
+        try:
+            bump("misses")
+            play_path = f"/audio/play/{audio_book_id}/{item_id}?toneId={urllib.parse.quote(tone_id)}&download=false"
+            data = json_request(play_path).get("data")
+            if isinstance(data, list):
+                data = data[0] if data else None
+            if not isinstance(data, dict):
+                raise RuntimeError("upstream returned no audio data")
+            source_url = data.get("main_url") or data.get("backup_url")
+            wrapped_key = data.get("encryption_key")
+            if not source_url or not wrapped_key:
+                raise RuntimeError("upstream audio data is incomplete")
+            aes_key = decode_spade_a(wrapped_key)
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="fq-audio-", dir=CACHE_DIR) as tmp:
+                encrypted = pathlib.Path(tmp) / "encrypted"
+                try:
+                    download(source_url, encrypted)
+                except urllib.error.HTTPError:
+                    backup = data.get("backup_url")
+                    if not backup or backup == source_url:
+                        raise
+                    download(backup, encrypted)
+                codec = probe_codec(encrypted, aes_key.hex())
+                suffix, _, output_args = CONTAINERS.get(codec, FALLBACK_CONTAINER)
+                if codec not in CONTAINERS:
+                    logging.info("unknown codec %s, transcoding to aac", codec)
+                normalized = pathlib.Path(tmp) / f"normalized{suffix}"
+                command = [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error",
+                    "-decryption_key", aes_key.hex(), "-i", str(encrypted), "-map", "0:a:0",
+                    *output_args, "-y", str(normalized),
+                ]
+                subprocess.run(command, check=True, timeout=max(180, TIMEOUT * 6))
+                if normalized.stat().st_size <= 0:
+                    raise RuntimeError("ffmpeg produced an empty file")
+                target = CACHE_DIR / f"{audio_book_id}_{tone_id}_{item_id}{suffix}"
+                os.replace(normalized, target)
+            bump("prepared")
+            enforce_cache_budget(keep=target)
+        finally:
+            prepare_slots.release()
     return target
 
 
@@ -248,6 +284,8 @@ def warm_chapter(audio_book_id: str, item_id: str, tone_id: str) -> str:
     with stats_guard:
         if key in warming:
             return "warming"
+        if len(warming) >= MAX_WARM_QUEUE:
+            return "busy"
         warming.add(key)
 
     def task() -> None:
@@ -260,7 +298,12 @@ def warm_chapter(audio_book_id: str, item_id: str, tone_id: str) -> str:
             with stats_guard:
                 warming.discard(key)
 
-    warm_pool.submit(task)
+    try:
+        warm_pool.submit(task)
+    except RuntimeError:
+        with stats_guard:
+            warming.discard(key)
+        return "busy"
     bump("warmRequests")
     return "warming"
 
@@ -276,6 +319,28 @@ def cache_usage() -> tuple[int, int]:
     except OSError:
         pass
     return files, total
+
+
+def parse_range(header: str | None, size: int) -> tuple[int, int]:
+    if size <= 0:
+        raise ValueError("empty resource")
+    if not header:
+        return 0, size - 1
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", header.strip())
+    if not match or not any(match.groups()):
+        raise ValueError("invalid range")
+    left, right = match.groups()
+    if left:
+        start = int(left)
+        end = int(right) if right else size - 1
+    else:
+        length = int(right)
+        if length <= 0:
+            raise ValueError("empty suffix range")
+        start, end = max(0, size - length), size - 1
+    if start >= size or end < start:
+        raise ValueError("unsatisfiable range")
+    return start, min(end, size - 1)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -366,8 +431,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json_error(HTTPStatus.BAD_REQUEST, "invalid toneId")
             return
         try:
-            path = prepare_chapter(audio_book_id, item_id, tone_id)
-            self.serve_file(path, send_body)
+            with chapter_lease(f"{audio_book_id}/{tone_id}/{item_id}"):
+                path = prepare_chapter(audio_book_id, item_id, tone_id)
+                self.serve_file(path, send_body)
         except (BrokenPipeError, ConnectionResetError):
             # Media players routinely cancel probe/range requests after learning
             # enough metadata. The response may already have started, so do not
@@ -383,41 +449,28 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def serve_file(self, path: pathlib.Path, send_body: bool) -> None:
-        size = path.stat().st_size
-        os.utime(path, None)  # keep the LRU order honest
-        start, end = 0, size - 1
-        range_header = self.headers.get("Range")
-        if range_header:
-            match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
-            if not match:
+        with path.open("rb") as source:
+            size = os.fstat(source.fileno()).st_size
+            os.utime(source.fileno(), None)  # source is open before response headers
+            range_header = self.headers.get("Range")
+            try:
+                start, end = parse_range(range_header, size)
+            except ValueError:
                 self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                 self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            left, right = match.groups()
-            if left:
-                start = int(left)
-                end = int(right) if right else size - 1
-            elif right:
-                length = int(right)
-                start = max(0, size - length)
-            if start >= size or end < start:
-                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
-                self.send_header("Content-Range", f"bytes */{size}")
-                self.end_headers()
-                return
-            end = min(end, size - 1)
-        length = end - start + 1
-        self.send_response(HTTPStatus.PARTIAL_CONTENT if range_header else HTTPStatus.OK)
-        self.send_header("Content-Type", CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Length", str(length))
-        if range_header:
-            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-        self.send_header("Cache-Control", "public, max-age=86400")
-        self.end_headers()
-        if send_body:
-            with path.open("rb") as source:
+            length = end - start + 1
+            self.send_response(HTTPStatus.PARTIAL_CONTENT if range_header else HTTPStatus.OK)
+            self.send_header("Content-Type", CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(length))
+            if range_header:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            if send_body:
                 source.seek(start)
                 remaining = length
                 while remaining:

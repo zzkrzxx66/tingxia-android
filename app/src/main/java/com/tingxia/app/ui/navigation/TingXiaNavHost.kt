@@ -334,7 +334,12 @@ fun TingXiaNavHost(
                             onSeekBy = { playerViewModel.seekBy(it) },
                             onPrev = { playerViewModel.previousChapter() },
                             onNext = { playerViewModel.nextChapter() },
-                            onSpeed = { playerViewModel.setSpeed(it) },
+                            onSpeed = { speed, forBook -> playerViewModel.setSpeed(speed, forBook) },
+                            globalDefaultSpeed = playerViewModel.globalDefaultSpeed.collectAsStateWithLifecycle().value,
+                            readingFontSize = playerViewModel.readingFontSize.collectAsStateWithLifecycle().value,
+                            onReadingFontSize = playerViewModel::setReadingFontSize,
+                            remainingBookMs = playerViewModel.remainingBookMs.collectAsStateWithLifecycle().value,
+                            onSeekChapterPosition = playerViewModel::seekChapterPosition,
                             onUseGlobalSpeed = { playerViewModel.useGlobalSpeed() },
                             onSleep = { playerViewModel.setSleepMinutes(it) },
                             onSleepEndOfChapter = { playerViewModel.setSleepEndOfChapter() },
@@ -349,6 +354,7 @@ fun TingXiaNavHost(
                             timelineLoading = playerChapterText.loading,
                             timelineError = playerChapterText.error,
                             onEnsureTimeline = { playerViewModel.ensureChapterText() },
+                            onRetryTimeline = { playerViewModel.openChapterText() },
                         )
                         ChapterPickerSheet(
                             state = chapterPicker,

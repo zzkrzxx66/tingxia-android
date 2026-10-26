@@ -7,7 +7,7 @@ import com.tingxia.app.data.repo.PreferencesSnapshot
 import com.tingxia.app.data.repo.ThemeMode
 
 object BackupCodec {
-    const val CURRENT_FORMAT_VERSION = 1
+    const val CURRENT_FORMAT_VERSION = 2
 
     fun encode(document: BackupDocument): String = Writer().apply {
         obj {
@@ -23,14 +23,29 @@ object BackupCodec {
     fun decode(json: String): BackupDocument {
         val root = Parser(json).parse().asObject()
         val version = root.int("formatVersion")
-        require(version == CURRENT_FORMAT_VERSION) { "不支持的备份格式：$version" }
+        require(version in 1..CURRENT_FORMAT_VERSION) { "不支持的备份格式：$version" }
         return BackupDocument(
             formatVersion = version,
             exportedAt = root.long("exportedAt"),
             settings = settings(root.obj("settings")),
-            books = root.array("books").map { book(it.asObject()) },
+            books = root.array("books").map { book(it.asObject()).let { book -> if (version == 1) upgradePositions(book) else book } },
         )
     }
+
+    // Version 1 stored positions relative to the effective clip window.
+    private fun upgradePositions(book: BackupBook): BackupBook {
+        val offsets = book.chapters.associate { chapter ->
+            val clip = com.tingxia.app.player.chapterClip(chapter.durationMs, book.skipIntroMs, book.skipOutroMs, chapter.clipStartMs, chapter.clipEndMs)
+            chapter.key to (clip.startMs - (chapter.clipStartMs ?: 0L))
+        }
+        return book.copy(
+            currentPositionMs = book.currentPositionMs + if (book.lastPlayedAt > 0L) offsets[book.currentChapterKey].orEmptyOffset() else 0L,
+            bookmarks = book.bookmarks.map { it.copy(positionMs = it.positionMs + offsets[it.chapterKey].orEmptyOffset()) },
+            chapters = if (book.sourceType == "FQNOVEL" && (book.skipIntroMs > 0L || book.skipOutroMs > 0L)) book.chapters.map { it.copy(durationMs = 0L) } else book.chapters,
+            totalDurationMs = if (book.sourceType == "FQNOVEL" && (book.skipIntroMs > 0L || book.skipOutroMs > 0L)) 0L else book.totalDurationMs,
+        )
+    }
+    private fun Long?.orEmptyOffset() = this ?: 0L
 
     private fun Writer.settings(settings: PreferencesSnapshot) = obj {
         field("themeMode", settings.themeMode.name)
@@ -38,6 +53,9 @@ object BackupCodec {
         field("shelfSort", settings.shelfSort.name)
         field("shelfFilter", settings.shelfFilter.name)
         field("playbackErrorPolicy", settings.playbackErrorPolicy.name)
+        field("shelfListView", settings.shelfListView)
+        field("readingFontSize", settings.readingFontSize)
+        field("updateCheckEnabled", settings.updateCheckEnabled)
     }
 
     private fun settings(map: Map<String, Value>) = PreferencesSnapshot(
@@ -46,6 +64,9 @@ object BackupCodec {
         shelfSort = enumValue(map.string("shelfSort"), ShelfSort.RECENT),
         shelfFilter = enumValue(map.string("shelfFilter"), ShelfFilter.ALL),
         playbackErrorPolicy = enumValue(map.string("playbackErrorPolicy"), PlaybackErrorPolicy.STOP),
+        shelfListView = map.booleanOrDefault("shelfListView", false),
+        readingFontSize = (map.numberOrNull("readingFontSize")?.toFloat() ?: 17f).coerceIn(12f, 26f),
+        updateCheckEnabled = map.booleanOrDefault("updateCheckEnabled", true),
     )
 
     private fun Writer.book(book: BackupBook) = obj {
@@ -71,6 +92,16 @@ object BackupCodec {
         field("description", book.description)
         field("category", book.category)
         field("wordCount", book.wordCount)
+        field("metaSyncSourceId", book.metaSyncSourceId)
+        field("metaSyncedAt", book.metaSyncedAt)
+        field("metaSyncBackup", book.metaSyncBackup)
+        field("remoteScore", book.remoteScore)
+        field("remoteListenCount", book.remoteListenCount)
+        field("remoteFinished", book.remoteFinished)
+        field("remoteLastChapterTitle", book.remoteLastChapterTitle)
+        field("remoteUpdateCheckedAt", book.remoteUpdateCheckedAt)
+        field("remoteNewChapterCount", book.remoteNewChapterCount)
+        field("listening") { array(book.listening) { row -> obj { field("dayStartMs", row.dayStartMs); field("listenedMs", row.listenedMs) } } }
         field("chapters") { array(book.chapters) { chapter(it) } }
         field("bookmarks") { array(book.bookmarks) { bookmark(it) } }
     }
@@ -98,6 +129,19 @@ object BackupCodec {
         description = map.stringOrNull("description"),
         category = map.stringOrNull("category"),
         wordCount = map.longOrDefault("wordCount", 0L).coerceAtLeast(0L),
+        metaSyncSourceId = map.stringOrNull("metaSyncSourceId"),
+        metaSyncedAt = map.longOrDefault("metaSyncedAt", 0L).coerceAtLeast(0L),
+        metaSyncBackup = map.stringOrNull("metaSyncBackup"),
+        remoteScore = map.stringOrNull("remoteScore"),
+        remoteListenCount = map.longOrDefault("remoteListenCount", 0L).coerceAtLeast(0L),
+        remoteFinished = (map["remoteFinished"] as? Value.Bool)?.value,
+        remoteLastChapterTitle = map.stringOrNull("remoteLastChapterTitle"),
+        remoteUpdateCheckedAt = map.longOrDefault("remoteUpdateCheckedAt", 0L).coerceAtLeast(0L),
+        remoteNewChapterCount = map.intOrDefault("remoteNewChapterCount", 0).coerceAtLeast(0),
+        listening = (map["listening"] as? Value.Arr)?.value.orEmpty().map { row ->
+            val values = row.asObject()
+            BackupListening(values.long("dayStartMs").coerceAtLeast(0L), values.long("listenedMs").coerceAtLeast(0L))
+        },
         chapters = map.array("chapters").map { chapter(it.asObject()) },
         bookmarks = map.array("bookmarks").map { bookmark(it.asObject()) },
     )
@@ -262,6 +306,7 @@ object BackupCodec {
 
     private class Parser(private val text: String) {
         private var index = 0
+        private var depth = 0
 
         fun parse(): Value {
             val value = value()
@@ -273,7 +318,8 @@ object BackupCodec {
         private fun value(): Value {
             whitespace()
             require(index < text.length) { "备份 JSON 意外结束" }
-            return when (text[index]) {
+            require(++depth <= 128) { "备份 JSON 嵌套过深" }
+            try { return when (text[index]) {
                 '{' -> objectValue()
                 '[' -> arrayValue()
                 '"' -> Value.Str(string())
@@ -282,7 +328,7 @@ object BackupCodec {
                 'n' -> literal("null", Value.Null)
                 '-', in '0'..'9' -> number()
                 else -> error("备份 JSON 字段无效")
-            }
+            } } finally { depth-- }
         }
 
         private fun objectValue(): Value.Obj {

@@ -104,7 +104,7 @@ data class ChapterEntity(
             onDelete = ForeignKey.CASCADE,
         )
     ],
-    indices = [Index("bookId"), Index("dayStartMs")],
+    indices = [Index("bookId"), Index("dayStartMs"), Index(value = ["bookId", "dayStartMs"], unique = true)],
 )
 data class ListenSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
