@@ -328,9 +328,9 @@
     <string name="view_grid">网格视图</string>
     <string name="view_list">列表视图</string>
     <string name="sleep_timer_title">定时关闭</string>
-    <string name="sleep_timer_popular">常用</string>
-    <string name="sleep_timer_status_counting">倒计时中：将在 %1$s 后自动暂停</string>
-    <string name="sleep_timer_status_end_of_chapter">已设置：将在本章播放完毕后暂停</string>
+    <string name="sleep_timer_minutes">%1$d 分钟</string>
+    <string name="sleep_timer_status_counting">%1$s 后暂停</string>
+    <string name="sleep_timer_status_end_of_chapter">本章播完后暂停</string>
     <string name="sleep_timer_turn_off">关闭定时</string>
     <string name="playback_speed_title">播放倍速</string>
     <string name="speed_for_this_book">仅针对当前书籍</string>

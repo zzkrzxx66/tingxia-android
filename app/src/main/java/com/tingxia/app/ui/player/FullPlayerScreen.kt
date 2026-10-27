@@ -683,7 +683,36 @@ fun FullPlayerScreen(
                                     else -> stringResource(R.string.sleep)
                                 }
                                 PlayerToolButton(
-                                    onClick = { sleepSheetOpen = true },
+                                    onClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (!sleepActive) {
+                                            onSleep(10)
+                                            Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            when {
+                                                state.sleepRemainingMs != null && state.sleepRemainingMs!! <= 11 * 60_000L -> {
+                                                    onSleep(30)
+                                                    Toast.makeText(context, "已切换为 30 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                                }
+                                                state.sleepRemainingMs != null -> {
+                                                    onSleepEndOfChapter()
+                                                    Toast.makeText(context, "已设置为播完本章后关闭", Toast.LENGTH_SHORT).show()
+                                                }
+                                                state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter -> {
+                                                    onSleep(0)
+                                                    Toast.makeText(context, "已关闭定时", Toast.LENGTH_SHORT).show()
+                                                }
+                                                else -> {
+                                                    onSleep(10)
+                                                    Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        sleepSheetOpen = true
+                                    },
                                     icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
                                     label = sleepLabel,
                                     modifier = Modifier.weight(1f),

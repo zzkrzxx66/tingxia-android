@@ -18,14 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.HourglassTop
-import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.TimerOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -47,11 +42,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.tingxia.app.R
 import com.tingxia.app.player.PlaybackSpeeds
@@ -242,8 +241,7 @@ private fun SpeedChip(
 }
 
 /**
- * Lightweight floating bubble popover for sleep timer.
- * Highlights 10-minute favorite option, displays active countdown, and allows quick selection.
+ * Timer choices anchored above the player toolbar.
  */
 @Composable
 fun PlayerSleepPopup(
@@ -260,8 +258,10 @@ fun PlayerSleepPopup(
 ) {
     if (!visible) return
     BackHandler(onBack = onDismiss)
-    val maxPanelHeight = (LocalConfiguration.current.screenHeightDp - bottomOffsetDp - 100f).coerceAtLeast(120f).dp
+    val configuration = LocalConfiguration.current
+    val maxPanelHeight = (configuration.screenHeightDp - bottomOffsetDp - 100f).coerceAtLeast(120f).dp
     val isTimerActive = sleepRemainingMs != null || sleepMode is SleepTimerMode.EndOfChapter
+    val columns = if (configuration.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.3f) 2 else 3
 
     Box(
         modifier = Modifier
@@ -274,13 +274,10 @@ fun PlayerSleepPopup(
             .background(Color.Black.copy(alpha = 0.28f)),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        Card(
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.96f),
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 6.dp,
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -289,279 +286,124 @@ fun PlayerSleepPopup(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = { /* prevent dismiss */ },
+                    onClick = { /* Keep taps inside the panel from dismissing it. */ },
                 ),
         ) {
             Column(
-                modifier = Modifier.heightIn(max = maxPanelHeight).verticalScroll(rememberScrollState()).padding(18.dp),
+                modifier = Modifier
+                    .heightIn(max = maxPanelHeight)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
             ) {
-                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.Bedtime,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.sleep_timer_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.weight(1f))
-                    if (isTimerActive) {
-                        Surface(
-                            onClick = {
-                                onSleepMinutes(0)
-                                onDismiss()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.TimerOff,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(13.dp),
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.sleep_timer_turn_off),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                    }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = stringResource(R.string.cancel),
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
 
-                // If running, show compact active banner
                 if (isTimerActive) {
-                    Spacer(Modifier.height(10.dp))
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                    Text(
+                        text = if (sleepRemainingMs != null) {
+                            stringResource(R.string.sleep_timer_status_counting, formatDuration(sleepRemainingMs))
+                        } else {
+                            stringResource(R.string.sleep_timer_status_end_of_chapter)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                listOf(10, 15, 30, 45, 60, 90).chunked(columns).forEachIndexed { index, minutes ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.HourglassTop,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = if (sleepRemainingMs != null) {
-                                    "倒计时中 · 剩 ${formatDuration(sleepRemainingMs)}"
-                                } else {
-                                    stringResource(R.string.sleep_timer_status_end_of_chapter)
+                        minutes.forEach { duration ->
+                            SleepOptionButton(
+                                title = stringResource(R.string.sleep_timer_minutes, duration),
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    onSleepMinutes(duration)
+                                    onDismiss()
                                 },
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
                             )
-                            Spacer(Modifier.weight(1f))
-                            if (sleepRemainingMs != null) {
-                                Surface(
-                                    onClick = onExtendSleep,
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Default.MoreTime,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(12.dp),
-                                        )
-                                        Spacer(Modifier.width(2.dp))
-                                        Text(
-                                            text = "+15m",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                    }
-                                }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SleepOptionButton(
+                        title = stringResource(R.string.end_of_chapter),
+                        isSelected = sleepMode is SleepTimerMode.EndOfChapter,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onSleepEndOfChapter()
+                            onDismiss()
+                        },
+                    )
+                    SleepOptionButton(
+                        title = stringResource(R.string.custom_duration),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onDismiss()
+                            onCustomDuration()
+                        },
+                    )
+                }
+
+                if (isTimerActive) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        if (sleepRemainingMs != null) {
+                            TextButton(
+                                onClick = onExtendSleep,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Text(stringResource(R.string.extend_15_minutes), textAlign = TextAlign.Center)
                             }
                         }
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Prominent 10-minute Card (User's special favorite)
-                Surface(
-                    onClick = {
-                        onSleepMinutes(10)
-                        onDismiss()
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "10 分钟",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = RoundedCornerShape(4.dp),
+                        TextButton(
+                            onClick = {
+                                onSleepMinutes(0)
+                                onDismiss()
+                            },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                         ) {
-                            Text(
-                                text = stringResource(R.string.sleep_timer_popular),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                            )
+                            Text(stringResource(R.string.sleep_timer_turn_off), textAlign = TextAlign.Center)
                         }
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            text = "常用 · 一键开启",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                        )
                     }
                 }
-
-                Spacer(Modifier.height(10.dp))
-
-                // 3-column Grid for other options
-                val gridRow1 = listOf(
-                    15 to "15 分钟",
-                    30 to "30 分钟",
-                    45 to "45 分钟",
-                )
-                val gridRow2 = listOf(
-                    60 to "60 分钟",
-                    90 to "90 分钟",
-                    -1 to stringResource(R.string.end_of_chapter),
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    gridRow1.forEach { (mins, title) ->
-                        QuickOptionChip(
-                            title = title,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                onSleepMinutes(mins)
-                                onDismiss()
-                            },
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    gridRow2.forEach { (mins, title) ->
-                        val isEndOfChapter = mins == -1
-                        QuickOptionChip(
-                            title = title,
-                            isSelected = isEndOfChapter && sleepMode is SleepTimerMode.EndOfChapter,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (isEndOfChapter) {
-                                    onSleepEndOfChapter()
-                                } else {
-                                    onSleepMinutes(mins)
-                                }
-                                onDismiss()
-                            },
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                // Custom duration button
-                Surface(
-                    onClick = {
-                        onDismiss()
-                        onCustomDuration()
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.custom_duration),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "💡 单击底栏「定时」即可直接开启 10 分钟",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                )
             }
         }
     }
 }
 
 @Composable
-private fun QuickOptionChip(
+private fun SleepOptionButton(
     title: String,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
@@ -571,26 +413,25 @@ private fun QuickOptionChip(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
         color = if (isSelected) {
-            MaterialTheme.colorScheme.primary
+            MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
+            MaterialTheme.colorScheme.surfaceContainer
         },
-        border = if (!isSelected) {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        } else null,
-        modifier = modifier.height(38.dp),
+        contentColor = if (isSelected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
+        modifier = modifier.heightIn(min = 48.dp).semantics { selected = isSelected },
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+        ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
             )
         }
     }
