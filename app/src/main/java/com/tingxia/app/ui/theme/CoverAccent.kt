@@ -21,8 +21,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Progress in this app is drawn in the colour of the book it belongs to: the shelf tile's hairline,
- * the resume strip and the mini player ring all take their tint from the cover artwork.
+ * Progress and the mini player are drawn in the colour of the book they belong to: the shelf
+ * tile's hairline, the resume strip and the capsule all take their tint from the cover artwork.
  *
  * It is the one thing here Material cannot hand you, and it makes a shelf of covers read as a set
  * of individual books rather than a grid of identical widgets.
@@ -36,17 +36,21 @@ fun rememberCoverAccent(coverPath: String?): Color {
     val context = LocalContext.current
     if (coverPath.isNullOrBlank()) return fallback
     val key = "$coverPath|${if (dark) "d" else "l"}"
-    val cached = accentCache[key]
-    var color by remember(key) { mutableStateOf(cached ?: fallback) }
+    var color by remember(key) { mutableStateOf(accentCache[key]) }
     LaunchedEffect(key) {
-        if (accentCache[key] != null) return@LaunchedEffect
+        // Another cover may finish extracting between composition and this effect starting.
+        // Apply its cached colour as well, otherwise this instance stays on the fallback.
+        accentCache[key]?.let {
+            color = it
+            return@LaunchedEffect
+        }
         val extracted = withContext(Dispatchers.IO) { extractAccent(context, coverPath, dark) }
         if (extracted != null) {
             accentCache.put(key, extracted)
             color = extracted
         }
     }
-    return color
+    return color ?: fallback
 }
 
 /** Loads a 32px sample of the artwork through Coil's cache and hands it to [CoverAccentPolicy]. */

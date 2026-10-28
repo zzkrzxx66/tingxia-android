@@ -58,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -568,6 +569,8 @@ fun BookGridTile(
     framed: Boolean = true,
     /** Small coloured tag rendered before [subtitle], e.g. 在线. */
     subtitleTag: String? = null,
+    titleStyle: TextStyle = BookType.title,
+    coverElevation: Dp = 0.dp,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     Column(
@@ -575,7 +578,11 @@ fun BookGridTile(
         // bottom corners was shaving the first characters off the author line.
         modifier = modifier.clickable(onClick = onClick),
     ) {
-        Box {
+        Box(
+            modifier = Modifier
+                .shadow(coverElevation, RoundedCornerShape(CoverCorner.Grid))
+                .clip(RoundedCornerShape(CoverCorner.Grid)),
+        ) {
             BookCover(
                 title = title,
                 coverPath = coverPath,
@@ -589,7 +596,7 @@ fun BookGridTile(
         Spacer(Modifier.height(8.dp))
         Text(
             title,
-            style = BookType.title,
+            style = titleStyle,
             // No reserved second line: a grid row already levels its tiles, so single-line
             // titles used to leave a visible blank gap above the subtitle for nothing.
             maxLines = 2,
@@ -601,7 +608,7 @@ fun BookGridTile(
                 Text(
                     subtitleTag,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     " · ",
@@ -613,7 +620,7 @@ fun BookGridTile(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 // Author sits clearly behind the title instead of competing with it.
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -748,10 +755,12 @@ fun TxSearchField(
     placeholder: String,
     modifier: Modifier = Modifier,
     onClear: (() -> Unit)? = null,
+    shape: Shape = MaterialTheme.shapes.large,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
 ) {
     Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = shape,
+        color = containerColor,
         modifier = modifier.height(46.dp),
     ) {
         Row(

@@ -2,6 +2,7 @@ package com.tingxia.app.ui.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -27,9 +28,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +44,7 @@ import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.rememberCoverAccent
 import com.tingxia.app.ui.theme.CoverCorner
+import com.tingxia.app.ui.theme.LocalAppDarkTheme
 
 @Composable
 fun MiniPlayerBar(
@@ -47,10 +53,23 @@ fun MiniPlayerBar(
     onOpen: () -> Unit,
     onNext: (() -> Unit)? = null,
 ) {
+    val accent by animateColorAsState(
+        targetValue = rememberCoverAccent(state.coverPath),
+        animationSpec = tween(400),
+        label = "miniCoverAccent",
+    )
+    // Keep text on a quiet surface while giving the whole capsule the cover's hue.
+    val containerColor = lerp(
+        MaterialTheme.colorScheme.surfaceContainerHigh,
+        accent,
+        if (LocalAppDarkTheme.current) 0.20f else 0.14f,
+    )
+    val onAccent = if (accent.luminance() > 0.179f) Color.Black else Color.White
     // Floating capsule rather than a full-width bar: it reads as a control sitting above the
     // content, and the rounded card language now matches the rest of the app.
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = containerColor,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         // Card radius, not a stadium: at 28dp the capsule read as a pill stuck to the screen edge.
         shape = MaterialTheme.shapes.medium,
         tonalElevation = 3.dp,
@@ -60,7 +79,6 @@ fun MiniPlayerBar(
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .clickable(onClick = onOpen),
     ) {
-        val accent = rememberCoverAccent(state.coverPath)
         val loading = state.isPreparing || state.isBuffering
         // Same smoothing as the full player: the ring polls at 500ms, and stepping it looked
         // like the bar was lagging the audio.
@@ -107,7 +125,7 @@ fun MiniPlayerBar(
                     Text(
                         text = line,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (loading) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (loading) 1f else 0.75f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -153,13 +171,14 @@ fun MiniPlayerBar(
                 Surface(
                     onClick = onToggle,
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = accent,
+                    contentColor = onAccent,
                     modifier = Modifier.size(34.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         PlayPauseGlyph(
                             isPlaying = state.isPlaying,
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = onAccent,
                             size = 20.dp,
                         )
                     }

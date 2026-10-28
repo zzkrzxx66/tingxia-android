@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.ui.graphics.Brush
-import com.tingxia.app.ui.components.CoverPlayButton
 import com.tingxia.app.ui.components.TxChip
 import com.tingxia.app.ui.components.TxSearchField
 import com.tingxia.app.ui.theme.BookType
@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -61,6 +62,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -87,9 +89,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tingxia.app.R
@@ -99,6 +105,7 @@ import com.tingxia.app.data.model.ShelfSort
 import com.tingxia.app.ui.components.BookGridTile
 import com.tingxia.app.ui.components.EmptyState
 import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.theme.LocalAppDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -152,17 +159,15 @@ fun ShelfScreen(
             TopAppBar(
                 scrollBehavior = topBarScrollBehavior,
                 title = {
-                    Row(verticalAlignment = Alignment.Bottom) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.headlineSmall,
                         )
-                        Spacer(Modifier.width(8.dp))
                         Text(
                             stringResource(R.string.shelf_book_count, books.size),
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 3.dp),
                         )
                     }
                 },
@@ -171,19 +176,13 @@ fun ShelfScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
-                    IconButton(onClick = { viewModel.setListView(!isListView) }) {
-                        Icon(
-                            if (isListView) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
-                            contentDescription = stringResource(
-                                if (isListView) R.string.view_grid else R.string.view_list,
-                            ),
-                        )
-                    }
                     Box {
                         IconButton(onClick = { sortMenu = true }) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Sort,
                                 contentDescription = stringResource(R.string.sort_books),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp),
                             )
                         }
                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
@@ -210,7 +209,20 @@ fun ShelfScreen(
                     }
                     Box {
                         IconButton(onClick = { importMenu = true }) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.import_audio))
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = stringResource(R.string.import_audio),
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
                         }
                         DropdownMenu(
                             expanded = importMenu,
@@ -233,7 +245,12 @@ fun ShelfScreen(
                         }
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 },
             )
@@ -251,9 +268,11 @@ fun ShelfScreen(
                         onValueChange = viewModel::setQuery,
                         placeholder = stringResource(R.string.search_books_hint),
                         onClear = { viewModel.setQuery("") },
+                        shape = RoundedCornerShape(16.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
                     )
                     // A filter or search that matches nothing must never take the filter row with
                     // it: tapping 已完成 on a shelf with nothing finished used to swap the whole grid
@@ -270,9 +289,9 @@ fun ShelfScreen(
                     } else if (isListView) {
                         LazyColumn(
                             contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = 16.dp,
+                                start = 20.dp,
+                                end = 20.dp,
+                                top = 12.dp,
                                 bottom = 24.dp,
                             ),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -296,6 +315,8 @@ fun ShelfScreen(
                                     filter = filter,
                                     showReauthFilter = hasReauthBooks,
                                     onFilterChange = viewModel::setFilter,
+                                    isListView = isListView,
+                                    onToggleView = { viewModel.setListView(!isListView) },
                                 )
                             }
                             items(books, key = { it.id }) { book ->
@@ -331,19 +352,16 @@ fun ShelfScreen(
                             maxWidth < 840.dp -> 4
                             else -> 6
                         }
-                        // Tile width drives the on-cover play button, which otherwise stayed a
-                        // 30dp dot no matter how large the artwork got.
-                        val tileWidth = (maxWidth - 32.dp - 12.dp * (columns - 1)) / columns
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(columns),
                             contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = 16.dp,
+                                start = 20.dp,
+                                end = 20.dp,
+                                top = 12.dp,
                                 bottom = 24.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             // Skipped when the bottom capsule is already showing this book (a
@@ -367,6 +385,8 @@ fun ShelfScreen(
                                     filter = filter,
                                     showReauthFilter = hasReauthBooks,
                                     onFilterChange = viewModel::setFilter,
+                                    isListView = isListView,
+                                    onToggleView = { viewModel.setListView(!isListView) },
                                 )
                             }
                             items(books, key = { it.id }) { book ->
@@ -374,7 +394,6 @@ fun ShelfScreen(
                                     book = book,
                                     isCurrent = book.id == playingBookId,
                                     isPlaying = isPlaying && book.id == playingBookId,
-                                    tileWidth = tileWidth,
                                     onClick = { onOpenBook(book.id) },
                                     onPlay = { onPlayBook(book.id) },
                                 )
@@ -474,7 +493,6 @@ private fun BookGridItem(
     /** Loaded in the player (marks the tile), which is not the same as actually playing. */
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
-    tileWidth: Dp = 110.dp,
     onClick: () -> Unit,
     onPlay: () -> Unit = {},
 ) {
@@ -485,12 +503,14 @@ private fun BookGridItem(
         title = book.title,
         coverPath = book.coverPath,
         subtitle = book.author?.takeIf { it.isNotBlank() }
-            ?: formatDuration(book.totalDurationMs),
+            ?: book.totalDurationMs.takeIf { it > 0 }?.let(::formatDuration).orEmpty(),
         // The tag rides with the author line now: cover art is the one thing a shelf is for, and
         // it was carrying a badge, a play button and a progress line at once.
         subtitleTag = if (book.isRemote) stringResource(R.string.online_badge) else null,
         onClick = onClick,
         framed = true,
+        titleStyle = BookType.title.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+        coverElevation = 2.dp,
         overlay = {
             if (isCurrent) {
                 // Play dot marks the book loaded in the player, so the shelf answers
@@ -551,40 +571,36 @@ private fun BookGridItem(
                     .background(
                         Brush.verticalGradient(
                             0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.55f),
+                            1f to Color.Black.copy(alpha = 0.32f),
                         ),
                     ),
             )
             if (!book.needsReauth) {
                 // One-tap continue straight from the shelf; the rest of the tile still opens the
                 // book page.
-                CoverPlayButton(
+                ShelfPlayButton(
                     onClick = onPlay,
                     isPlaying = isPlaying,
                     size = playSize,
+                    onArtwork = true,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 8.dp),
+                        .padding(end = 8.dp, bottom = 14.dp),
                 )
             }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
-                // Progress rides the artwork itself so every tile keeps the same height.
-                // The track needs real contrast against dark covers; theme scrim at low
-                // alpha vanished entirely there, so a fixed dark wash is used instead.
-                // One unbroken line hugging the bottom edge; the old segment stopped short of the
-                // play button and read as a rendering glitch.
+                // Inset from the curved edge so the cover keeps a clean silhouette.
                 LinearProgressIndicator(
                     progress = { book.progressFraction },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                         .fillMaxWidth()
-                        .height(3.dp),
+                        .height(2.dp)
+                        .clip(CircleShape),
                     color = accent,
                     trackColor = Color.White.copy(alpha = 0.30f),
-                    // Material 1.3 draws a dot at the track end and a gap before it; on a 3dp
-                    // hairline both read as dirt on the artwork. Butt caps keep a 2% bar a clean
-                    // sliver instead of a rounded blob.
                     strokeCap = StrokeCap.Butt,
                     gapSize = 0.dp,
                     drawStopIndicator = {},
@@ -607,11 +623,12 @@ private fun BookListItem(
     val accent = rememberCoverAccent(book.coverPath)
     SectionCard(
         onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
@@ -718,10 +735,11 @@ private fun BookListItem(
             }
             if (!book.needsReauth) {
                 Spacer(Modifier.width(10.dp))
-                CoverPlayButton(
+                ShelfPlayButton(
                     onClick = onPlay,
                     isPlaying = isPlaying,
                     size = 36.dp,
+                    accent = accent,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                 )
             }
@@ -737,11 +755,7 @@ private fun sortLabel(sort: ShelfSort): String = when (sort) {
     ShelfSort.PROGRESS -> stringResource(R.string.progress)
 }
 
-/**
- * One-line resume strip: cover thumb, title, position, play button, and a hairline of progress
- * along the bottom edge. The tall hero card it replaced ate 128dp of the first screen and, on a
- * short shelf, simply repeated the tile right below it.
- */
+/** A compact, cover-tinted resume card with progress grouped under the book title. */
 @Composable
 private fun ContinueListeningBar(
     book: Book,
@@ -750,88 +764,91 @@ private fun ContinueListeningBar(
     onPlay: () -> Unit,
 ) {
     val accent = rememberCoverAccent(book.coverPath)
-    SectionCard(
+    val surface = MaterialTheme.colorScheme.surface
+    val tint = if (LocalAppDarkTheme.current) 0.12f else 0.07f
+    Surface(
         onClick = onOpen,
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(20.dp),
+        color = surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(0.5.dp, accent.copy(alpha = 0.16f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column {
-            Row(
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Square thumb, not a 3:4 one: a portrait cover at this height reached the card's
-                // top and bottom edges and collided with the progress line.
-                BookCover(
-                    title = book.title,
-                    coverPath = book.coverPath,
-                    size = 38.dp,
-                    corner = CoverCorner.Mini,
-                    framed = false,
+        Row(
+            modifier = Modifier
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(lerp(surface, accent, tint), lerp(surface, accent, tint / 3f)),
+                    ),
                 )
-                Spacer(Modifier.width(12.dp))
-                // Title over position, with the button flush right: the old single line left the
-                // percentage floating between the title and a button that sat nowhere in
-                // particular.
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        book.title,
-                        style = BookType.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        if (book.lastPlayedAt > 0) {
-                            stringResource(
-                                R.string.shelf_continue_inline,
-                                (book.progressFraction * 100).toInt(),
-                                remainingMs?.let(::formatDuration) ?: "--:--",
-                            )
-                        } else {
-                            stringResource(R.string.shelf_continue_title)
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BookCover(
+                title = book.title,
+                coverPath = book.coverPath,
+                size = 50.dp,
+                ratio = COVER_RATIO_PORTRAIT,
+                corner = CoverCorner.Mini,
+                framed = true,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.shelf_continue_title),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    book.title,
+                    style = BookType.title.copy(fontSize = 17.sp, lineHeight = 23.sp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(
+                        R.string.shelf_continue_progress,
+                        (book.progressFraction * 100).toInt(),
+                        remainingMs?.let(::formatDuration) ?: "--:--",
+                    ),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { book.progressFraction },
+                        modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+                        color = accent,
+                        trackColor = accent.copy(alpha = 0.16f),
+                        strokeCap = StrokeCap.Butt,
+                        gapSize = 0.dp,
+                        drawStopIndicator = {},
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                CoverPlayButton(
-                    onClick = onPlay,
-                    size = 36.dp,
-                    contentDescription = stringResource(R.string.shelf_play_book, book.title),
-                )
             }
-            if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
-                // Inset and rounded: flush with the card's bottom edge the rounded corners clipped
-                // its ends and it read as a bar under the card rather than this book's progress.
-                LinearProgressIndicator(
-                    progress = { book.progressFraction },
-                    modifier = Modifier
-                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(CircleShape),
-                    color = accent,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    strokeCap = StrokeCap.Butt,
-                    gapSize = 0.dp,
-                    drawStopIndicator = {},
-                )
-            }
+            Spacer(Modifier.width(12.dp))
+            ShelfPlayButton(
+                onClick = onPlay,
+                accent = accent,
+                contentDescription = stringResource(R.string.shelf_play_book, book.title),
+            )
         }
     }
 }
 
-/**
- * Filter chips only. Sorting moved to the app bar: sitting at the end of this row it read as a
- * fifth filter, and it pushed the real filters off-screen.
- */
+/** Lightweight filters and the layout switch, kept visible even for an empty result. */
 @Composable
 private fun ShelfFilterRow(
     filter: ShelfFilter,
     showReauthFilter: Boolean,
     onFilterChange: (ShelfFilter) -> Unit,
+    isListView: Boolean,
+    onToggleView: () -> Unit,
 ) {
     val filterOptions = buildList {
         add(ShelfFilter.ALL to stringResource(R.string.filter_all))
@@ -844,15 +861,74 @@ private fun ShelfFilterRow(
             add(ShelfFilter.NEEDS_REAUTH to stringResource(R.string.needs_reauthorization))
         }
     }
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(end = 4.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        items(filterOptions, key = { it.first.name }) { (value, label) ->
-            FilterChip(
-                selected = filter == value,
-                onClick = { onFilterChange(value) },
-                label = { Text(label) },
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(end = 4.dp),
+        ) {
+            items(filterOptions, key = { it.first.name }) { (value, label) ->
+                FilterChip(
+                    selected = filter == value,
+                    onClick = { onFilterChange(value) },
+                    shape = CircleShape,
+                    border = null,
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                    label = {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (filter == value) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    },
+                )
+            }
+        }
+        IconButton(onClick = onToggleView) {
+            Icon(
+                if (isListView) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
+                contentDescription = stringResource(if (isListView) R.string.view_grid else R.string.view_list),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ShelfPlayButton(
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    isPlaying: Boolean = false,
+    size: Dp = 40.dp,
+    accent: Color = MaterialTheme.colorScheme.primary,
+    onArtwork: Boolean = false,
+) {
+    val background = if (onArtwork) Color.Black.copy(alpha = 0.48f) else accent
+    val foreground = if (onArtwork || accent.luminance() <= 0.179f) Color.White else Color.Black
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = background,
+        contentColor = foreground,
+        border = if (onArtwork) BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)) else null,
+        modifier = modifier.size(size),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) stringResource(R.string.pause) else contentDescription,
+                modifier = Modifier.size(size * 0.55f),
             )
         }
     }
