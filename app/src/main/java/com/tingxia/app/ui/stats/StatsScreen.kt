@@ -1,7 +1,13 @@
 package com.tingxia.app.ui.stats
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,21 +18,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -40,10 +45,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,9 +69,10 @@ import com.tingxia.app.data.repo.StatsRepository
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.EmptyState
 import com.tingxia.app.ui.components.SectionCard
-import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
+import com.tingxia.app.ui.theme.rememberCoverAccent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,24 +103,70 @@ class StatsViewModel @Inject constructor(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(
-    onBack: () -> Unit,
+    onBack: () -> Unit = {},
+    showBack: Boolean = false,
+    onOpenSettings: () -> Unit = {},
     onOpenBook: (Long) -> Unit = {},
     viewModel: StatsViewModel = hiltViewModel(),
 ) {
     val stats by viewModel.stats.collectAsStateWithLifecycle()
+    val topBarScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(topBarScrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge) },
+                scrollBehavior = topBarScrollBehavior,
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                    if (showBack) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back),
+                            )
+                        }
+                    }
+                },
+                title = {
+                    if (showBack) {
+                        Text(
+                            stringResource(R.string.stats_title),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                stringResource(R.string.stats_title),
+                                style = MaterialTheme.typography.headlineSmall,
+                            )
+                            Text(
+                                stringResource(R.string.stats_subtitle),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (!showBack) {
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = stringResource(R.string.settings),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
             )
         },
@@ -126,8 +186,8 @@ fun StatsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             OverviewRow(s)
             WeekChart(s.daily)
@@ -147,48 +207,192 @@ fun StatsScreen(
 
 @Composable
 private fun OverviewRow(s: ListeningStats) {
-    SectionCard {
+    val density = LocalDensity.current
+    SectionCard(shape = RoundedCornerShape(18.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 stringResource(R.string.stats_overview),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                StatItem(
-                    modifier = Modifier.weight(1f),
-                    value = formatDuration(s.totalListenedMs),
-                    label = stringResource(R.string.stats_total),
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val layout = resolveStatsOverviewLayout(
+                    availableWidthDp = maxWidth.value,
+                    fontScale = density.fontScale,
                 )
-                StatItem(
+                when (layout) {
+                    StatsOverviewLayout.SINGLE_COLUMN -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StatItem(
+                                modifier = Modifier.fillMaxWidth(),
+                                durationMs = s.totalListenedMs,
+                                label = stringResource(R.string.stats_total),
+                                highlight = true,
+                                allowWrap = true,
+                            )
+                            StatItem(
+                                modifier = Modifier.fillMaxWidth(),
+                                durationMs = s.weekListenedMs,
+                                label = stringResource(R.string.stats_week),
+                                allowWrap = true,
+                            )
+                            StatItem(
+                                modifier = Modifier.fillMaxWidth(),
+                                durationMs = s.todayListenedMs,
+                                label = stringResource(R.string.stats_today),
+                                allowWrap = true,
+                            )
+                        }
+                    }
+                    StatsOverviewLayout.HERO_PLUS_TWO -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StatItem(
+                                modifier = Modifier.fillMaxWidth(),
+                                durationMs = s.totalListenedMs,
+                                label = stringResource(R.string.stats_total),
+                                highlight = true,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                StatItem(
+                                    modifier = Modifier.weight(1f),
+                                    durationMs = s.weekListenedMs,
+                                    label = stringResource(R.string.stats_week),
+                                )
+                                StatItem(
+                                    modifier = Modifier.weight(1f),
+                                    durationMs = s.todayListenedMs,
+                                    label = stringResource(R.string.stats_today),
+                                )
+                            }
+                        }
+                    }
+                    StatsOverviewLayout.THREE_COLUMNS -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            StatItem(
+                                modifier = Modifier.weight(1f),
+                                durationMs = s.totalListenedMs,
+                                label = stringResource(R.string.stats_total),
+                                highlight = true,
+                            )
+                            StatItem(
+                                modifier = Modifier.weight(1f),
+                                durationMs = s.weekListenedMs,
+                                label = stringResource(R.string.stats_week),
+                            )
+                            StatItem(
+                                modifier = Modifier.weight(1f),
+                                durationMs = s.todayListenedMs,
+                                label = stringResource(R.string.stats_today),
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    stringResource(R.string.stats_books_completed, s.completedBooks, s.totalBooks),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
-                    value = formatDuration(s.weekListenedMs),
-                    label = stringResource(R.string.stats_week),
                 )
-                StatItem(
-                    modifier = Modifier.weight(1f),
-                    value = formatDuration(s.todayListenedMs),
-                    label = stringResource(R.string.stats_today),
+                if (s.totalBooks > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${(s.completedBooks * 100 / s.totalBooks)}%",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            if (s.totalBooks > 0) {
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { (s.completedBooks.toFloat() / s.totalBooks.toFloat()).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                stringResource(R.string.stats_books_completed, s.completedBooks, s.totalBooks),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
 
 @Composable
-private fun StatItem(modifier: Modifier = Modifier, value: String, label: String) {
-    Column(modifier = modifier) {
-        Text(value, style = MaterialTheme.typography.headlineSmall)
+private fun StatItem(
+    durationMs: Long,
+    label: String,
+    modifier: Modifier = Modifier,
+    highlight: Boolean = false,
+    allowWrap: Boolean = false,
+) {
+    val parts = remember(durationMs) { formatStatsDurationParts(durationMs) }
+    val unitLabel = stringResource(
+        when (parts.unit) {
+            StatDurationUnit.HOURS -> R.string.stats_hours_unit
+            StatDurationUnit.MINUTES -> R.string.minutes
+        },
+    )
+    val valueColor = if (highlight) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (highlight) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+            )
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = buildAnnotatedString {
+                append(parts.number)
+                withStyle(
+                    SpanStyle(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = valueColor.copy(alpha = 0.82f),
+                    ),
+                ) {
+                    append(" ")
+                    append(unitLabel)
+                }
+            },
+            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.SemiBold,
+            color = valueColor,
+            maxLines = if (allowWrap) 2 else 1,
+        )
+        Spacer(Modifier.height(2.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (allowWrap) 2 else 1,
         )
     }
 }
@@ -205,7 +409,7 @@ private fun WeekChart(daily: List<DailyListening>) {
         animationTriggered = true
     }
 
-    SectionCard {
+    SectionCard(shape = RoundedCornerShape(18.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 stringResource(R.string.stats_last_7_days),
@@ -229,13 +433,19 @@ private fun WeekChart(daily: List<DailyListening>) {
                     )
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(42.dp),
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text(
-                            formatDuration(ms),
-                            style = MaterialTheme.typography.labelSmall,
+                            formatCompactChartDuration(ms),
+                            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (isToday) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            textAlign = TextAlign.Center,
                         )
                         Spacer(Modifier.height(6.dp))
                         Box(
@@ -243,7 +453,7 @@ private fun WeekChart(daily: List<DailyListening>) {
                                 .width(16.dp)
                                 .height(96.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
                             contentAlignment = Alignment.BottomCenter,
                         ) {
                             if (animatedFraction > 0.01f) {
@@ -263,8 +473,8 @@ private fun WeekChart(daily: List<DailyListening>) {
                                             } else {
                                                 Brush.verticalGradient(
                                                     listOf(
-                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.62f),
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.36f),
                                                     ),
                                                 )
                                             },
@@ -282,6 +492,7 @@ private fun WeekChart(daily: List<DailyListening>) {
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
+                            maxLines = 1,
                         )
                     }
                 }
@@ -290,58 +501,150 @@ private fun WeekChart(daily: List<DailyListening>) {
     }
 }
 
+internal enum class StatsOverviewLayout {
+    THREE_COLUMNS,
+    HERO_PLUS_TWO,
+    SINGLE_COLUMN,
+}
+
+internal fun resolveStatsOverviewLayout(
+    availableWidthDp: Float,
+    fontScale: Float,
+): StatsOverviewLayout {
+    val effectiveWidthDp = availableWidthDp / fontScale.coerceAtLeast(1f)
+    return when {
+        effectiveWidthDp >= 268f -> StatsOverviewLayout.THREE_COLUMNS
+        effectiveWidthDp >= 190f -> StatsOverviewLayout.HERO_PLUS_TWO
+        else -> StatsOverviewLayout.SINGLE_COLUMN
+    }
+}
+
+internal enum class StatDurationUnit {
+    MINUTES,
+    HOURS,
+}
+
+internal data class CompactStatDuration(
+    val number: String,
+    val unit: StatDurationUnit,
+)
+
+/**
+ * Formats cumulative listening durations into compact, human-readable stat parts
+ * (`0 分钟`, `<1 分钟`, `42 分钟`, `12.5 小时`, `128 小时`) so overview tiles never
+ * overflow into `100:00…` ellipses on narrow 320dp displays or large font scales.
+ */
+internal fun formatStatsDurationParts(ms: Long): CompactStatDuration {
+    if (ms <= 0L) return CompactStatDuration("0", StatDurationUnit.MINUTES)
+    if (ms < 60_000L) return CompactStatDuration("<1", StatDurationUnit.MINUTES)
+    if (ms < 3_600_000L) return CompactStatDuration((ms / 60_000L).toString(), StatDurationUnit.MINUTES)
+    if (ms >= 360_000_000L) {
+        return CompactStatDuration((ms / 3_600_000L).toString(), StatDurationUnit.HOURS)
+    }
+    val tenths = (ms * 10L) / 3_600_000L
+    val number = if (tenths % 10L == 0L) {
+        (tenths / 10L).toString()
+    } else {
+        "${tenths / 10L}.${tenths % 10L}"
+    }
+    return CompactStatDuration(number, StatDurationUnit.HOURS)
+}
+
+internal fun formatCompactChartDuration(ms: Long): String {
+    if (ms <= 0L) return ""
+    if (ms < 60_000L) return "<1m"
+    if (ms < 3_600_000L) return "${ms / 60_000L}m"
+    if (ms >= 360_000_000L) return "${ms / 3_600_000L}h"
+    val tenths = (ms * 10L) / 3_600_000L
+    return if (tenths % 10L == 0L) "${tenths / 10L}h" else "${tenths / 10L}.${tenths % 10L}h"
+}
+
 @Composable
-private fun TopBooksCard(topBooks: List<BookListening>, totalMs: Long, onOpenBook: (Long) -> Unit) {
-    SectionCard {
+private fun TopBooksCard(
+    topBooks: List<BookListening>,
+    totalMs: Long,
+    onOpenBook: (Long) -> Unit,
+) {
+    val maxBookMs = (topBooks.maxOfOrNull { it.listenedMs } ?: totalMs).coerceAtLeast(1L)
+    SectionCard(shape = RoundedCornerShape(18.dp)) {
         Column(modifier = Modifier.padding(vertical = 8.dp)) {
             Text(
                 stringResource(R.string.stats_top_books),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             topBooks.forEachIndexed { index, book ->
-                val fraction = if (totalMs > 0) {
-                    (book.listenedMs.toFloat() / totalMs).coerceIn(0f, 1f)
-                } else 0f
-                androidx.compose.material3.Surface(
-                    onClick = { onOpenBook(book.bookId) },
-                    color = MaterialTheme.colorScheme.surface,
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 88.dp, end = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                    )
+                }
+                val fraction = (book.listenedMs.toFloat() / maxBookMs.toFloat()).coerceIn(0f, 1f)
+                val accent = rememberCoverAccent(book.coverPath)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenBook(book.bookId) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BookCover(
-                            title = book.title,
-                            coverPath = book.coverPath,
-                            size = 44.dp,
-                            ratio = COVER_RATIO_PORTRAIT,
-                            corner = CoverCorner.Grid,
-                        )
-                        Spacer(Modifier.size(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                book.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            LinearProgressIndicator(
-                                progress = { fraction },
-                                modifier = Modifier.fillMaxWidth(),
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                            )
-                        }
-                        Spacer(Modifier.size(12.dp))
+                    Text(
+                        text = "${index + 1}",
+                        style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.Bold,
+                        color = if (index < 3) {
+                            MaterialTheme.colorScheme.secondary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.width(20.dp),
+                    )
+                    BookCover(
+                        title = book.title,
+                        coverPath = book.coverPath,
+                        size = 44.dp,
+                        ratio = COVER_RATIO_PORTRAIT,
+                        corner = CoverCorner.Grid,
+                        framed = true,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            formatDuration(book.listenedMs),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            book.title,
+                            style = BookType.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(CircleShape),
+                            color = accent,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            strokeCap = StrokeCap.Round,
+                            gapSize = 0.dp,
+                            drawStopIndicator = {},
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
+                    val bookDuration = remember(book.listenedMs) { formatStatsDurationParts(book.listenedMs) }
+                    val bookUnit = stringResource(
+                        when (bookDuration.unit) {
+                            StatDurationUnit.HOURS -> R.string.stats_hours_unit
+                            StatDurationUnit.MINUTES -> R.string.minutes
+                        },
+                    )
+                    Text(
+                        "${bookDuration.number} $bookUnit",
+                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
             }
         }

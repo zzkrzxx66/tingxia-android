@@ -286,6 +286,7 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, player)
             .setCallback(callback)
             .setSessionActivity(sessionActivity)
+            .setBitmapLoader(CoilBitmapLoader(this, progressScope))
             .setId("tingxia_playback")
             .build()
 

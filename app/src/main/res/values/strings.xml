@@ -51,7 +51,6 @@
     <string name="skip_intro_seconds">片头（秒）</string>
     <string name="skip_outro_seconds">片尾（秒）</string>
     <string name="skip_seconds_range">请输入 0–300 秒</string>
-    <string name="skip_active_summary">已跳过：片头 %1$d 秒 · 片尾 %2$d 秒</string>
     <string name="remove_cover">移除封面</string>
     <string name="rescan_folder">重新扫描目录</string>
     <string name="reauthorize_folder">重新授权目录</string>
@@ -303,7 +302,6 @@
     <string name="shelf_play_book">播放《%1$s》</string>
     <!-- Chapter picker (player sheet) -->
     <string name="chapter_picker_title">选集</string>
-    <string name="chapter_picker_button">选集 %1$d/%2$d</string>
     <string name="chapter_picker_empty">没有符合条件的章节</string>
     <string name="chapter_count_total">共 %1$d 章</string>
     <string name="chapter_count_filtered">显示 %1$d / %2$d 章</string>
@@ -337,4 +335,31 @@
     <string name="speed_for_global">设为全局默认</string>
     <string name="speed_inherit_global">恢复全局默认倍速</string>
     <string name="retry">重试</string>
+    <!-- UI/UX polish additions -->
+    <string name="nav_stats">统计</string>
+    <string name="import_short">导入</string>
+    <string name="online_catalog_subtitle">真人演播与 AI 朗读</string>
+    <string name="online_tag_human">真人</string>
+    <string name="quick_cache">离线缓存</string>
+    <string name="quick_caching">缓存中</string>
+    <string name="quick_sync_meta">匹配信息</string>
+    <string name="quick_rescan">重扫目录</string>
+    <string name="quick_voice">换音色</string>
+    <string name="quick_text">看正文</string>
+    <string name="quick_skip">片头片尾</string>
+    <string name="quick_update">追更</string>
+    <string name="cache_cancel_running">取消正在进行的缓存</string>
+    <string name="skip_active_short">%1$ds/%2$ds</string>
+    <string name="player_hud_more">更多 ›</string>
+    <string name="sleep_toast_10m">定时关闭：10 分钟</string>
+    <string name="sleep_toast_30m">定时关闭：30 分钟</string>
+    <string name="sleep_toast_eoc">定时关闭：本章结束</string>
+    <string name="sleep_toast_off">定时已关闭</string>
+    <string name="speed_toast_switched">播放倍速：%1$s</string>
+    <string name="stats_subtitle">收听足迹与习惯</string>
+    <string name="stats_hours_unit">小时</string>
+    <string name="clear_cache_confirm_title">清空离线缓存</string>
+    <string name="clear_cache_confirm_body">将删除全部已下载的在线有声书缓存（当前占用 %1$s），收听进度与书签不受影响。</string>
+    <string name="restore_backup_confirm">恢复</string>
+    <string name="restore_backup_body">将恢复 %1$d 本书、%2$d 个书签和设置。已有书籍的进度会被覆盖，书签与统计将合并；恢复后播放器保持暂停。音频和私有封面需保留在本机。</string>
 </resources>

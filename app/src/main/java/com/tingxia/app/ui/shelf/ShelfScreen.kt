@@ -47,7 +47,8 @@ import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.PlayArrow
@@ -177,6 +178,58 @@ fun ShelfScreen(
                 ),
                 actions = {
                     Box {
+                        Surface(
+                            onClick = { importMenu = true },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.height(32.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(start = 10.dp, end = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    stringResource(R.string.import_short),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = importMenu,
+                            onDismissRequest = { importMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_folder)) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.CreateNewFolder, contentDescription = null)
+                                },
+                                onClick = {
+                                    importMenu = false
+                                    openTree.launch(null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_multiple_audio)) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.AudioFile, contentDescription = null)
+                                },
+                                onClick = {
+                                    importMenu = false
+                                    openFiles.launch(arrayOf("audio/*", "application/octet-stream"))
+                                },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(2.dp))
+                    Box {
                         IconButton(onClick = { sortMenu = true }) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Sort,
@@ -207,43 +260,6 @@ fun ShelfScreen(
                             }
                         }
                     }
-                    Box {
-                        IconButton(onClick = { importMenu = true }) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = stringResource(R.string.import_audio),
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                        DropdownMenu(
-                            expanded = importMenu,
-                            onDismissRequest = { importMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.import_folder)) },
-                                onClick = {
-                                    importMenu = false
-                                    openTree.launch(null)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.import_multiple_audio)) },
-                                onClick = {
-                                    importMenu = false
-                                    openFiles.launch(arrayOf("audio/*", "application/octet-stream"))
-                                },
-                            )
-                        }
-                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             Icons.Default.Settings,
@@ -263,17 +279,6 @@ fun ShelfScreen(
                     .padding(innerPadding),
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    TxSearchField(
-                        value = query,
-                        onValueChange = viewModel::setQuery,
-                        placeholder = stringResource(R.string.search_books_hint),
-                        onClear = { viewModel.setQuery("") },
-                        shape = RoundedCornerShape(16.dp),
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 4.dp),
-                    )
                     // A filter or search that matches nothing must never take the filter row with
                     // it: tapping 已完成 on a shelf with nothing finished used to swap the whole grid
                     // for an empty state, leaving no way back to 全部. The "no match" message is a
@@ -291,12 +296,24 @@ fun ShelfScreen(
                             contentPadding = PaddingValues(
                                 start = 20.dp,
                                 end = 20.dp,
-                                top = 12.dp,
+                                top = 6.dp,
                                 bottom = 24.dp,
                             ),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
+                            item(key = "search_bar") {
+                                TxSearchField(
+                                    value = query,
+                                    onValueChange = viewModel::setQuery,
+                                    placeholder = stringResource(R.string.search_books_hint),
+                                    onClear = { viewModel.setQuery("") },
+                                    clearContentDescription = stringResource(R.string.clear_search),
+                                    shape = RoundedCornerShape(16.dp),
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             recent
                                 ?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }
                                 ?.takeIf { it.id != playingBookId && books.size >= 3 }
@@ -340,7 +357,7 @@ fun ShelfScreen(
                             }
                         }
                     } else {
-                        // Hero card and the filter row scroll with the grid, so the shelf reads as
+                        // Search, hero card and filter row scroll with the grid, so the shelf reads as
                         // one continuous surface instead of a fixed toolbar stack.
                         // Explicit column counts: GridCells.Adaptive divides with integer
                         // truncation, so a 108dp minimum silently produced two half-screen tiles
@@ -357,13 +374,25 @@ fun ShelfScreen(
                             contentPadding = PaddingValues(
                                 start = 20.dp,
                                 end = 20.dp,
-                                top = 12.dp,
+                                top = 6.dp,
                                 bottom = 24.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
+                            item(key = "search_bar", span = { GridItemSpan(maxLineSpan) }) {
+                                TxSearchField(
+                                    value = query,
+                                    onValueChange = viewModel::setQuery,
+                                    placeholder = stringResource(R.string.search_books_hint),
+                                    onClear = { viewModel.setQuery("") },
+                                    clearContentDescription = stringResource(R.string.clear_search),
+                                    shape = RoundedCornerShape(16.dp),
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             // Skipped when the bottom capsule is already showing this book (a
                             // loaded session means the mini player is on screen), and on a shelf
                             // small enough to see the book itself without a shortcut.
@@ -371,7 +400,7 @@ fun ShelfScreen(
                                 ?.takeIf { query.isBlank() && filter == ShelfFilter.ALL }
                                 ?.takeIf { it.id != playingBookId && books.size >= 3 }
                                 ?.let { book ->
-                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                    item(key = "continue_bar", span = { GridItemSpan(maxLineSpan) }) {
                                         ContinueListeningBar(
                                             book = book,
                                             remainingMs = remainingByBook[book.id],
@@ -380,7 +409,7 @@ fun ShelfScreen(
                                         )
                                     }
                                 }
-                            item(span = { GridItemSpan(maxLineSpan) }) {
+                            item(key = "filter_row", span = { GridItemSpan(maxLineSpan) }) {
                                 ShelfFilterRow(
                                     filter = filter,
                                     showReauthFilter = hasReauthBooks,
@@ -512,31 +541,6 @@ private fun BookGridItem(
         titleStyle = BookType.title.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
         coverElevation = 2.dp,
         overlay = {
-            if (isCurrent) {
-                // Play dot marks the book loaded in the player, so the shelf answers
-                // "what am I listening to" without reading titles. Remote tiles carry
-                // the online badge at TopStart, so the dot shifts right to sit beside it.
-                // Equaliser bars, not a second play triangle: this marks "loaded in the player",
-                // while the corner button is the action.
-                // A neutral scrim disc, not brand green: with a green play button in the opposite
-                // corner the artwork had two matching green dots pulling at each other.
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.38f),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp),
-                ) {
-                    Icon(
-                        Icons.Default.GraphicEq,
-                        contentDescription = stringResource(R.string.now_playing_badge),
-                        tint = Color.White,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(12.dp),
-                    )
-                }
-            }
             if (book.needsReauth && !book.isRemote) {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -555,13 +559,13 @@ private fun BookGridItem(
                     )
                 }
             }
-            // Artwork is unpredictable, so the bottom band gets a scrim: without it the progress
-            // line and the play button disappeared into busy covers.
+            // Artwork is unpredictable, so the bottom band gets a slim scrim: enough to keep the
+            // progress hairline and play disc legible without darkening half the cover.
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(playSize + 20.dp)
+                    .height(34.dp)
                     .clip(
                         RoundedCornerShape(
                             bottomStart = CoverCorner.Grid,
@@ -571,22 +575,25 @@ private fun BookGridItem(
                     .background(
                         Brush.verticalGradient(
                             0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.32f),
+                            1f to Color.Black.copy(alpha = 0.30f),
                         ),
                     ),
             )
             if (!book.needsReauth) {
-                // One-tap continue straight from the shelf; the rest of the tile still opens the
-                // book page.
+                // One-tap continue straight from the shelf; when this book is the active session,
+                // the disc takes the cover's accent colour instead of adding a second badge at TopStart.
                 ShelfPlayButton(
                     onClick = onPlay,
                     isPlaying = isPlaying,
+                    isCurrent = isCurrent,
                     size = playSize,
+                    hitTargetSize = 38.dp,
+                    accent = accent,
                     onArtwork = true,
                     contentDescription = stringResource(R.string.shelf_play_book, book.title),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 14.dp),
+                        .padding(end = 3.dp, bottom = 8.dp),
                 )
             }
             if (book.lastPlayedAt > 0 && book.totalDurationMs > 0) {
@@ -595,12 +602,12 @@ private fun BookGridItem(
                     progress = { book.progressFraction },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
                         .fillMaxWidth()
-                        .height(2.dp)
+                        .height(2.5.dp)
                         .clip(CircleShape),
                     color = accent,
-                    trackColor = Color.White.copy(alpha = 0.30f),
+                    trackColor = Color.White.copy(alpha = 0.28f),
                     strokeCap = StrokeCap.Butt,
                     gapSize = 0.dp,
                     drawStopIndicator = {},
@@ -910,26 +917,42 @@ private fun ShelfPlayButton(
     contentDescription: String,
     modifier: Modifier = Modifier,
     isPlaying: Boolean = false,
+    isCurrent: Boolean = false,
     size: Dp = 40.dp,
+    hitTargetSize: Dp = size,
     accent: Color = MaterialTheme.colorScheme.primary,
     onArtwork: Boolean = false,
 ) {
-    val background = if (onArtwork) Color.Black.copy(alpha = 0.48f) else accent
-    val foreground = if (onArtwork || accent.luminance() <= 0.179f) Color.White else Color.Black
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = background,
-        contentColor = foreground,
-        border = if (onArtwork) BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)) else null,
-        modifier = modifier.size(size),
+    val useAccent = !onArtwork || isCurrent
+    val background = if (useAccent) accent else Color.Black.copy(alpha = 0.50f)
+    val foreground = if (!useAccent || accent.luminance() <= 0.22f) Color.White else Color(0xFF141816)
+    val border = when {
+        onArtwork && isCurrent -> BorderStroke(1.dp, Color.White.copy(alpha = 0.65f))
+        onArtwork -> BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f))
+        else -> null
+    }
+    Box(
+        modifier = modifier
+            .size(hitTargetSize)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) stringResource(R.string.pause) else contentDescription,
-                modifier = Modifier.size(size * 0.55f),
-            )
+        Surface(
+            shape = CircleShape,
+            color = background,
+            contentColor = foreground,
+            border = border,
+            shadowElevation = if (onArtwork && isCurrent) 3.dp else 0.dp,
+            modifier = Modifier.size(size),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) stringResource(R.string.pause) else contentDescription,
+                    modifier = Modifier.size(size * 0.56f),
+                )
+            }
         }
     }
 }

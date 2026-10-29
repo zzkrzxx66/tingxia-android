@@ -248,7 +248,29 @@ class ShelfViewModel @Inject constructor(
     }
 
     fun setFqQuery(value: String) {
-        _fqQuery.value = value
+        if (value.isEmpty() && (_fqHasSearched.value || _fqLoading.value || _fqSearch.value.isNotEmpty())) {
+            clearFqSearch()
+        } else {
+            _fqQuery.value = value
+        }
+    }
+
+    /** Cancel any in-flight search/pagination and restore the online discovery home state. */
+    fun clearFqSearch() {
+        searchJob?.cancel()
+        pageJob?.cancel()
+        searchRequests.clear()
+        searchTicket = null
+        activeSearchQuery = ""
+        fqSearchId = null
+        fqPage = 1
+        _fqQuery.value = ""
+        _fqSearch.value = emptyList()
+        _fqHasSearched.value = false
+        _fqHasMore.value = false
+        _fqLoading.value = false
+        _fqLoadingMore.value = false
+        loadFqDiscover()
     }
 
     /** Load the discover page once per app session: sections first, hot list as fallback. */

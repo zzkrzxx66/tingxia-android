@@ -179,20 +179,33 @@ class BookDetailViewModel @Inject constructor(
 
     private val _metaSync = MutableStateFlow(OnlineMetaSyncUiState())
     val metaSync: StateFlow<OnlineMetaSyncUiState> = _metaSync.asStateFlow()
+    private var metaSyncSearchJob: Job? = null
 
     /** Open the sync sheet, pre-filled with the book title, and search straight away. */
     fun openMetaSync() {
+        metaSyncSearchJob?.cancel()
         val title = book.value?.title.orEmpty()
         _metaSync.value = OnlineMetaSyncUiState(visible = true, query = title)
         if (title.isNotBlank()) searchMetaCandidates(title)
     }
 
     fun closeMetaSync() {
+        metaSyncSearchJob?.cancel()
         _metaSync.value = OnlineMetaSyncUiState()
     }
 
     fun setMetaSyncQuery(value: String) {
-        _metaSync.value = _metaSync.value.copy(query = value)
+        if (value.isEmpty()) {
+            metaSyncSearchJob?.cancel()
+            _metaSync.value = _metaSync.value.copy(
+                query = "",
+                candidates = emptyList(),
+                loading = false,
+                searched = false,
+            )
+        } else {
+            _metaSync.value = _metaSync.value.copy(query = value)
+        }
     }
 
     fun setMetaSyncCover(enabled: Boolean) {
@@ -206,7 +219,8 @@ class BookDetailViewModel @Inject constructor(
     fun searchMetaCandidates(keyword: String) {
         val normalized = keyword.trim()
         if (normalized.isEmpty()) return
-        viewModelScope.launch {
+        metaSyncSearchJob?.cancel()
+        metaSyncSearchJob = viewModelScope.launch {
             _metaSync.value = _metaSync.value.copy(query = normalized, loading = true, searched = false)
             try {
                 val results = fqNovelApi.search(normalized).books

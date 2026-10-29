@@ -22,7 +22,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,7 +38,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -82,6 +85,7 @@ import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.CoverPalette
+import com.tingxia.app.ui.theme.LocalAppDarkTheme
 import java.io.File
 
 /**
@@ -143,7 +147,7 @@ fun BookCover(
  */
 @Composable
 private fun CoverFinish(modifier: Modifier = Modifier) {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalAppDarkTheme.current
     val edge = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
     Box(
         modifier
@@ -203,6 +207,13 @@ private fun CoverFinish(modifier: Modifier = Modifier) {
             },
     )
 }
+
+/**
+ * Extracts the first letter or digit from a book title, skipping leading punctuation
+ * such as guillemets (`《三体》` -> `"三"`). Returns `null` when no alphanumeric/CJK character exists.
+ */
+internal fun extractCoverInitial(title: String): String? =
+    title.trim().firstOrNull { it.isLetterOrDigit() }?.toString()
 
 @Composable
 private fun FallbackCover(title: String, compact: Boolean, modifier: Modifier = Modifier) {
@@ -273,8 +284,10 @@ private fun FallbackCover(title: String, compact: Boolean, modifier: Modifier = 
                     }
                 },
         )
+        val glyph = extractCoverInitial(title)
+            ?: stringResource(R.string.cover_fallback_character)
         Text(
-            text = title.take(1).ifEmpty { stringResource(R.string.cover_fallback_character) },
+            text = glyph,
             color = Color.White.copy(alpha = 0.96f),
             fontSize = if (compact) 22.sp else 36.sp,
             fontWeight = FontWeight.SemiBold,
@@ -755,6 +768,11 @@ fun TxSearchField(
     placeholder: String,
     modifier: Modifier = Modifier,
     onClear: (() -> Unit)? = null,
+    onSearch: (() -> Unit)? = null,
+    searchEnabled: Boolean = true,
+    clearContentDescription: String? = null,
+    searchContentDescription: String? = null,
+    focusRequester: FocusRequester? = null,
     shape: Shape = MaterialTheme.shapes.large,
     containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
 ) {
@@ -764,7 +782,7 @@ fun TxSearchField(
         modifier = modifier.height(46.dp),
     ) {
         Row(
-            modifier = Modifier.padding(start = 14.dp, end = 4.dp),
+            modifier = Modifier.padding(start = 14.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -781,6 +799,7 @@ fun TxSearchField(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 BasicTextField(
@@ -791,17 +810,56 @@ fun TxSearchField(
                         color = MaterialTheme.colorScheme.onSurface,
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = if (onSearch != null) {
+                        KeyboardOptions(imeAction = ImeAction.Search)
+                    } else {
+                        KeyboardOptions.Default
+                    },
+                    keyboardActions = if (onSearch != null) {
+                        KeyboardActions(onSearch = { if (searchEnabled) onSearch() })
+                    } else {
+                        KeyboardActions.Default
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .let { if (focusRequester != null) it.focusRequester(focusRequester) else it },
                 )
             }
             if (value.isNotEmpty() && onClear != null) {
-                IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = onClear, modifier = Modifier.size(34.dp)) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = null,
+                        contentDescription = clearContentDescription,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(17.dp),
                     )
+                }
+            }
+            if (onSearch != null) {
+                val active = searchEnabled && value.isNotBlank()
+                Surface(
+                    onClick = { if (active) onSearch() },
+                    enabled = active,
+                    shape = CircleShape,
+                    color = if (active) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    },
+                    contentColor = if (active) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    },
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = searchContentDescription,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }

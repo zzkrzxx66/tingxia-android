@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -64,6 +65,7 @@ fun ChapterRow(
     isCurrent: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    isPlaying: Boolean = false,
     progressFraction: Float? = null,
     /** True while the player is loading this chapter, so the tile can spin instead of lying still. */
     loading: Boolean = false,
@@ -105,6 +107,7 @@ fun ChapterRow(
                 ChapterStateTile(
                     number = chapter.index + 1,
                     isCurrent = isCurrent,
+                    isPlaying = isCurrent && isPlaying,
                     loading = isCurrent && loading,
                     inProgress = inProgress,
                     completed = completed,
@@ -198,6 +201,7 @@ fun ChapterRow(
 private fun ChapterStateTile(
     number: Int,
     isCurrent: Boolean,
+    isPlaying: Boolean,
     loading: Boolean,
     inProgress: Boolean,
     completed: Boolean,
@@ -212,9 +216,12 @@ private fun ChapterStateTile(
             else -> MaterialTheme.colorScheme.surfaceVariant
         },
         shape = MaterialTheme.shapes.extraSmall,
-        modifier = Modifier.size(34.dp),
+        modifier = Modifier
+            .height(34.dp)
+            .widthIn(min = 34.dp),
     ) {
         Row(
+            modifier = Modifier.padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -229,6 +236,7 @@ private fun ChapterStateTile(
                     )
                 } else {
                     EqualizerWave(
+                        animate = isPlaying,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
@@ -236,6 +244,8 @@ private fun ChapterStateTile(
                 Text(
                     text = "%02d".format(number),
                     style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    softWrap = false,
                     color = when {
                         completed -> MaterialTheme.colorScheme.onSecondaryContainer
                         inProgress -> MaterialTheme.colorScheme.onPrimaryContainer
@@ -250,42 +260,48 @@ private fun ChapterStateTile(
 @Composable
 private fun EqualizerWave(
     modifier: Modifier = Modifier,
+    animate: Boolean = true,
     color: Color = MaterialTheme.colorScheme.onPrimary,
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "equalizer")
-    val bar1 by infiniteTransition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(420, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "bar1",
-    )
-    val bar2 by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(350, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "bar2",
-    )
-    val bar3 by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "bar3",
-    )
+    val heights = if (animate) {
+        val infiniteTransition = rememberInfiniteTransition(label = "equalizer")
+        val bar1 by infiniteTransition.animateFloat(
+            initialValue = 0.25f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(420, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "bar1",
+        )
+        val bar2 by infiniteTransition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 0.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(350, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "bar2",
+        )
+        val bar3 by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "bar3",
+        )
+        listOf(bar1, bar2, bar3)
+    } else {
+        listOf(0.42f, 0.82f, 0.55f)
+    }
     Row(
         modifier = modifier.size(16.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
-        listOf(bar1, bar2, bar3).forEach { h ->
+        heights.forEach { h ->
             Box(
                 modifier = Modifier
                     .weight(1f)

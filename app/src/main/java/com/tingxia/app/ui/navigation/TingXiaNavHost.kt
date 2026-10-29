@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.TravelExplore
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +63,7 @@ import com.tingxia.app.R
 import com.tingxia.app.ui.player.FullPlayerScreen
 import com.tingxia.app.ui.player.ChapterPickerSheet
 import com.tingxia.app.ui.player.MiniPlayerBar
+import com.tingxia.app.ui.theme.TingXiaTheme
 import com.tingxia.app.ui.player.PlayerViewModel
 import com.tingxia.app.ui.settings.SettingsScreen
 import com.tingxia.app.ui.shelf.FqNovelCatalogScreen
@@ -87,8 +90,12 @@ fun TingXiaNavHost(
     val toast by playerViewModel.toast.collectAsStateWithLifecycle()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
+    val statsFromSettings = currentRoute == Routes.STATS &&
+        navController.previousBackStackEntry?.destination?.route == Routes.SETTINGS
     val showMini = playerState.bookId != null && currentRoute != Routes.PLAYER
-    val atTopLevel = currentRoute == Routes.SHELF || currentRoute == Routes.ONLINE
+    val atTopLevel = currentRoute == Routes.SHELF ||
+        currentRoute == Routes.ONLINE ||
+        (currentRoute == Routes.STATS && !statsFromSettings)
     val snackbar = remember { SnackbarHostState() }
     val notificationDeniedMessage = stringResource(R.string.notification_permission_denied)
     val skipChapterLabel = stringResource(R.string.skip_chapter)
@@ -226,6 +233,30 @@ fun TingXiaNavHost(
                                 },
                                 label = { Text(stringResource(R.string.nav_online)) },
                             )
+                            NavigationBarItem(
+                                colors = navigationColors,
+                                selected = currentRoute == Routes.STATS,
+                                onClick = {
+                                    if (currentRoute != Routes.STATS) {
+                                        navController.navigate(Routes.STATS) {
+                                            popUpTo(Routes.SHELF)
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                },
+                                icon = {
+                                    Icon(
+                                        if (currentRoute == Routes.STATS) {
+                                            Icons.Filled.BarChart
+                                        } else {
+                                            Icons.Outlined.BarChart
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                },
+                                label = { Text(stringResource(R.string.nav_stats)) },
+                            )
                         }
                     }
                 }
@@ -298,6 +329,8 @@ fun TingXiaNavHost(
                         BookDetailScreen(
                             bookId = bookId,
                             onBack = { navController.popBackStack() },
+                            isBookPlaying = playerState.bookId == bookId && playerState.isPlaying,
+                            playingChapterId = if (playerState.bookId == bookId) playerState.chapterId else null,
                             onPlayChapter = { chapterId ->
                                 startPlayback {
                                     playerViewModel.playBook(bookId, chapterId) { ok ->
@@ -306,9 +339,13 @@ fun TingXiaNavHost(
                                 }
                             },
                             onContinue = {
-                                startPlayback {
-                                    playerViewModel.playBook(bookId) { ok ->
-                                        if (ok) navController.navigate(Routes.PLAYER)
+                                if (playerState.bookId == bookId && playerState.isPlaying) {
+                                    navController.navigate(Routes.PLAYER)
+                                } else {
+                                    startPlayback {
+                                        playerViewModel.playBook(bookId) { ok ->
+                                            if (ok) navController.navigate(Routes.PLAYER)
+                                        }
                                     }
                                 }
                             },
@@ -374,30 +411,33 @@ fun TingXiaNavHost(
                             onEnsureTimeline = { playerViewModel.ensureChapterText() },
                             onRetryTimeline = { playerViewModel.openChapterText() },
                         )
-                        ChapterPickerSheet(
-                            state = chapterPicker,
-                            currentChapterId = playerState.chapterId,
-                            currentProgressFraction = playerState.durationMs
-                                .takeIf { it > 0L }
-                                ?.let { playerState.positionMs.toFloat() / it.toFloat() },
-                            currentIsLoading = playerState.isPreparing || playerState.isBuffering,
-                            cachingChapterIds = cachingIds,
-                            onDismiss = { playerViewModel.closeChapterPicker() },
-                            onQueryChange = { playerViewModel.setPickerQuery(it) },
-                            onToggleSearch = { playerViewModel.togglePickerSearch() },
-                            onToggleOrder = { playerViewModel.togglePickerOrder() },
-                            onFilterChange = { playerViewModel.setPickerFilter(it) },
-                            onPlayChapter = { playerViewModel.playChapter(it) },
-                            onStartSelection = { playerViewModel.startSelection(it) },
-                            onToggleSelection = { playerViewModel.toggleSelection(it) },
-                            onClearSelection = { playerViewModel.clearSelection() },
-                            onSelectAllVisible = { playerViewModel.selectAllVisible(it) },
-                            onCacheSelection = { playerViewModel.cacheSelection() },
-                            onClearCacheSelection = { playerViewModel.clearCacheForSelection() },
-                            onMarkSelection = { playerViewModel.markSelection(it) },
-                            onCacheChapter = { playerViewModel.cacheChapter(it) },
-                            onClearChapterCache = { playerViewModel.clearChapterCache(it) },
-                        )
+                        TingXiaTheme(darkTheme = true, dynamicColor = false) {
+                            ChapterPickerSheet(
+                                state = chapterPicker,
+                                currentChapterId = playerState.chapterId,
+                                currentProgressFraction = playerState.durationMs
+                                    .takeIf { it > 0L }
+                                    ?.let { playerState.positionMs.toFloat() / it.toFloat() },
+                                currentIsPlaying = playerState.isPlaying,
+                                currentIsLoading = playerState.isPreparing || playerState.isBuffering,
+                                cachingChapterIds = cachingIds,
+                                onDismiss = { playerViewModel.closeChapterPicker() },
+                                onQueryChange = { playerViewModel.setPickerQuery(it) },
+                                onToggleSearch = { playerViewModel.togglePickerSearch() },
+                                onToggleOrder = { playerViewModel.togglePickerOrder() },
+                                onFilterChange = { playerViewModel.setPickerFilter(it) },
+                                onPlayChapter = { playerViewModel.playChapter(it) },
+                                onStartSelection = { playerViewModel.startSelection(it) },
+                                onToggleSelection = { playerViewModel.toggleSelection(it) },
+                                onClearSelection = { playerViewModel.clearSelection() },
+                                onSelectAllVisible = { playerViewModel.selectAllVisible(it) },
+                                onCacheSelection = { playerViewModel.cacheSelection() },
+                                onClearCacheSelection = { playerViewModel.clearCacheForSelection() },
+                                onMarkSelection = { playerViewModel.markSelection(it) },
+                                onCacheChapter = { playerViewModel.cacheChapter(it) },
+                                onClearChapterCache = { playerViewModel.clearChapterCache(it) },
+                            )
+                        }
                     }
                     composable(Routes.SETTINGS) {
                         SettingsScreen(
@@ -406,8 +446,12 @@ fun TingXiaNavHost(
                         )
                     }
                     composable(Routes.STATS) {
+                        val pushedFromSettings =
+                            navController.previousBackStackEntry?.destination?.route == Routes.SETTINGS
                         StatsScreen(
                             onBack = { navController.popBackStack() },
+                            showBack = pushedFromSettings,
+                            onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             onOpenBook = { id -> navController.navigate(Routes.book(id)) },
                         )
                     }

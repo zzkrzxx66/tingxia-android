@@ -40,19 +40,35 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -109,6 +125,7 @@ import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.SkipOffsetsDialog
 import com.tingxia.app.ui.components.formatDuration
 import com.tingxia.app.ui.components.formatWordCount
+import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
 import com.tingxia.app.ui.theme.playerScrim
@@ -131,6 +148,8 @@ fun BookDetailScreen(
     onPlayChapter: (Long) -> Unit,
     onContinue: () -> Unit,
     onPlayBookmark: (chapterId: Long, positionMs: Long) -> Unit = { _, _ -> },
+    isBookPlaying: Boolean = false,
+    playingChapterId: Long? = null,
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val book by viewModel.book.collectAsStateWithLifecycle()
@@ -160,7 +179,9 @@ fun BookDetailScreen(
     var bookmarkMenuFor by remember { mutableStateOf<Bookmark?>(null) }
     var editSkipOffsets by remember { mutableStateOf(false) }
     var autoPlayDialog by remember { mutableStateOf(false) }
+    var cacheDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
+    val checkingUpdate by viewModel.checkingUpdate.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -284,6 +305,13 @@ fun BookDetailScreen(
         derivedStateOf { listState.firstVisibleItemIndex > 6 }
     }
 
+    val activeChapterId = playingChapterId ?: book?.currentChapterId
+    val openCurrentChapterText: () -> Unit = {
+        val current = activeChapterId ?: book?.currentChapterId
+        val chapter = chapters.firstOrNull { it.id == current } ?: chapters.firstOrNull()
+        chapter?.let(viewModel::openChapterText)
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -316,38 +344,22 @@ fun BookDetailScreen(
         ) {
             item {
                 // Immersive header: blurred artwork behind, crisp metadata on top.
-                // The backdrop stays a fixed 340dp shell. heightIn(min=...) was tempting
-                // but lazy-list items inherit a viewport-sized maxHeight, so the
-                // backdrop's greedy Box stretched to fill the whole screen above the
-                // fold, leaving a huge empty blurred band below the cover row.
+                // matchParentSize() sizes the backdrop to the foreground Column's measured height,
+                // while the dissolve-to-background strip sits strictly below the white text/tags row
+                // so light-theme paper white never bleaches white metadata chips.
                 Box(modifier = Modifier.fillMaxWidth()) {
                     AmbientBackground(
                         coverPath = book?.coverPath,
                         title = book?.title.orEmpty(),
                         scrim = playerScrim,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(360.dp),
+                        modifier = Modifier.matchParentSize(),
                     )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(360.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    0.35f to Color.Transparent,
-                                    0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.7f),
-                                    1f to MaterialTheme.colorScheme.background,
-                                ),
-                            ),
-                    )
-                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 36.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .statusBarsPadding()
-                                .padding(horizontal = 4.dp),
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             HeaderIconButton(onClick = onBack) {
@@ -360,6 +372,7 @@ fun BookDetailScreen(
                                 }
                                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                     DropdownMenuItem(
+                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                         text = { Text(stringResource(R.string.edit_book_info)) },
                                         onClick = {
                                             menu = false
@@ -369,6 +382,7 @@ fun BookDetailScreen(
                                         },
                                     )
                                     DropdownMenuItem(
+                                        leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
                                         text = { Text(stringResource(R.string.change_cover)) },
                                         onClick = {
                                             menu = false
@@ -377,6 +391,7 @@ fun BookDetailScreen(
                                     )
                                     if (!book?.coverPath.isNullOrBlank()) {
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Default.HideImage, contentDescription = null) },
                                             text = { Text(stringResource(R.string.remove_cover)) },
                                             onClick = {
                                                 menu = false
@@ -384,7 +399,9 @@ fun BookDetailScreen(
                                             },
                                         )
                                     }
+                                    HorizontalDivider()
                                     DropdownMenuItem(
+                                        leadingIcon = { Icon(Icons.Default.FastForward, contentDescription = null) },
                                         text = {
                                             Column {
                                                 Text(stringResource(R.string.skip_intro_outro))
@@ -405,6 +422,7 @@ fun BookDetailScreen(
                                         },
                                     )
                                     DropdownMenuItem(
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null) },
                                         text = {
                                             Column {
                                                 Text(stringResource(R.string.auto_play_next))
@@ -423,8 +441,9 @@ fun BookDetailScreen(
                                         },
                                     )
                                     if (book?.isRemote == true) {
-                                        val checking by viewModel.checkingUpdate.collectAsStateWithLifecycle()
+                                        HorizontalDivider()
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
                                             text = {
                                                 Column {
                                                     Text(stringResource(R.string.book_check_update))
@@ -438,7 +457,7 @@ fun BookDetailScreen(
                                                     }
                                                 }
                                             },
-                                            enabled = !checking,
+                                            enabled = !checkingUpdate,
                                             onClick = {
                                                 menu = false
                                                 viewModel.checkForUpdates()
@@ -446,6 +465,7 @@ fun BookDetailScreen(
                                         )
                                         if (book?.isTtsVoice == true) {
                                             DropdownMenuItem(
+                                                leadingIcon = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null) },
                                                 text = { Text(stringResource(R.string.book_switch_voice)) },
                                                 onClick = {
                                                     menu = false
@@ -453,74 +473,29 @@ fun BookDetailScreen(
                                                 },
                                             )
                                         }
+                                        DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Default.CloudDownload, contentDescription = null) },
+                                            text = { Text(stringResource(R.string.cache_menu)) },
+                                            onClick = {
+                                                menu = false
+                                                cacheDialog = true
+                                            },
+                                        )
                                     }
                                     if (viewModel.canShowChapterText) {
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
                                             text = { Text(stringResource(R.string.chapter_text_open)) },
                                             onClick = {
                                                 menu = false
-                                                val current = book?.currentChapterId
-                                                val chapter = chapters.firstOrNull { it.id == current }
-                                                    ?: chapters.firstOrNull()
-                                                chapter?.let(viewModel::openChapterText)
-                                            },
-                                        )
-                                    }
-                                    if (book?.isRemote == true) {
-                                        val pf = prefetchState
-                                        val runningForThis = pf.running && pf.bookId == bookId
-                                        DropdownMenuItem(
-                                            text = {
-                                                Column {
-                                                    Text(stringResource(R.string.cache_all_chapters))
-                                                    if (runningForThis) {
-                                                        Text(
-                                                            stringResource(
-                                                                R.string.cache_status_running,
-                                                                pf.doneCount, pf.totalCount,
-                                                            ),
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        )
-                                                    }
-                                                }
-                                            },
-                                            onClick = {
-                                                menu = false
-                                                viewModel.prefetch()
-                                            },
-                                            enabled = !runningForThis,
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.cache_next_20)) },
-                                            onClick = {
-                                                menu = false
-                                                val fromIndex = chapters.firstOrNull {
-                                                    it.completionState != 2
-                                                }?.index ?: 0
-                                                viewModel.prefetch(fromIndex = fromIndex, count = 20)
-                                            },
-                                            enabled = !runningForThis,
-                                        )
-                                        if (runningForThis) {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.cancel)) },
-                                                onClick = {
-                                                    menu = false
-                                                    viewModel.cancelPrefetch()
-                                                },
-                                            )
-                                        }
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.cache_clear_book)) },
-                                            onClick = {
-                                                menu = false
-                                                viewModel.clearBookCache()
+                                                openCurrentChapterText()
                                             },
                                         )
                                     }
                                     if (book?.isRemote != true) {
+                                        HorizontalDivider()
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Default.AutoFixHigh, contentDescription = null) },
                                             text = {
                                                 Column {
                                                     Text(stringResource(R.string.meta_sync_menu))
@@ -540,6 +515,7 @@ fun BookDetailScreen(
                                         )
                                         if (book?.hasSyncedOnlineMeta == true) {
                                             DropdownMenuItem(
+                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
                                                 text = { Text(stringResource(R.string.meta_sync_clear)) },
                                                 onClick = {
                                                     menu = false
@@ -548,6 +524,7 @@ fun BookDetailScreen(
                                             )
                                         }
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                                             text = { Text(stringResource(R.string.rescan_folder)) },
                                             onClick = {
                                                 menu = false
@@ -556,6 +533,7 @@ fun BookDetailScreen(
                                             enabled = !rescanning && book?.needsReauth != true,
                                         )
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
                                             text = { Text(stringResource(R.string.reauthorize_folder)) },
                                             onClick = {
                                                 menu = false
@@ -564,8 +542,10 @@ fun BookDetailScreen(
                                             enabled = !reauthing,
                                         )
                                     }
+                                    HorizontalDivider()
                                     val allCompleted = chapters.isNotEmpty() && chapters.all { it.completionState == 2 }
                                     DropdownMenuItem(
+                                        leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
                                         text = {
                                             Text(
                                                 stringResource(
@@ -579,8 +559,14 @@ fun BookDetailScreen(
                                             viewModel.setAllChaptersCompleted(!allCompleted)
                                         },
                                     )
-                                    HorizontalDivider()
                                     DropdownMenuItem(
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        },
                                         text = {
                                             Text(
                                                 stringResource(R.string.remove_from_shelf),
@@ -619,7 +605,7 @@ fun BookDetailScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     book?.title.orEmpty(),
-                                    style = MaterialTheme.typography.headlineSmall,
+                                    style = BookType.titleLarge,
                                     color = Color.White,
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
@@ -633,24 +619,27 @@ fun BookDetailScreen(
                                     )
                                 }
                                 if (book?.isRemote == true) {
+                                    val isTts = book?.isTtsVoice == true
                                     Spacer(Modifier.height(8.dp))
                                     Surface(
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             Icon(
-                                                Icons.Default.Headphones,
+                                                if (isTts) Icons.Default.AutoAwesome else Icons.Default.Headphones,
                                                 contentDescription = null,
-                                                modifier = Modifier.size(15.dp),
+                                                modifier = Modifier.size(14.dp),
                                                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             )
-                                            Spacer(Modifier.width(8.dp))
+                                            Spacer(Modifier.width(6.dp))
                                             Text(
-                                                stringResource(R.string.online_narrated),
+                                                stringResource(
+                                                    if (isTts) R.string.online_badge_tts_only else R.string.online_narrated,
+                                                ),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                             )
@@ -678,7 +667,6 @@ fun BookDetailScreen(
                                             ),
                                         )
                                     }
-                                    if (book?.isTtsVoice == true) add(stringResource(R.string.online_badge_tts_only))
                                     book?.category?.takeIf { it.isNotBlank() }?.let { add(it) }
                                 }
                                 if (metaTags.isNotEmpty()) {
@@ -723,12 +711,25 @@ fun BookDetailScreen(
                                 }
                             }
                         }
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.68f),
+                                        1f to MaterialTheme.colorScheme.background,
+                                    ),
+                                ),
+                        )
                     }
                 }
 
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     book?.description?.takeIf { it.isNotBlank() }?.let { description ->
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(8.dp))
                         var expanded by remember { mutableStateOf(false) }
                         SectionCard(
                             onClick = { expanded = !expanded },
@@ -817,13 +818,19 @@ fun BookDetailScreen(
                         enabled = book?.needsReauth != true && !reauthing && !rescanning,
                         shape = MaterialTheme.shapes.large,
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Icon(
+                            if (isBookPlaying) Icons.Default.Headphones else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                        )
                         Spacer(Modifier.width(8.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 stringResource(
-                                    if ((book?.lastPlayedAt ?: 0) > 0) R.string.continue_playback
-                                    else R.string.start_playback,
+                                    when {
+                                        isBookPlaying -> R.string.now_playing
+                                        (book?.lastPlayedAt ?: 0) > 0 -> R.string.continue_playback
+                                        else -> R.string.start_playback
+                                    },
                                 ),
                                 style = MaterialTheme.typography.titleMedium,
                             )
@@ -837,6 +844,112 @@ fun BookDetailScreen(
                             }
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
+                    val pf = prefetchState
+                    val runningForThis = pf.running && pf.bookId == bookId
+                    val hasSkip = (book?.skipIntroMs ?: 0L) > 0L || (book?.skipOutroMs ?: 0L) > 0L
+                    val quickActions = buildList {
+                        if (book?.isRemote == true) {
+                            add(
+                                QuickActionSpec(
+                                    icon = if (runningForThis) Icons.Default.CloudDone else Icons.Default.CloudDownload,
+                                    label = if (runningForThis) {
+                                        if (pf.totalCount > 0) {
+                                            "${pf.doneCount}/${pf.totalCount}"
+                                        } else {
+                                            stringResource(R.string.quick_caching)
+                                        }
+                                    } else {
+                                        stringResource(R.string.quick_cache)
+                                    },
+                                    active = runningForThis,
+                                    onClick = { cacheDialog = true },
+                                ),
+                            )
+                            if (viewModel.canShowChapterText) {
+                                add(
+                                    QuickActionSpec(
+                                        icon = Icons.AutoMirrored.Filled.MenuBook,
+                                        label = stringResource(R.string.quick_text),
+                                        onClick = openCurrentChapterText,
+                                    ),
+                                )
+                            }
+                            if (book?.isTtsVoice == true) {
+                                add(
+                                    QuickActionSpec(
+                                        icon = Icons.Default.RecordVoiceOver,
+                                        label = stringResource(R.string.quick_voice),
+                                        onClick = viewModel::openVoiceSwitch,
+                                    ),
+                                )
+                            }
+                            if (size < 4 && book?.remoteFinished != true) {
+                                add(
+                                    QuickActionSpec(
+                                        icon = Icons.Default.Sync,
+                                        label = stringResource(R.string.quick_update),
+                                        active = (book?.remoteNewChapterCount ?: 0) > 0,
+                                        enabled = !checkingUpdate,
+                                        onClick = viewModel::checkForUpdates,
+                                    ),
+                                )
+                            }
+                            if (size < 4) {
+                                add(
+                                    QuickActionSpec(
+                                        icon = Icons.Default.FastForward,
+                                        label = stringResource(R.string.quick_skip),
+                                        active = hasSkip,
+                                        onClick = { editSkipOffsets = true },
+                                    ),
+                                )
+                            }
+                        } else {
+                            add(
+                                QuickActionSpec(
+                                    icon = Icons.Default.AutoFixHigh,
+                                    label = stringResource(R.string.quick_sync_meta),
+                                    active = book?.hasSyncedOnlineMeta == true,
+                                    onClick = viewModel::openMetaSync,
+                                ),
+                            )
+                            if (viewModel.canShowChapterText) {
+                                add(
+                                    QuickActionSpec(
+                                        icon = Icons.AutoMirrored.Filled.MenuBook,
+                                        label = stringResource(R.string.quick_text),
+                                        onClick = openCurrentChapterText,
+                                    ),
+                                )
+                            } else {
+                                add(
+                                    QuickActionSpec(
+                                        icon = Icons.Default.Image,
+                                        label = stringResource(R.string.change_cover),
+                                        onClick = { coverPicker.launch("image/*") },
+                                    ),
+                                )
+                            }
+                            add(
+                                QuickActionSpec(
+                                    icon = Icons.Default.Refresh,
+                                    label = stringResource(R.string.quick_rescan),
+                                    enabled = !rescanning && book?.needsReauth != true,
+                                    onClick = viewModel::startRescan,
+                                ),
+                            )
+                            add(
+                                QuickActionSpec(
+                                    icon = Icons.Default.FastForward,
+                                    label = stringResource(R.string.quick_skip),
+                                    active = hasSkip,
+                                    onClick = { editSkipOffsets = true },
+                                ),
+                            )
+                        }
+                    }
+                    BookQuickActionsRow(actions = quickActions)
                     if (book?.needsReauth == true && book?.isRemote != true) {
                         Spacer(Modifier.height(12.dp))
                         Surface(
@@ -950,7 +1063,7 @@ fun BookDetailScreen(
                                     onToggleOrder = { viewModel.toggleChapterOrder() },
                                     onFilterChange = { viewModel.setChapterFilter(it) },
                                     onLocateCurrent = {
-                                        val id = book?.currentChapterId
+                                        val id = activeChapterId
                                         val target = id?.let { ChapterPicker.flatIndexOf(chapterGroups, it) }
                                         if (target != null) scrollToChapterIndex(target)
                                     },
@@ -965,6 +1078,11 @@ fun BookDetailScreen(
                                     modifier = Modifier.padding(horizontal = 8.dp),
                                 )
                             }
+                            if (pinned) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                )
+                            }
                         }
                     }
                 }
@@ -972,12 +1090,14 @@ fun BookDetailScreen(
             if (selectedTab == 0) {
                 chapterGroupItems(
                     groups = chapterGroups,
-                    currentChapterId = book?.currentChapterId,
+                    currentChapterId = activeChapterId,
                     controls = controls,
                     enabled = book?.needsReauth != true,
                     showCacheAction = book?.isRemote == true,
                     cachingChapterIds = prefetchState.singleChapterIds,
                     currentProgressFraction = null,
+                    currentIsPlaying = isBookPlaying,
+                    stickyGroupHeaders = false,
                     headerColor = chapterHeaderColor,
                     onChapterClick = { chapter ->
                         if (controls.selectionMode) {
@@ -1207,6 +1327,97 @@ fun BookDetailScreen(
         )
     }
 
+    if (cacheDialog) {
+        val pf = prefetchState
+        val runningForThis = pf.running && pf.bookId == bookId
+        val hasAnyCached = chapters.any { it.isCached }
+        AlertDialog(
+            onDismissRequest = { cacheDialog = false },
+            title = { Text(stringResource(R.string.cache_menu)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (runningForThis) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                stringResource(
+                                    R.string.cache_status_running,
+                                    pf.doneCount,
+                                    pf.totalCount,
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        SectionCard(
+                            onClick = {
+                                cacheDialog = false
+                                viewModel.cancelPrefetch()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                stringResource(R.string.cache_cancel_running),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                        }
+                    } else {
+                        SectionCard(
+                            onClick = {
+                                cacheDialog = false
+                                val fromIndex = chapters.firstOrNull {
+                                    it.completionState != 2
+                                }?.index ?: 0
+                                viewModel.prefetch(fromIndex = fromIndex, count = 20)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                stringResource(R.string.cache_next_20),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                        }
+                        SectionCard(
+                            onClick = {
+                                cacheDialog = false
+                                viewModel.prefetch()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                stringResource(R.string.cache_all_chapters),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                    if (hasAnyCached) {
+                        SectionCard(
+                            onClick = {
+                                cacheDialog = false
+                                viewModel.clearBookCache()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                stringResource(R.string.cache_clear_book),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { cacheDialog = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
     if (autoPlayDialog) {
         AlertDialog(
             onDismissRequest = { autoPlayDialog = false },
@@ -1328,6 +1539,63 @@ fun BookDetailScreen(
                 TextButton(onClick = { editBookmark = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+}
+
+private data class QuickActionSpec(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+    val active: Boolean = false,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun BookQuickActionsRow(actions: List<QuickActionSpec>) {
+    if (actions.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        actions.forEach { action ->
+            val container = if (action.active) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            }
+            val content = when {
+                !action.enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                action.active -> MaterialTheme.colorScheme.onPrimaryContainer
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Surface(
+                onClick = action.onClick,
+                enabled = action.enabled,
+                shape = RoundedCornerShape(14.dp),
+                color = container,
+                contentColor = content,
+                modifier = Modifier.weight(1f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        action.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        action.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (action.active) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 

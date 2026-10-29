@@ -87,13 +87,67 @@ fun SettingsScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val backupPreview by viewModel.backupPreview.collectAsStateWithLifecycle()
+    val cacheBytes by viewModel.cacheBytes.collectAsStateWithLifecycle()
+    val updateCheck by viewModel.updateCheckEnabled.collectAsStateWithLifecycle()
+    var confirmClearCache by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     backupPreview?.let { document ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = viewModel::dismissBackupPreview,
             title = { Text(stringResource(R.string.import_backup)) },
-            text = { Text("将恢复 ${document.books.size} 本书、${document.books.sumOf { it.bookmarks.size }} 个书签和设置。已有书籍的进度会被覆盖，书签与统计将合并；恢复后播放器保持暂停。音频和私有封面需保留在本机。") },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::confirmRestore) { Text("恢复") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = viewModel::dismissBackupPreview) { Text(stringResource(R.string.cancel)) } },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.restore_backup_body,
+                        document.books.size,
+                        document.books.sumOf { it.bookmarks.size },
+                    ),
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = viewModel::confirmRestore) {
+                    Text(stringResource(R.string.restore_backup_confirm))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = viewModel::dismissBackupPreview) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (confirmClearCache) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmClearCache = false },
+            title = { Text(stringResource(R.string.clear_cache_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.clear_cache_confirm_body,
+                        android.text.format.Formatter.formatShortFileSize(context, cacheBytes),
+                    ),
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        confirmClearCache = false
+                        viewModel.clearCache()
+                    },
+                ) {
+                    Text(
+                        stringResource(R.string.clear_cache),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmClearCache = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
     val snackbar = remember { SnackbarHostState() }
@@ -141,7 +195,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // Appearance
@@ -277,8 +331,6 @@ fun SettingsScreen(
             }
 
             // Offline cache (online audiobooks)
-            val cacheBytes by viewModel.cacheBytes.collectAsStateWithLifecycle()
-            val updateCheck by viewModel.updateCheckEnabled.collectAsStateWithLifecycle()
             LaunchedEffect(Unit) { viewModel.refreshCacheUsage() }
             SettingsGroup(icon = Icons.Default.CloudDownload, title = stringResource(R.string.cache_menu)) {
                 Column {
@@ -314,9 +366,7 @@ fun SettingsScreen(
                         icon = Icons.Default.CloudDownload,
                         title = stringResource(
                             R.string.cache_usage,
-                            android.text.format.Formatter.formatShortFileSize(
-                                androidx.compose.ui.platform.LocalContext.current, cacheBytes,
-                            ),
+                            android.text.format.Formatter.formatShortFileSize(context, cacheBytes),
                         ),
                         subtitle = stringResource(R.string.cache_usage_summary),
                         onClick = { viewModel.refreshCacheUsage() },
@@ -329,7 +379,10 @@ fun SettingsScreen(
                         icon = Icons.Default.DeleteSweep,
                         title = stringResource(R.string.clear_cache),
                         subtitle = null,
-                        onClick = { viewModel.clearCache() },
+                        onClick = {
+                            viewModel.refreshCacheUsage()
+                            confirmClearCache = true
+                        },
                     )
                 }
             }

@@ -17,20 +17,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -38,7 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tingxia.app.R
@@ -47,6 +42,7 @@ import com.tingxia.app.data.remote.FqSearchBook
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.SectionCard
 import com.tingxia.app.ui.components.TxChip
+import com.tingxia.app.ui.components.TxSearchField
 import com.tingxia.app.ui.components.formatWordCount
 import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
@@ -112,39 +108,23 @@ fun OnlineMetaSyncSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
-            OutlinedTextField(
+            TxSearchField(
                 value = state.query,
                 onValueChange = onQueryChange,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                singleLine = true,
-                placeholder = { Text(stringResource(R.string.online_search_hint)) },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { onQueryChange("") }) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = stringResource(R.string.online_search_clear),
-                                )
-                            }
-                        }
-                        IconButton(
-                            onClick = { onSearch(state.query) },
-                            enabled = state.query.isNotBlank() && !state.loading,
-                        ) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = stringResource(R.string.online_search_submit),
-                            )
-                        }
-                    }
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { onSearch(state.query) }),
-                shape = MaterialTheme.shapes.large,
+                placeholder = stringResource(R.string.online_search_hint),
+                onClear = { onQueryChange("") },
+                onSearch = { onSearch(state.query) },
+                searchEnabled = state.query.isNotBlank() && !state.loading,
+                clearContentDescription = stringResource(R.string.online_search_clear),
+                searchContentDescription = stringResource(R.string.online_search_submit),
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
             )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TxChip(
@@ -173,7 +153,7 @@ fun OnlineMetaSyncSheet(
             }
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 16.dp),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(state.candidates, key = { it.bookId }) { candidate ->
@@ -324,10 +304,11 @@ private fun MetaCandidateCard(
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
             BookCover(
                 title = candidate.title,
-                coverPath = candidate.coverUrl,
-                size = 64.dp,
+                coverPath = candidate.displayCoverUrl ?: candidate.coverUrl,
+                size = 66.dp,
                 ratio = COVER_RATIO_PORTRAIT,
                 corner = CoverCorner.Card,
+                framed = true,
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -369,8 +350,17 @@ private fun MetaCandidateCard(
                     )
                     Spacer(Modifier.weight(1f))
                     if (enabled) {
-                        TextButton(onClick = onApply) {
-                            Text(stringResource(R.string.meta_sync_use_result))
+                        FilledTonalButton(
+                            onClick = onApply,
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            modifier = Modifier.height(32.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.meta_sync_use_result),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                     } else {
                         CircularProgressIndicator(

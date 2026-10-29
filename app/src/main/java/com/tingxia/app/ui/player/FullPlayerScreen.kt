@@ -1,6 +1,5 @@
 package com.tingxia.app.ui.player
 
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -51,8 +50,8 @@ import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
@@ -96,7 +95,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -106,6 +105,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.input.pointer.pointerInput
 import com.tingxia.app.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.tingxia.app.player.PlaybackSpeeds
 import com.tingxia.app.player.PlayerUiState
@@ -114,8 +114,10 @@ import com.tingxia.app.ui.components.AmbientBackground
 import com.tingxia.app.ui.components.BookCover
 import com.tingxia.app.ui.components.SkipOffsetsDialog
 import com.tingxia.app.ui.components.formatDuration
+import com.tingxia.app.ui.theme.BookType
 import com.tingxia.app.ui.theme.COVER_RATIO_PORTRAIT
 import com.tingxia.app.ui.theme.CoverCorner
+import com.tingxia.app.ui.theme.TingXiaTheme
 import com.tingxia.app.ui.theme.playerScrim
 
 /** Soft drop shadow for white text sitting on blurred artwork of unknown brightness. */
@@ -191,6 +193,13 @@ fun FullPlayerScreen(
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     var toolBarHeight by remember { mutableFloatStateOf(70f) }
+    var hudBanner by remember { mutableStateOf<PlayerHudBanner?>(null) }
+    LaunchedEffect(hudBanner?.id) {
+        if (hudBanner != null) {
+            delay(2_600L)
+            hudBanner = null
+        }
+    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -258,7 +267,7 @@ fun FullPlayerScreen(
                             },
                         ) {
                             Icon(
-                                if (onText) Icons.Default.Album else Icons.Default.MenuBook,
+                                if (onText) Icons.Default.Album else Icons.AutoMirrored.Filled.MenuBook,
                                 contentDescription = stringResource(
                                     if (onText) R.string.player_page_cover else R.string.chapter_text_open,
                                 ),
@@ -310,6 +319,7 @@ fun FullPlayerScreen(
                             durationMs = state.durationMs,
                             isPlaying = state.isPlaying,
                             onSeek = onSeekChapterPosition,
+                            onSeekBy = onSeekBy,
                             fontSize = readingFontSize,
                             onFontSizeChange = onReadingFontSize,
                             onRetry = onRetryTimeline,
@@ -381,8 +391,8 @@ fun FullPlayerScreen(
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = state.bookTitle.orEmpty(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color.White.copy(alpha = 0.75f),
+                                style = BookType.title.copy(fontSize = 14.sp, shadow = onArtworkTextShadow),
+                                color = Color.White.copy(alpha = 0.80f),
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -639,15 +649,7 @@ fun FullPlayerScreen(
                                 PlayerToolButton(
                                     onClick = onOpenChapters,
                                     icon = Icons.Default.FormatListNumbered,
-                                    label = if (state.chapterCount > 0) {
-                                        stringResource(
-                                            R.string.chapter_picker_button,
-                                            state.chapterIndex + 1,
-                                            state.chapterCount,
-                                        )
-                                    } else {
-                                        stringResource(R.string.chapter_picker_title)
-                                    },
+                                    label = stringResource(R.string.chapter_picker_title),
                                     modifier = Modifier.weight(1f),
                                     enabled = state.chapterCount > 0,
                                 )
@@ -657,9 +659,30 @@ fun FullPlayerScreen(
                                     label = stringResource(R.string.bookmark),
                                     modifier = Modifier.weight(1f),
                                 )
-                                val speedActive = state.speed != 1.0f
+                                val speedActive = abs(state.speed - 1.0f) > 0.01f
                                 PlayerToolButton(
-                                    onClick = { speedSheetOpen = true },
+                                    onClick = {
+                                        hudBanner = null
+                                        speedSheetOpen = true
+                                    },
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val quickCycle = listOf(1.0f, 1.25f, 1.5f, 2.0f)
+                                        val idx = quickCycle.indexOfFirst { abs(it - state.speed) < 0.01f }
+                                        val nextSpeed = quickCycle[(idx + 1) % quickCycle.size]
+                                        onSpeed(nextSpeed, true)
+                                        hudBanner = PlayerHudBanner(
+                                            id = System.nanoTime(),
+                                            message = context.getString(
+                                                R.string.speed_toast_switched,
+                                                PlaybackSpeeds.label(nextSpeed),
+                                            ),
+                                            onMore = {
+                                                hudBanner = null
+                                                speedSheetOpen = true
+                                            },
+                                        )
+                                    },
                                     icon = Icons.Default.Speed,
                                     label = if (speedActive) {
                                         PlaybackSpeeds.label(state.speed)
@@ -673,7 +696,7 @@ fun FullPlayerScreen(
                                     state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter
                                 val sleepLabel = when {
                                     state.sleepRemainingMs != null -> {
-                                        val ms = state.sleepRemainingMs!!
+                                        val ms = state.sleepRemainingMs
                                         val m = (ms / 60_000).toInt()
                                         val s = ((ms % 60_000) / 1000).toInt()
                                         "%d:%02d".format(m, s)
@@ -685,32 +708,41 @@ fun FullPlayerScreen(
                                 PlayerToolButton(
                                     onClick = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (!sleepActive) {
+                                        val msgRes = if (!sleepActive) {
                                             onSleep(10)
-                                            Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                            R.string.sleep_toast_10m
                                         } else {
                                             when {
-                                                state.sleepRemainingMs != null && state.sleepRemainingMs!! <= 11 * 60_000L -> {
+                                                state.sleepRemainingMs != null && state.sleepRemainingMs <= 11 * 60_000L -> {
                                                     onSleep(30)
-                                                    Toast.makeText(context, "已切换为 30 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                                    R.string.sleep_toast_30m
                                                 }
                                                 state.sleepRemainingMs != null -> {
                                                     onSleepEndOfChapter()
-                                                    Toast.makeText(context, "已设置为播完本章后关闭", Toast.LENGTH_SHORT).show()
+                                                    R.string.sleep_toast_eoc
                                                 }
                                                 state.sleepMode is com.tingxia.app.player.SleepTimerMode.EndOfChapter -> {
                                                     onSleep(0)
-                                                    Toast.makeText(context, "已关闭定时", Toast.LENGTH_SHORT).show()
+                                                    R.string.sleep_toast_off
                                                 }
                                                 else -> {
                                                     onSleep(10)
-                                                    Toast.makeText(context, "已开启 10 分钟定时关闭", Toast.LENGTH_SHORT).show()
+                                                    R.string.sleep_toast_10m
                                                 }
                                             }
                                         }
+                                        hudBanner = PlayerHudBanner(
+                                            id = System.nanoTime(),
+                                            message = context.getString(msgRes),
+                                            onMore = {
+                                                hudBanner = null
+                                                sleepSheetOpen = true
+                                            },
+                                        )
                                     },
                                     onLongClick = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        hudBanner = null
                                         sleepSheetOpen = true
                                     },
                                     icon = if (sleepActive) Icons.Default.TimerOff else Icons.Default.Timer,
@@ -724,7 +756,7 @@ fun FullPlayerScreen(
                                     icon = Icons.Default.ContentCut,
                                     label = if (skipActive) {
                                         stringResource(
-                                            R.string.skip_active_summary,
+                                            R.string.skip_active_short,
                                             state.skipIntroMs / 1_000L,
                                             state.skipOutroMs / 1_000L,
                                         )
@@ -739,6 +771,24 @@ fun FullPlayerScreen(
                         }
                         }
                     }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = hudBanner != null && !speedSheetOpen && !sleepSheetOpen,
+                enter = fadeIn(tween(180)) + slideInVertically(tween(200)) { it / 2 },
+                exit = fadeOut(tween(180)) + slideOutVertically(tween(180)) { it / 2 },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = (toolBarHeight + 18f).dp),
+            ) {
+                hudBanner?.let { banner ->
+                    PlayerHudPill(
+                        message = banner.message,
+                        onMore = banner.onMore,
+                    )
                 }
             }
 
@@ -768,46 +818,50 @@ fun FullPlayerScreen(
     }
 
     if (skipOffsetsDialog) {
-        SkipOffsetsDialog(
-            initialIntroMs = state.skipIntroMs,
-            initialOutroMs = state.skipOutroMs,
-            onDismiss = { skipOffsetsDialog = false },
-            onSave = onSaveSkipOffsets,
-        )
+        TingXiaTheme(darkTheme = true, dynamicColor = false) {
+            SkipOffsetsDialog(
+                initialIntroMs = state.skipIntroMs,
+                initialOutroMs = state.skipOutroMs,
+                onDismiss = { skipOffsetsDialog = false },
+                onSave = onSaveSkipOffsets,
+            )
+        }
     }
 
     if (customSleepDialog) {
-        val minutes = customSleepMinutes.toIntOrNull()
-        val valid = minutes != null && minutes in 1..1_440
-        AlertDialog(
-            onDismissRequest = { customSleepDialog = false },
-            title = { Text(stringResource(R.string.custom_sleep_timer)) },
-            text = {
-                OutlinedTextField(
-                    value = customSleepMinutes,
-                    onValueChange = { value ->
-                        if (value.length <= 4 && value.all(Char::isDigit)) customSleepMinutes = value
-                    },
-                    label = { Text(stringResource(R.string.minutes)) },
-                    supportingText = { Text(stringResource(R.string.sleep_minutes_range)) },
-                    isError = customSleepMinutes.isNotEmpty() && !valid,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = valid,
-                    onClick = {
-                        onSleep(minutes!!)
-                        customSleepDialog = false
-                    },
-                ) { Text(stringResource(R.string.start)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { customSleepDialog = false }) { Text(stringResource(R.string.cancel)) }
-            },
-        )
+        TingXiaTheme(darkTheme = true, dynamicColor = false) {
+            val minutes = customSleepMinutes.toIntOrNull()
+            val valid = minutes != null && minutes in 1..1_440
+            AlertDialog(
+                onDismissRequest = { customSleepDialog = false },
+                title = { Text(stringResource(R.string.custom_sleep_timer)) },
+                text = {
+                    OutlinedTextField(
+                        value = customSleepMinutes,
+                        onValueChange = { value ->
+                            if (value.length <= 4 && value.all(Char::isDigit)) customSleepMinutes = value
+                        },
+                        label = { Text(stringResource(R.string.minutes)) },
+                        supportingText = { Text(stringResource(R.string.sleep_minutes_range)) },
+                        isError = customSleepMinutes.isNotEmpty() && !valid,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = valid,
+                        onClick = {
+                            onSleep(minutes!!)
+                            customSleepDialog = false
+                        },
+                    ) { Text(stringResource(R.string.start)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { customSleepDialog = false }) { Text(stringResource(R.string.cancel)) }
+                },
+            )
+        }
     }
 }
 
@@ -925,6 +979,58 @@ private fun PlayerToolButton(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+private data class PlayerHudBanner(
+    val id: Long,
+    val message: String,
+    val onMore: (() -> Unit)? = null,
+)
+
+@Composable
+private fun PlayerHudPill(
+    message: String,
+    onMore: (() -> Unit)?,
+) {
+    Surface(
+        shape = CircleShape,
+        color = Color(0xEB1B1E1B),
+        contentColor = Color.White,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+        shadowElevation = 10.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                start = 16.dp,
+                end = if (onMore != null) 8.dp else 16.dp,
+                top = 8.dp,
+                bottom = 8.dp,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.95f),
+            )
+            if (onMore != null) {
+                Spacer(Modifier.width(10.dp))
+                Surface(
+                    onClick = onMore,
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.14f),
+                ) {
+                    Text(
+                        text = stringResource(R.string.player_hud_more),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFA6CDB8),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

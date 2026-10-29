@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
@@ -25,20 +25,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.tingxia.app.R
 import com.tingxia.app.data.model.Chapter
@@ -46,6 +46,7 @@ import com.tingxia.app.data.model.ChapterFilter
 import com.tingxia.app.data.model.ChapterGroup
 import com.tingxia.app.data.model.ChapterOrder
 import com.tingxia.app.ui.components.TxChip
+import com.tingxia.app.ui.components.TxSearchField
 
 /**
  * Search / order / filter / locate bar plus the 选集 jump strip, shared by the book-detail list
@@ -154,24 +155,22 @@ fun ChapterToolbar(
             }
         }
         if (controls.searchOpen) {
-            OutlinedTextField(
+            val focusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                runCatching { focusRequester.requestFocus() }
+            }
+            TxSearchField(
                 value = controls.query,
                 onValueChange = onQueryChange,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                singleLine = true,
-                placeholder = { Text(stringResource(R.string.chapter_search_hint)) },
-                trailingIcon = {
-                    if (controls.query.isNotEmpty()) {
-                        IconButton(onClick = { onQueryChange("") }) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = stringResource(R.string.online_search_clear),
-                            )
-                        }
-                    }
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                shape = MaterialTheme.shapes.large,
+                placeholder = stringResource(R.string.chapter_search_hint),
+                onClear = { onQueryChange("") },
+                clearContentDescription = stringResource(R.string.online_search_clear),
+                focusRequester = focusRequester,
+                shape = RoundedCornerShape(14.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
         // 选集 strip: jump between 100-chapter blocks instead of scrolling through hundreds of
@@ -270,8 +269,15 @@ fun LazyListScope.chapterGroupItems(
     showCacheAction: Boolean,
     cachingChapterIds: Set<Long>,
     currentProgressFraction: Float?,
+    currentIsPlaying: Boolean = false,
     /** The player is loading the current chapter; its row spins instead of showing a play glyph. */
     currentIsLoading: Boolean = false,
+    /**
+     * True inside sheets whose toolbar sits above the [LazyListScope]; false inside full-page
+     * lists (such as `BookDetailScreen`) that already pin their own `stickyHeader` toolbar,
+     * preventing a subsequent group `stickyHeader` from evicting the pinned toolbar.
+     */
+    stickyGroupHeaders: Boolean = true,
     headerColor: Color,
     onChapterClick: (Chapter) -> Unit,
     onChapterLongClick: (Chapter) -> Unit,
@@ -281,18 +287,23 @@ fun LazyListScope.chapterGroupItems(
     groups.forEach { group ->
         val label = group.label
         if (label != null) {
-            stickyHeader(key = "chapter-header-${label.first}") {
+            val headerContent: @Composable () -> Unit = {
                 Surface(color = headerColor, modifier = Modifier.fillMaxWidth()) {
                     Column {
                         Text(
                             stringResource(R.string.chapter_group_block, label.first, label.last),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
+            }
+            if (stickyGroupHeaders) {
+                stickyHeader(key = "chapter-header-${label.first}") { headerContent() }
+            } else {
+                item(key = "chapter-header-${label.first}") { headerContent() }
             }
         }
         items(group.chapters, key = { "chapter-${it.id}" }) { chapter ->
@@ -301,6 +312,7 @@ fun LazyListScope.chapterGroupItems(
                 isCurrent = chapter.id == currentChapterId,
                 modifier = Modifier.padding(rowPadding),
                 enabled = enabled,
+                isPlaying = currentIsPlaying,
                 progressFraction = currentProgressFraction,
                 loading = currentIsLoading,
                 showCacheAction = showCacheAction,

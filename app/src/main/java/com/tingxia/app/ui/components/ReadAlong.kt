@@ -3,6 +3,10 @@ package com.tingxia.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
@@ -83,7 +87,7 @@ fun ReadAlongList(
                 fontSize = fontSize,
                 ranges = paragraphRanges,
                 activeSentence = activeSentence,
-                dimmed = dimInactive && paragraphRanges.none { it.first == activeSentence },
+                dimInactive = dimInactive,
                 onColor = onColor,
                 highlightColor = highlightColor,
                 onTapSentence = onTapSentence,
@@ -99,12 +103,13 @@ private fun ReadAlongParagraph(
     fontSize: Float,
     ranges: List<Triple<Int, Int, Int>>,
     activeSentence: Int,
-    dimmed: Boolean,
+    dimInactive: Boolean,
     onColor: Color,
     highlightColor: Color,
     onTapSentence: ((Int) -> Unit)?,
 ) {
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val hasActive = ranges.any { it.first == activeSentence }
     val annotated = remember(text, ranges, activeSentence, highlightColor) {
         val active = ranges.filter { it.first == activeSentence }
         if (active.isEmpty()) {
@@ -136,24 +141,41 @@ private fun ReadAlongParagraph(
             lineHeight = (fontSize * 1.75f).sp,
         )
     }
-    val hasActive = ranges.any { it.first == activeSentence }
+    val containerWash = if (dimInactive) {
+        Color.White.copy(alpha = 0.08f)
+    } else {
+        highlightColor.copy(alpha = 0.08f)
+    }
+    val barColor = highlightColor.copy(alpha = 0.85f)
     val baseModifier = if (hasActive) {
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(alpha = 0.09f))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(containerWash)
+            .drawBehind {
+                val barW = 2.5.dp.toPx()
+                val vInset = 6.dp.toPx()
+                val hgt = (size.height - vInset * 2f).coerceAtLeast(barW)
+                drawRoundRect(
+                    color = barColor,
+                    topLeft = Offset(3.dp.toPx(), vInset),
+                    size = Size(barW, hgt),
+                    cornerRadius = CornerRadius(barW / 2f, barW / 2f),
+                )
+            }
+            .padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp)
     } else {
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp)
     }
     Text(
         annotated,
         style = baseStyle,
         color = when {
             onColor == Color.Unspecified -> Color.Unspecified
-            dimmed -> onColor.copy(alpha = 0.45f)
+            dimInactive && !hasActive -> onColor.copy(alpha = 0.40f)
+            dimInactive && hasActive -> onColor.copy(alpha = 0.56f)
             else -> onColor
         },
         onTextLayout = { layout = it },

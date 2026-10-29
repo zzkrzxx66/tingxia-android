@@ -13,11 +13,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.LocationSearching
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.TextDecrease
@@ -25,24 +28,27 @@ import androidx.compose.material.icons.filled.TextIncrease
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tingxia.app.R
 import com.tingxia.app.data.remote.FqChapterTimeline
+import com.tingxia.app.player.SeekOffsets
 import com.tingxia.app.ui.components.ReadAlongList
 import com.tingxia.app.ui.components.activeSentenceIndex
 import com.tingxia.app.ui.components.formatDuration
@@ -64,13 +70,14 @@ fun PlayerTextPage(
     chapterTitle: String,
     positionMs: Long,
     durationMs: Long,
-    playbackPositionMs: Long = positionMs,
     isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     onToggle: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
+    playbackPositionMs: Long = positionMs,
+    onSeekBy: (Long) -> Unit = {},
     fontSize: Float = 17f,
     onFontSizeChange: (Float) -> Unit = {},
     onRetry: () -> Unit = {},
@@ -106,6 +113,7 @@ fun PlayerTextPage(
         runCatching { listState.animateScrollToItem(paragraph.coerceAtLeast(0), offset) }
     }
 
+    val activeAccent = Color(0xFFA6CDB8)
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
@@ -116,7 +124,7 @@ fun PlayerTextPage(
                     stringResource(if (synced) R.string.chapter_text_synced else R.string.chapter_text_title),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (synced) {
-                        MaterialTheme.colorScheme.primary
+                        activeAccent
                     } else {
                         Color.White.copy(alpha = 0.6f)
                     },
@@ -136,7 +144,7 @@ fun PlayerTextPage(
                         contentDescription = stringResource(
                             if (follow) R.string.chapter_text_following else R.string.chapter_text_follow,
                         ),
-                        tint = if (follow) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.7f),
+                        tint = if (follow) activeAccent else Color.White.copy(alpha = 0.7f),
                     )
                 }
             }
@@ -199,9 +207,9 @@ fun PlayerTextPage(
                     modifier = Modifier.fillMaxSize(),
                     listState = listState,
                     dimInactive = synced,
-                    onColor = Color.White,
-                    highlightColor = Color.White,
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
+                    onColor = Color.White.copy(alpha = 0.92f),
+                    highlightColor = Color(0xFFFFF8E8),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
                     onTapSentence = if (!synced) {
                         null
                     } else {
@@ -214,50 +222,98 @@ fun PlayerTextPage(
             }
         }
 
-        // Compact transport, so switching to the text does not mean losing the controls.
+        // Separate time/progress row from the 5 transport buttons so hour-long timestamps
+        // (e.g. 1:23:45) never collide with buttons on 320dp screens or large font scales.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 4.dp),
+        ) {
+            if (durationMs > 0L) {
+                val chapterFraction = (playbackPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                LinearProgressIndicator(
+                    progress = { chapterFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .clip(CircleShape),
+                    color = Color.White.copy(alpha = 0.78f),
+                    trackColor = Color.White.copy(alpha = 0.14f),
+                    strokeCap = StrokeCap.Butt,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    formatDuration(playbackPositionMs),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    color = Color.White.copy(alpha = 0.75f),
+                    maxLines = 1,
+                )
+                Text(
+                    if (durationMs > 0L) formatDuration(durationMs) else "--:--",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    color = Color.White.copy(alpha = 0.48f),
+                    maxLines = 1,
+                )
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         ) {
-            Text(
-                formatDuration(playbackPositionMs),
-                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                color = Color.White.copy(alpha = 0.75f),
-            )
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onPrev, modifier = Modifier.size(44.dp)) {
+            IconButton(onClick = onPrev, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Default.SkipPrevious,
                     contentDescription = stringResource(R.string.previous_chapter),
                     tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(22.dp),
                 )
             }
-            IconButton(onClick = onToggle, modifier = Modifier.size(56.dp)) {
+            IconButton(onClick = { onSeekBy(-SeekOffsets.LONG_MS) }, modifier = Modifier.size(42.dp)) {
+                Icon(
+                    Icons.Default.Replay30,
+                    contentDescription = stringResource(R.string.rewind_30_seconds),
+                    tint = Color.White.copy(alpha = 0.90f),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            IconButton(onClick = onToggle, modifier = Modifier.size(52.dp)) {
                 Icon(
                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = stringResource(
                         if (isPlaying) R.string.pause else R.string.play,
                     ),
                     tint = Color.White,
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(32.dp),
                 )
             }
-            IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) {
+            IconButton(onClick = { onSeekBy(SeekOffsets.LONG_MS) }, modifier = Modifier.size(42.dp)) {
+                Icon(
+                    Icons.Default.Forward30,
+                    contentDescription = stringResource(R.string.forward_30_seconds),
+                    tint = Color.White.copy(alpha = 0.90f),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            IconButton(onClick = onNext, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Default.SkipNext,
                     contentDescription = stringResource(R.string.next_chapter),
                     tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(22.dp),
                 )
             }
-            Spacer(Modifier.weight(1f))
-            Text(
-                formatDuration(durationMs.coerceAtLeast(0L)),
-                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                color = Color.White.copy(alpha = 0.45f),
-            )
         }
         Spacer(Modifier.height(4.dp))
     }
